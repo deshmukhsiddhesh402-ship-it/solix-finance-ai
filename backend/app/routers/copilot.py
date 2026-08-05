@@ -1,0 +1,132 @@
+"""
+Module: AI Finance Copilot — natural language queries over the real posted
+ledger. Claude picks which tool to call and with what parameters; the
+backend executes real, deterministic logic (copilot_engine.py) against
+actual DB data; Claude then writes the final answer grounded in those real
+numbers. This two-step tool-use pattern is what prevents the classic
+"AI makes up a plausible-sounding number" failure mode.
+"""
+import json
+from datetime import date, timedelta
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.services.claude_service import ask_claude_with_tools, continue_with_tool_result
+from app.services.copilot_engine import filter_transactions, compare_periods, predict_cash_flow, gst_summary_from_entries
+from app.services.dashboard_engine import monthly_trend
+
+router = APIRouter()
+
+COPILOT_SYSTEM_PROMPT = (
+    "You are a senior financial analyst copilot for a CA/CMA finance "
+    "platform. Answer the user's question by calling the ONE most relevant "
+    "tool. After you receive the tool's result, write a concise answer "
+    "(2-4 sentences or a short list) using ONLY the numbers returned by the "
+    "tool — never invent figures. If the tool result includes a caveat or "
+    "method note, mention it briefly so the user knows the limits of the answer."
+)
+
+TOOLS = [
+    {
+        "name": "filter_transactions",
+        "description": "Find transactions (journal lines) above a minimum amount, optionally filtered by account type and date range. Use for queries like 'show expenses above X' or 'list transactions over Y'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "min_amount": {"type": "number", "description": "Minimum transaction amount"},
+                "account_type": {"type": "string", "enum": ["expense", "income", "asset", "liability", "equity"], "description": "Account type to filter by; default 'expense'"},
+            },
+            "required": ["min_amount"],
+        },
+    },
+    {
+        "name": "compare_periods",
+        "description": "Compare two calendar months (format YYYY-MM) and identify which accounts drove the change in revenue, expenses, and profit. Use for queries like 'why did profit decrease' or 'compare this month to last month'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "period_a": {"type": "string", "description": "Earlier/baseline month, format YYYY-MM"},
+                "period_b": {"type": "string", "description": "Later/current month, format YYYY-MM"},
+            },
+            "required": ["period_a", "period_b"],
+        },
+    },
+    {
+        "name": "predict_cash_flow",
+        "description": "Project net cash flow for future months using a simple linear trend on historical months. Use for queries like 'predict next month's cash flow' or 'forecast cash flow'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "months_ahead": {"type": "integer", "description": "How many months ahead to project; default 1"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "gst_summary",
+        "description": "Summarize total GST liability from posted books. Use for queries like 'generate GST summary' or 'what's my GST liability'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+
+def _load_entries_for_copilot(db: Session, months_back: int = 12):
+    from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
+
+    start = date.today() - timedelta(days=months_back * 31)
+    query = (
+        db.query(JournalEntry.entry_date, ChartOfAccount.name, ChartOfAccount.account_type,
+                  JournalLine.debit, JournalLine.credit)
+        .join(JournalLine, JournalLine.journal_id == JournalEntry.id)
+        .join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
+        .filter(JournalEntry.entry_date >= start)
+    )
+    return [
+        {"date": row[0], "account_name": row[1], "account_type": row[2], "debit": float(row[3]), "credit": float(row[4])}
+        for row in query.all()
+    ]
+
+
+def _execute_tool(tool_name: str, tool_input: dict, entries: list[dict]) -> dict:
+    if tool_name == "filter_transactions":
+        results = filter_transactions(entries, min_amount=tool_input["min_amount"], account_type=tool_input.get("account_type", "expense"))
+        return {"count": len(results), "transactions": results[:20]}  # cap payload size sent back to Claude
+    if tool_name == "compare_periods":
+        return compare_periods(entries, tool_input["period_a"], tool_input["period_b"])
+    if tool_name == "predict_cash_flow":
+        trend = monthly_trend(entries)
+        net_series = [m["revenue"] - m["expenses"] for m in trend]
+        return predict_cash_flow(net_series, months_ahead=tool_input.get("months_ahead", 1))
+    if tool_name == "gst_summary":
+        return gst_summary_from_entries(entries)
+    return {"error": f"Unknown tool: {tool_name}"}
+
+
+class CopilotRequest(BaseModel):
+    question: str
+
+
+@router.post("/ask")
+def ask_copilot(req: CopilotRequest, db: Session = Depends(get_db)):
+    entries = _load_entries_for_copilot(db)
+
+    first_response = ask_claude_with_tools(COPILOT_SYSTEM_PROMPT, req.question, TOOLS)
+
+    tool_use_block = next((b for b in first_response.content if b.type == "tool_use"), None)
+    if not tool_use_block:
+        # Claude answered directly without needing a tool (e.g. a general question).
+        text = "".join(b.text for b in first_response.content if b.type == "text")
+        return {"answer": text, "data": None}
+
+    tool_result = _execute_tool(tool_use_block.name, tool_use_block.input, entries)
+
+    final_answer = continue_with_tool_result(
+        COPILOT_SYSTEM_PROMPT, req.question, TOOLS,
+        assistant_content=first_response.content,
+        tool_use_id=tool_use_block.id,
+        tool_result=tool_result,
+    )
+
+    return {"answer": final_answer, "data": tool_result, "tool_used": tool_use_block.name}

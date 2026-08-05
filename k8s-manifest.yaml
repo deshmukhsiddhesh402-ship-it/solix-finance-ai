@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: solix-config
+  namespace: default
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: solix-secrets
+  namespace: default
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://user:pass@postgres:5432/solix_finance_ai"
+  REDIS_URL: "redis://redis:6379/0"
+  ANTHROPIC_API_KEY: "sk-ant-xxxxx"
+  JWT_SECRET: "your-long-random-secret"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: solix-backend
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: solix-backend
+  template:
+    metadata:
+      labels:
+        app: solix-backend
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/your-org/solix-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: solix-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: solix-secrets
+              key: REDIS_URL
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: solix-secrets
+              key: ANTHROPIC_API_KEY
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: solix-secrets
+              key: JWT_SECRET
+        envFrom:
+        - configMapRef:
+            name: solix-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: solix-backend-service
+  namespace: default
+spec:
+  selector:
+    app: solix-backend
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: solix-frontend
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: solix-frontend
+  template:
+    metadata:
+      labels:
+        app: solix-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/your-org/solix-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_BACKEND_URL
+          value: "http://solix-backend-service:8000"
+        envFrom:
+        - configMapRef:
+            name: solix-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: solix-frontend-service
+  namespace: default
+spec:
+  selector:
+    app: solix-frontend
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 3000
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: solix-backend-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: solix-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
