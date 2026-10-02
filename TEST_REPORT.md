@@ -3,11 +3,17 @@
 ## Baseline at reviewed revision
 
 - GitHub Actions run 31115335044 for commit 8319a1fa3f4a684e53ea18e4d7f014d009499a21: **failure**.
-- The workflow used nonexistent solix_minimal/ working directories and npm ci without a committed frontend/package-lock.json; these are concrete workflow defects. The run's individual job/log output was not available in the bounded review response, so the exact first failing step is not asserted here.
-- Existing backend/tests/test_engines.py contains calculation examples only. No authentication, API validation, or cross-company isolation tests existed at the reviewed revision.
+- The workflow used nonexistent solix_minimal/ working directories and npm ci without a committed frontend/package-lock.json; these are concrete workflow defects.
+- Existing backend/tests/test_engines.py contained 13 calculation tests, with no authentication or cross-company API tests at baseline.
 
-## Hardening branch
+## Hardening branch — commit 8fdb185
 
-Added regression coverage for OTP one-time use, email normalization/cooldown, attempt lockout, production JWT-secret validation, and accounting-router importability. The existing workflow still points to the nonexistent solix_minimal/ directories and uses npm ci without a lockfile. An attempted workflow-file update returned 404, so the pipeline remains unchanged.
+- Python 3.12 command pytest tests -v from backend/: **18 passed**, including all 13 calculation tests and five new OTP/config/router regressions. One existing Pydantic deprecation warning was emitted.
+- Python compileall over backend/app and backend/tests: **passed**.
+- CI-equivalent lint command flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics: **passed**, zero selected errors.
+- GitHub Actions run 37006250860 for the PR commit: **failure with zero jobs** (event was push); it did not execute tests. The existing workflow's branch filters and invalid paths remain unchanged because the workflow-file write returned 404.
+- Frontend install, lint, and production build: **not run**. The pinned Next.js 14.2.15 package was blocked by Replit's security firewall under its critical-vulnerability policy. The app's dependencies were not changed to bypass the block.
 
-**Status: pending execution.** This conversation workspace has no mounted repository checkout, so pytest, lint, Next.js production build, Docker build, database/migration checks, and mobile/browser tests have not been run locally. The existing workflow is misconfigured and could not be edited through the current GitHub connection, so branch CI is not yet a valid verification path.
+## Scope and remaining checks
+
+Tests ran in a sparse checkout of the exact branch commit with tracked environment files excluded. No PostgreSQL service was available, so no database integration, migration, or live API/tenant-isolation test ran. Docker, browser/mobile, OAuth, email delivery, deployment, and full frontend checks remain unverified. The backend test suite is a scoped regression check, not proof of production readiness.

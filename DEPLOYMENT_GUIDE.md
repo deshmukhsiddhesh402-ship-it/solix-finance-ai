@@ -8,12 +8,13 @@
 4. Set ALLOWED_ORIGINS to the exact frontend origins. Configure ANTHROPIC_API_KEY only if Copilot is enabled and Google/Microsoft OAuth values only if those providers are enabled.
 5. **OTP delivery is not implemented.** Non-development OTP requests intentionally return 503 until a real email/SMS sender is configured. Do not expose development OTP responses in production.
 6. Verify PostgreSQL database/schema.sql against a disposable database first. Versioned Alembic migrations and rollback scripts are not present in the reviewed repository; do not apply unreviewed destructive schema changes to production.
+7. Review a supported Next.js upgrade before release. The repository pins 14.2.15, which the package security firewall blocked; the vendor's current security release lists patched targets on 15.5 and 16.2. Validate NextAuth, routing, and build behavior before changing the major version. Vendor guidance: https://nextjs.org/blog/july-2026-security-release.
 
 ## CI and containers
 
-The current workflow still expects nonexistent solix_minimal/backend and solix_minimal/frontend directories and calls npm ci without a lockfile. It must be corrected before CI can verify a branch. Backend dependencies are declared in backend/requirements.txt; frontend dependencies are declared in frontend/package.json. Docker contexts exclude .env*; supply runtime configuration using platform secrets.
+The current workflow still expects nonexistent solix_minimal/backend and solix_minimal/frontend directories and calls npm ci without a lockfile. It must be corrected before CI can verify a branch. A workflow-file update returned 404 and is not included. Backend dependencies are declared in backend/requirements.txt; frontend dependencies are declared in frontend/package.json. Docker contexts exclude .env*; supply runtime configuration using platform secrets.
 
-Production image publishing and the optional deployment webhook run only on pushes to main/develop as configured by the workflow. The hardening branch has not been deployed. Review its CI results and merge through the normal repository review process only after the environment-file/credential issue is resolved.
+Production image publishing and the optional deployment webhook run only on pushes to main/develop as configured by the workflow. The hardening branch has not been deployed. Review the PR and actual CI/build results and resolve the environment-file/credential issue before merging.
 
 ## Current limitations
 
