@@ -9,6 +9,7 @@ anything doesn't check out.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -74,14 +75,16 @@ def require_permission(resource: str, action: str):
 class AddMembershipRequest(BaseModel):
     org_id: str
     user_email: str
-    role: str  # admin, accountant, auditor
+    role: Literal["admin", "accountant", "auditor"]
 
 
 @router.post("/memberships")
 def add_membership(
-    req: AddMembershipRequest, db: Session = Depends(get_db),
+    req: AddMembershipRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _acting_user: str = Depends(require_permission("users", "manage_users")),
 ):
+    if req.org_id != org_id:
+        raise HTTPException(400, detail="Request organization must match the authorized organization.")
     from app.models.enterprise import OrgMembership
     from app.models.auth_user import User
 
@@ -148,9 +151,11 @@ class CreateApiKeyRequest(BaseModel):
 
 @router.post("/api-keys")
 def create_api_key(
-    req: CreateApiKeyRequest, db: Session = Depends(get_db),
+    req: CreateApiKeyRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _user: str = Depends(require_permission("api_keys", "create")),
 ):
+    if req.org_id != org_id:
+        raise HTTPException(400, detail="Request organization must match the authorized organization.")
     from app.models.enterprise import ApiKey
 
     plaintext, hashed = generate_api_key()
@@ -207,9 +212,11 @@ class ScheduledReportRequest(BaseModel):
 
 @router.post("/scheduled-reports")
 def create_scheduled_report(
-    req: ScheduledReportRequest, db: Session = Depends(get_db),
+    req: ScheduledReportRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _user: str = Depends(require_permission("reports", "create")),
 ):
+    if req.org_id != org_id:
+        raise HTTPException(400, detail="Request organization must match the authorized organization.")
     from app.models.enterprise import ScheduledReport
 
     report = ScheduledReport(
@@ -230,12 +237,15 @@ def create_scheduled_report(
 # ---------------------------------------------------------------------------
 @router.get("/notifications")
 def list_notifications(
-    org_id: str = Query(...), user_id: str = Query(...), unread_only: bool = Query(default=False),
-    db: Session = Depends(get_db),
+    org_id: str = Query(...), user_id: str | None = Query(default=None),
+    unread_only: bool = Query(default=False), db: Session = Depends(get_db),
+    _user: str = Depends(require_permission("reports", "view")),
 ):
     from app.models.enterprise import Notification
 
-    query = db.query(Notification).filter(Notification.org_id == org_id, Notification.user_id == user_id)
+    if user_id is not None and user_id != _user:
+        raise HTTPException(403, detail="Users may only view their own notifications.")
+    query = db.query(Notification).filter(Notification.org_id == org_id, Notification.user_id == _user)
     if unread_only:
         query = query.filter(Notification.is_read == False)  # noqa: E712
     rows = query.order_by(Notification.created_at.desc()).limit(50).all()
@@ -247,10 +257,16 @@ def list_notifications(
 
 
 @router.post("/notifications/{notification_id}/read")
-def mark_notification_read(notification_id: str, db: Session = Depends(get_db)):
+def mark_notification_read(
+    notification_id: str, org_id: str = Query(...), db: Session = Depends(get_db),
+    _user: str = Depends(require_permission("reports", "view")),
+):
     from app.models.enterprise import Notification
 
-    notif = db.query(Notification).filter(Notification.id == notification_id).first()
+    notif = db.query(Notification).filter(
+        Notification.id == notification_id, Notification.org_id == org_id,
+        Notification.user_id == _user,
+    ).first()
     if not notif:
         raise HTTPException(404, detail="Notification not found.")
     notif.is_read = True
