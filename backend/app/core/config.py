@@ -1,34 +1,34 @@
-"""
-Centralized configuration. All secrets come from environment variables —
-never hardcode API keys. See ../.env.example for the full list.
-"""
+"""Centralized configuration. Production secrets must come from environment variables."""
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import List
 
 
 class Settings(BaseSettings):
-    # --- Core ---
     ENV: str = "development"
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
-
-    # --- Database ---
     DATABASE_URL: str = "postgresql://solix:solix@localhost:5432/solix_finance_ai"
     REDIS_URL: str = "redis://localhost:6379/0"
-
-    # --- AI ---
     ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
-    VOYAGE_API_KEY: str = ""  # optional — enables real semantic embeddings for RAG; falls back to TF-IDF if unset
-
-    # --- Billing (Razorpay) ---
+    VOYAGE_API_KEY: str = ""
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
-
-    # --- Auth ---
     JWT_SECRET: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+    @model_validator(mode="after")
+    def require_production_secrets(self):
+        if self.ENV.strip().lower() in {"prod", "production"}:
+            if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:
+                raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")
+            if self.DATABASE_URL == "postgresql://solix:solix@localhost:5432/solix_finance_ai":
+                raise ValueError("Production requires an explicitly configured DATABASE_URL.")
+        if self.JWT_EXPIRE_MINUTES <= 0:
+            raise ValueError("JWT_EXPIRE_MINUTES must be positive.")
+        return self
 
     class Config:
         env_file = ".env"

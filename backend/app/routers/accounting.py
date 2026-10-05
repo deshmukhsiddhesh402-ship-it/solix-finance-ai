@@ -1,11 +1,13 @@
 """
 Module 2: Accounting — API layer over accounting_engine.py
 """
+import uuid
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
 from app.core.db import get_db
+from app.routers.enterprise import require_permission
 from app.services.accounting_engine import (
     LedgerLine, build_trial_balance, build_profit_and_loss, build_balance_sheet,
     financial_ratios, straight_line_depreciation, wdv_depreciation_schedule,
@@ -15,10 +17,26 @@ from app.services.accounting_engine import (
 router = APIRouter()
 
 
+class LedgerLineIn(BaseModel):
+    account_name: str = Field(min_length=1, max_length=255)
+    account_type: Literal["asset", "liability", "equity", "income", "expense"]
+    debit: float = Field(default=0.0, ge=0)
+    credit: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def require_one_positive_side(self):
+        if (self.debit > 0) == (self.credit > 0):
+            raise ValueError("Each journal line must have a positive amount on exactly one side.")
+        return self
+
+
+
+
 @router.post("/journal-entries")
 def create_journal_entry(
     entry_date: str, narration: str, lines: list[LedgerLineIn],
-    org_id: str | None = None, db=Depends(get_db),
+    org_id: str, db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "create")),
 ):
     """Persist a journal entry to the database — this is what makes the
     Live Dashboard 'live': previously, every /api/accounting endpoint below
@@ -31,11 +49,13 @@ def create_journal_entry(
     from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
 
     lines_dec = [LedgerLine(**l.dict()) for l in lines]
+    if len(lines_dec) < 2:
+        raise HTTPException(422, detail="A journal entry requires at least two lines.")
     tb_check = build_trial_balance(lines_dec)
     if not tb_check["is_balanced"]:
         raise HTTPException(422, detail="Journal entry does not balance (total debits != total credits).")
 
-    entry = JournalEntry(org_id=org_id, entry_date=date_type.fromisoformat(entry_date), narration=narration)
+    entry = JournalEntry(org_id=org_id, entry_date=date_type.fromisoformat(entry_date), narration=narration, created_by=uuid.UUID(_user))
     db.add(entry)
     db.flush()
 
@@ -45,6 +65,8 @@ def create_journal_entry(
             .filter(ChartOfAccount.org_id == org_id, ChartOfAccount.name == line.account_name)
             .first()
         )
+        if account and account.account_type != line.account_type:
+            raise HTTPException(422, detail="Account name already exists with a different account type.")
         if not account:
             account = ChartOfAccount(
                 org_id=org_id, code=line.account_name[:10].upper(),
@@ -54,15 +76,20 @@ def create_journal_entry(
             db.flush()
         db.add(JournalLine(journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit))
 
-    db.commit()
+    from app.models.enterprise import AuditLog
+    db.add(AuditLog(
+        org_id=org_id, user_id=uuid.UUID(_user), action="create",
+        entity_type="journal_entry", entity_id=str(entry.id),
+        changes={"entry_date": entry.entry_date.isoformat(), "line_count": len(lines)},
+    ))
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Journal entry could not be posted.") from exc
     return {"journal_entry_id": str(entry.id), "message": "Journal entry posted successfully."}
 
 
-class LedgerLineIn(BaseModel):
-    account_name: str
-    account_type: Literal["asset", "liability", "equity", "income", "expense"]
-    debit: float = 0.0
-    credit: float = 0.0
 
 
 class TrialBalanceRequest(BaseModel):
