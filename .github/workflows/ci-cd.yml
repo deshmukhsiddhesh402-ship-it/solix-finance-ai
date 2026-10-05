@@ -47,6 +47,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Reject tracked environment files
+        shell: bash
+        run: |
+          if git ls-files | grep -E '(^|/)\\.env($|\\.)'; then
+            echo "Tracked environment files detected. Use .env.example templates and repository secrets instead."
+            exit 1
+          fi
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v4
         with:
