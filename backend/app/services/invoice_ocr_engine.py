@@ -63,14 +63,21 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -
     Claude's vision has to look at the page as a picture.
     """
     import fitz  # PyMuPDF — local import: only needed on this path
+    if dpi <= 0:
+        raise ValueError("DPI must be positive.")
+    if max_pages <= 0:
+        raise ValueError("max_pages must be positive.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
-    for page in list(doc)[:max_pages]:
-        pix = page.get_pixmap(matrix=matrix)
-        images.append(pix.tobytes("png"))
-    return images
+    try:
+        for page in list(doc)[:max_pages]:
+            pix = page.get_pixmap(matrix=matrix)
+            images.append(pix.tobytes("png"))
+        return images
+    finally:
+        doc.close()
 
 
 def encode_image_base64(image_bytes: bytes) -> str:
