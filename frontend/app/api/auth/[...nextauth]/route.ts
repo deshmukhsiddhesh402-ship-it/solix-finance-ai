@@ -10,7 +10,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
-export const authOptions: AuthOptions = {
+const authOptions: AuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
