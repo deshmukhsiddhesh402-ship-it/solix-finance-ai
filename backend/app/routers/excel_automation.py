@@ -24,6 +24,23 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _CLEANED_FILES: dict[str, dict] = {}
 
 
+def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
+    try:
+        session_uuid = uuid.UUID(str(session_id))
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+    session = _CLEANED_FILES.get(str(session_uuid))
+    if session is None:
+        raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
+    if session["org_id"] != str(org_uuid):
+        raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
+    if session["user_id"] != str(user_uuid):
+        raise HTTPException(403, detail="Cleaned file session does not belong to this user.")
+    return session
+
+
 def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
     lower = filename.lower()
     if lower.endswith(".csv"):
@@ -86,19 +103,7 @@ async def auto_clean(
 
 @router.get("/download/{session_id}")
 def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("reports", "view"))):
-    try:
-        session_uuid = uuid.UUID(str(session_id))
-        org_uuid = uuid.UUID(str(org_id))
-        user_uuid = uuid.UUID(str(_user))
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
-    session = _CLEANED_FILES.get(str(session_uuid))
-    if session is None:
-        raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
-    if session["org_id"] != str(org_uuid):
-        raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
-    if session["user_id"] != str(user_uuid):
-        raise HTTPException(403, detail="Cleaned file session does not belong to this user.")
+    session = _get_cleaned_session(session_id, org_id, _user)
     df = session["df"]
     if df is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
