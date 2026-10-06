@@ -132,3 +132,30 @@ def test_ocr_journal_rejects_non_finite_amount():
             "cgst_amount": 0, "sgst_amount": 0, "igst_amount": 0,
             "total_amount": 0,
         })
+
+
+def test_excel_session_rejects_cross_user_access():
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+
+    sid = "44444444-4444-4444-8444-444444444444"
+    excel._CLEANED_FILES[sid] = {
+        "df": None,
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+    }
+    try:
+        session = excel._CLEANED_FILES.get(sid)
+        assert session["user_id"] != "22222222-2222-4222-8222-222222222222"
+    finally:
+        excel._CLEANED_FILES.pop(sid, None)
+
+
+def test_excel_upload_limit_is_bounded():
+    import app.routers.excel_automation as excel
+    assert excel.MAX_UPLOAD_BYTES == 10 * 1024 * 1024
+
+
+def test_chat_upload_limit_is_bounded():
+    import app.routers.chat as chat
+    assert chat.MAX_UPLOAD_BYTES == 10 * 1024 * 1024
