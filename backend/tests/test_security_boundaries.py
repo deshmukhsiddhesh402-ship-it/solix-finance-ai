@@ -124,6 +124,16 @@ def test_ocr_journal_rejects_unreconciled_total():
         })
 
 
+def test_ocr_journal_rejects_negative_amount():
+    from app.services.invoice_ocr_engine import invoice_to_journal_lines
+    with pytest.raises(ValueError, match="cannot be negative"):
+        invoice_to_journal_lines({
+            "vendor_name": "Test Vendor", "taxable_value": -100,
+            "cgst_amount": 0, "sgst_amount": 0, "igst_amount": 0,
+            "total_amount": -100,
+        })
+
+
 def test_ocr_journal_rejects_non_finite_amount():
     from app.services.invoice_ocr_engine import invoice_to_journal_lines
     with pytest.raises(ValueError, match="finite"):
@@ -182,7 +192,7 @@ def test_chat_keyword_session_rejects_cross_user_access():
             chat.ask_question(
                 chat.AskRequest(session_id=sid, question="test"),
                 org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
-                _user="22222222-2222-4222-8222-222222222222",
+                user_id="22222222-2222-4222-8222-222222222222",
             )
         assert exc.value.status_code == 403
     finally:
@@ -197,6 +207,6 @@ def test_chat_rejects_invalid_session_identifier():
         chat.ask_question(
             chat.AskRequest(session_id="not-a-uuid", question="test"),
             org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
-            _user="11111111-1111-4111-8111-111111111111",
+            user_id="11111111-1111-4111-8111-111111111111",
         )
     assert exc.value.status_code == 400
