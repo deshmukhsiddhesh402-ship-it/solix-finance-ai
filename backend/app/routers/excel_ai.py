@@ -10,7 +10,7 @@ Endpoints:
 - POST /api/excel-ai/plan-pivot-table
 """
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.routers.enterprise import require_permission
 from app.services.claude_service import (
@@ -27,25 +27,25 @@ router = APIRouter()
 
 
 class FormulaRequest(BaseModel):
-    formula: str
+    formula: str = Field(min_length=1, max_length=5000)
 
 
 class GenerateFormulaRequest(BaseModel):
-    description: str
+    description: str = Field(min_length=1, max_length=5000)
 
 
 class FixFormulaRequest(BaseModel):
-    formula: str
-    error_description: str
+    formula: str = Field(min_length=1, max_length=5000)
+    error_description: str = Field(min_length=1, max_length=3000)
 
 
 class TaskRequest(BaseModel):
-    task_description: str
+    task_description: str = Field(min_length=1, max_length=5000)
 
 
 class PivotPlanRequest(BaseModel):
-    data_description: str
-    goal: str
+    data_description: str = Field(min_length=1, max_length=5000)
+    goal: str = Field(min_length=1, max_length=3000)
 
 
 @router.post("/explain-formula")
