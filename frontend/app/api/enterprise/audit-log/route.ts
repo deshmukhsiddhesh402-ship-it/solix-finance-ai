@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const search = `?${params.toString()}`;
   try {
     const res = await fetch(`${BACKEND_URL}/api/enterprise/audit-log${search}`, {
-      headers: { Authorization: authHeader },
+      headers: auth.headers,
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
