@@ -306,3 +306,32 @@ def test_audit_log_limit_rejects_non_positive_values():
     # FastAPI's Query metadata is attached to the parameter; verify the declared lower bound.
     param = inspect.signature(view_audit_log).parameters["limit"].default
     assert any(getattr(item, "ge", None) == 1 for item in getattr(param, "metadata", []))
+
+def test_production_config_rejects_default_jwt_secret():
+    from app.core.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="production",
+            JWT_SECRET="change-me-in-production",
+            DATABASE_URL="postgresql://solix_user:strong-password@db.example/solix",
+        )
+
+
+def test_production_config_requires_long_jwt_secret():
+    from app.core.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="production",
+            JWT_SECRET="short-secret",
+            DATABASE_URL="postgresql://solix_user:strong-password@db.example/solix",
+        )
+
+
+def test_production_config_rejects_default_database_url():
+    from app.core.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="production",
+            JWT_SECRET="a" * 32,
+            DATABASE_URL="postgresql://solix:solix@localhost:5432/solix_finance_ai",
+        )
