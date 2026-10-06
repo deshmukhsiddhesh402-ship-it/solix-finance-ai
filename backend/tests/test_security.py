@@ -43,3 +43,13 @@ def test_accounting_router_imports():
     from app.routers.accounting import router
 
     assert any(route.path.endswith("/journal-entries") for route in router.routes)
+
+from app.core.security import create_access_token, decode_access_token
+
+
+def test_jwt_subject_round_trips_as_user_id():
+    user_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    token = create_access_token(user_id)
+    payload = decode_access_token(token)
+    assert payload is not None
+    assert payload["sub"] == user_id
