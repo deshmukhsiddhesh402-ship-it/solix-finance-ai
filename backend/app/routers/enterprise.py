@@ -32,7 +32,14 @@ def permissions_matrix():
     return {role: list_permissions(role) for role in ["admin", "accountant", "auditor"]}
 
 
-def _parse_uuid(value: str, label: str = "identifier") -> uuid.UUID:\n    try:\n        return uuid.UUID(str(value))\n    except (ValueError, AttributeError, TypeError) as exc:\n        raise HTTPException(400, detail=f"Invalid {label}.") from exc\n\n\ndef require_permission(resource: str, action: str):
+def _parse_uuid(value: str, label: str = "identifier") -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail=f"Invalid {label}.") from exc
+
+
+def require_permission(resource: str, action: str):
     """Dependency factory: returns a FastAPI dependency that verifies the
     calling user (via Bearer JWT) has `action` permission on `resource`
     within the org given by the `org_id` query/body param. Fails closed —
@@ -55,11 +62,8 @@ def _parse_uuid(value: str, label: str = "identifier") -> uuid.UUID:\n    try:\n
         from app.models.enterprise import OrgMembership
         from app.models.auth_user import User  # local import — see note below
 
-        try:
-            user_uuid = uuid.UUID(str(user_id))
-            org_uuid = uuid.UUID(str(org_id))
-        except (ValueError, AttributeError, TypeError) as exc:
-            raise HTTPException(400, detail="Invalid organization identifier.") from exc
+        user_uuid = _parse_uuid(user_id, "user identifier")
+        org_uuid = _parse_uuid(org_id, "organization identifier")
 
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
@@ -80,7 +84,7 @@ def _parse_uuid(value: str, label: str = "identifier") -> uuid.UUID:\n    try:\n
 # ---------------------------------------------------------------------------
 class AddMembershipRequest(BaseModel):
     org_id: str
-    user_email: str
+    user_email: str = Field(min_length=3, max_length=255)
     role: Literal["admin", "accountant", "auditor"]
 
 
@@ -89,16 +93,14 @@ def add_membership(
     req: AddMembershipRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _acting_user: str = Depends(require_permission("users", "manage_users")),
 ):
-    if req.org_id != org_id:
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    if _parse_uuid(req.org_id, "request organization identifier") != org_uuid:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import OrgMembership
     from app.models.auth_user import User
 
-    target_email = req.user_email.strip().lower()\n    target_user = db.query(User).filter(User.email == target_email).first()
+    target_email = req.user_email.strip().lower()
+    target_user = db.query(User).filter(User.email == target_email).first()
     if not target_user:
         raise HTTPException(404, detail=f"No user found with email {target_email}.")
 
@@ -170,7 +172,7 @@ def log_action(db: Session, org_id: str, user_id: str, action: str, entity_type:
 # ---------------------------------------------------------------------------
 class CreateApiKeyRequest(BaseModel):
     org_id: str
-    name: str
+    name: str = Field(min_length=1, max_length=100)
 
 
 @router.post("/api-keys")
@@ -204,7 +206,7 @@ def list_api_keys(
 ):
     from app.models.enterprise import ApiKey
 
-    org_uuid = uuid.UUID(org_id)
+    org_uuid = _parse_uuid(org_id, "organization identifier")
     rows = db.query(ApiKey).filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False).all()  # noqa: E712
     return {"keys": [
         {"id": str(r.id), "name": r.name, "masked_key": r.key_prefix_display,
@@ -221,8 +223,9 @@ def revoke_api_key(
 ):
     from app.models.enterprise import ApiKey
 
-    org_uuid = uuid.UUID(org_id)
-    key_row = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.org_id == org_uuid).first()
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    key_uuid = _parse_uuid(key_id, "API key identifier")
+    key_row = db.query(ApiKey).filter(ApiKey.id == key_uuid, ApiKey.org_id == org_uuid).first()
     if not key_row:
         raise HTTPException(404, detail="API key not found.")
     key_row.revoked = True
@@ -235,9 +238,9 @@ def revoke_api_key(
 # ---------------------------------------------------------------------------
 class ScheduledReportRequest(BaseModel):
     org_id: str
-    report_type: str
-    frequency: str  # daily, weekly, monthly
-    recipient_emails: list[str]
+    report_type: str = Field(min_length=1, max_length=30)
+    frequency: Literal["daily", "weekly", "monthly"]
+    recipient_emails: list[str] = Field(min_length=1, max_length=50)
 
 
 @router.post("/scheduled-reports")
@@ -279,8 +282,9 @@ def list_notifications(
 
     if user_id is not None and user_id != _user:
         raise HTTPException(403, detail="Users may only view their own notifications.")
-    org_uuid = uuid.UUID(org_id)
-    query = db.query(Notification).filter(Notification.org_id == org_uuid, Notification.user_id == _user)
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    user_uuid = _parse_uuid(_user, "user identifier")
+    query = db.query(Notification).filter(Notification.org_id == org_uuid, Notification.user_id == user_uuid)
     if unread_only:
         query = query.filter(Notification.is_read == False)  # noqa: E712
     rows = query.order_by(Notification.created_at.desc()).limit(50).all()
@@ -298,14 +302,13 @@ def mark_notification_read(
 ):
     from app.models.enterprise import Notification
 
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    user_uuid = _parse_uuid(_user, "user identifier")
+    notification_uuid = _parse_uuid(notification_id, "notification identifier")
 
     notif = db.query(Notification).filter(
-        Notification.id == notification_id, Notification.org_id == org_uuid,
-        Notification.user_id == _user,
+        Notification.id == notification_uuid, Notification.org_id == org_uuid,
+        Notification.user_id == user_uuid,
     ).first()
     if not notif:
         raise HTTPException(404, detail="Notification not found.")
