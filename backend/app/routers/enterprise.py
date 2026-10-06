@@ -91,6 +91,10 @@ def add_membership(
 ):
     if req.org_id != org_id:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
+    try:
+        org_uuid = uuid.UUID(org_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import OrgMembership
     from app.models.auth_user import User
 
@@ -98,7 +102,7 @@ def add_membership(
     if not target_user:
         raise HTTPException(404, detail=f"No user found with email {req.user_email}.")
 
-    membership = OrgMembership(user_id=target_user.id, org_id=req.org_id, role=req.role)
+    membership = OrgMembership(user_id=target_user.id, org_id=org_uuid, role=req.role)
     db.add(membership)
     db.commit()
     return {"message": f"{req.user_email} added to organization as {req.role}."}
@@ -162,10 +166,14 @@ def create_api_key(
 ):
     if req.org_id != org_id:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
+    try:
+        org_uuid = uuid.UUID(org_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import ApiKey
 
     plaintext, hashed = generate_api_key()
-    key_row = ApiKey(org_id=req.org_id, name=req.name, hashed_key=hashed, key_prefix_display=mask_api_key(plaintext))
+    key_row = ApiKey(org_id=org_uuid, name=req.name, hashed_key=hashed, key_prefix_display=mask_api_key(plaintext))
     db.add(key_row)
     db.commit()
     return {
@@ -223,10 +231,14 @@ def create_scheduled_report(
 ):
     if req.org_id != org_id:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
+    try:
+        org_uuid = uuid.UUID(org_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import ScheduledReport
 
     report = ScheduledReport(
-        org_id=req.org_id, report_type=req.report_type, frequency=req.frequency,
+        org_id=org_uuid, report_type=req.report_type, frequency=req.frequency,
         recipient_emails=req.recipient_emails,
     )
     db.add(report)
