@@ -46,7 +46,6 @@ def create_journal_entry(
     Uses a simple get-or-create on chart_of_accounts by (org_id, name) so
     you don't have to pre-provision accounts before posting entries.
     """
-    from datetime import date as date_type
     from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
 
     try:
