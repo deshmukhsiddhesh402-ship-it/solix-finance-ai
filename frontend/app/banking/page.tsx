@@ -197,7 +197,7 @@ export default function BankingPage() {
                 <div className="flex justify-between"><dt className="text-slate-400">Less: Outstanding cheques</dt><dd>-{INR(result.reconciliation_statement.less_outstanding_cheques)}</dd></div>
                 <div className="flex justify-between border-t border-white/10 pt-2 font-medium"><dt>Balance as per Books</dt><dd className="text-violet-300">{INR(result.reconciliation_statement.balance_as_per_books)}</dd></div>
               </dl>
-              <p className="text-xs text-slate-500 mt-4">Note: bank-only items (e.g. bank charges) aren't yet in your books — post a journal entry for them so both sides eventually match exactly.</p>
+              <p className="text-xs text-slate-500 mt-4">Note: bank-only items (e.g. bank charges) aren&apos;t yet in your books — post a journal entry for them so both sides eventually match exactly.</p>
             </div>
           </div>
         )}
