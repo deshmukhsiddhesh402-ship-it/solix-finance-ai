@@ -164,3 +164,39 @@ def test_excel_upload_limit_is_bounded():
 def test_chat_upload_limit_is_bounded():
     import app.routers.chat as chat
     assert chat.MAX_UPLOAD_BYTES == 10 * 1024 * 1024
+
+
+def test_chat_keyword_session_rejects_cross_user_access():
+    from fastapi import HTTPException
+    import app.routers.chat as chat
+
+    sid = "55555555-5555-4555-8555-555555555555"
+    chat._TFIDF_SESSIONS[sid] = {
+        "filename": "test.txt",
+        "index": {},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            chat.ask_question(
+                chat.AskRequest(session_id=sid, question="test"),
+                org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+                _user="22222222-2222-4222-8222-222222222222",
+            )
+        assert exc.value.status_code == 403
+    finally:
+        chat._TFIDF_SESSIONS.pop(sid, None)
+
+
+def test_chat_rejects_invalid_session_identifier():
+    from fastapi import HTTPException
+    import app.routers.chat as chat
+
+    with pytest.raises(HTTPException) as exc:
+        chat.ask_question(
+            chat.AskRequest(session_id="not-a-uuid", question="test"),
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            _user="11111111-1111-4111-8111-111111111111",
+        )
+    assert exc.value.status_code == 400
