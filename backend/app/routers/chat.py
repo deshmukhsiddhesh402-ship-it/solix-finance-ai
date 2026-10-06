@@ -12,6 +12,7 @@ from app.core.db import get_db
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 # session_id -> {filename, index, org_id}
 _TFIDF_SESSIONS: dict[str, dict] = {}
@@ -37,6 +38,8 @@ async def upload_document(
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
     file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.")
     try:
         text = extract_text(file.filename, file_bytes)
     except ValueError as e:
@@ -91,6 +94,8 @@ def ask_question(
         session = _SEMANTIC_SESSIONS[req.session_id]
         if not _authorized_session_org(session["org_id"], org_id):
             raise HTTPException(403, detail="Document does not belong to this organization.")
+        if session["user_id"] != _user:
+            raise HTTPException(403, detail="Document session does not belong to this user.")
         from app.models.document import Document
         try:
             doc_uuid = uuid.UUID(req.session_id)
