@@ -150,7 +150,7 @@ export default function AdminPage() {
 
           {newKeyPlaintext && (
             <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 mb-4 text-xs">
-              <p className="text-amber-200 mb-1.5">Save this now — it won't be shown again:</p>
+              <p className="text-amber-200 mb-1.5">Save this now — it won&apos;t be shown again:</p>
               <div className="flex items-center gap-2 font-mono bg-black/30 rounded px-2 py-1.5">
                 <span className="flex-1 truncate">{newKeyPlaintext}</span>
                 <button onClick={() => navigator.clipboard.writeText(newKeyPlaintext)} className="text-slate-400 hover:text-white"><Copy size={13} /></button>
