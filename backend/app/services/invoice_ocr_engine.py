@@ -16,6 +16,7 @@ Excel or accounting journal entries.
 import io
 import re
 import base64
+import math
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,16 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     sgst = round(float(invoice.get("sgst_amount") or 0), 2)
     igst = round(float(invoice.get("igst_amount") or 0), 2)
     total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+
+    values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
+    if not all(math.isfinite(v) for v in values.values()):
+        raise ValueError("Invoice amounts must be finite numeric values.")
+    expected_total = round(taxable + cgst + sgst + igst, 2)
+    if abs(expected_total - total) > 0.01:
+        raise ValueError(
+            f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
+            "Review the extracted fields before posting."
+        )
 
     vendor = invoice.get("vendor_name") or "Unknown Vendor"
 
