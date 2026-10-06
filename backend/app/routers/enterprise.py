@@ -190,7 +190,8 @@ def list_api_keys(
 ):
     from app.models.enterprise import ApiKey
 
-    org_uuid = uuid.UUID(org_id)\n    rows = db.query(ApiKey).filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False).all()  # noqa: E712
+    org_uuid = uuid.UUID(org_id)
+    rows = db.query(ApiKey).filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False).all()  # noqa: E712
     return {"keys": [
         {"id": str(r.id), "name": r.name, "masked_key": r.key_prefix_display,
          "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -206,7 +207,8 @@ def revoke_api_key(
 ):
     from app.models.enterprise import ApiKey
 
-    org_uuid = uuid.UUID(org_id)\n    key_row = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.org_id == org_uuid).first()
+    org_uuid = uuid.UUID(org_id)
+    key_row = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.org_id == org_uuid).first()
     if not key_row:
         raise HTTPException(404, detail="API key not found.")
     key_row.revoked = True
@@ -263,7 +265,8 @@ def list_notifications(
 
     if user_id is not None and user_id != _user:
         raise HTTPException(403, detail="Users may only view their own notifications.")
-    org_uuid = uuid.UUID(org_id)\n    query = db.query(Notification).filter(Notification.org_id == org_uuid, Notification.user_id == _user)
+    org_uuid = uuid.UUID(org_id)
+    query = db.query(Notification).filter(Notification.org_id == org_uuid, Notification.user_id == _user)
     if unread_only:
         query = query.filter(Notification.is_read == False)  # noqa: E712
     rows = query.order_by(Notification.created_at.desc()).limit(50).all()
