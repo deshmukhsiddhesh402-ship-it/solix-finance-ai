@@ -97,3 +97,23 @@ def test_ocr_session_rejects_cross_user_access():
         assert exc.value.status_code == 403
     finally:
         ocr._EXTRACTED_INVOICES.pop("security-test-session", None)
+
+
+def test_ocr_journal_rejects_unreconciled_total():
+    from app.services.invoice_ocr_engine import invoice_to_journal_lines
+    with pytest.raises(ValueError, match="does not reconcile"):
+        invoice_to_journal_lines({
+            "vendor_name": "Test Vendor", "taxable_value": 100,
+            "cgst_amount": 9, "sgst_amount": 9, "igst_amount": 0,
+            "total_amount": 200,
+        })
+
+
+def test_ocr_journal_rejects_non_finite_amount():
+    from app.services.invoice_ocr_engine import invoice_to_journal_lines
+    with pytest.raises(ValueError, match="finite"):
+        invoice_to_journal_lines({
+            "vendor_name": "Test Vendor", "taxable_value": "nan",
+            "cgst_amount": 0, "sgst_amount": 0, "igst_amount": 0,
+            "total_amount": 0,
+        })
