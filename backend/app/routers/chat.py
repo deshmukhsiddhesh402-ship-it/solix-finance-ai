@@ -94,14 +94,10 @@ def ask_question(
         session = _SEMANTIC_SESSIONS[req.session_id]
         if not _authorized_session_org(session["org_id"], org_id):
             raise HTTPException(403, detail="Document does not belong to this organization.")
-        if session["user_id"] != _user:
+        if session["user_id"] != str(user_uuid):
             raise HTTPException(403, detail="Document session does not belong to this user.")
         from app.models.document import Document
-        try:
-            doc_uuid = uuid.UUID(req.session_id)
-            org_uuid = uuid.UUID(org_id)
-        except (ValueError, AttributeError, TypeError) as exc:
-            raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+        doc_uuid = session_uuid
         doc = db.query(Document).filter(Document.id == doc_uuid, Document.org_id == org_uuid).first()
         if not doc:
             raise HTTPException(404, detail="Document session not found.")
@@ -110,8 +106,10 @@ def ask_question(
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
     elif req.session_id in _TFIDF_SESSIONS:
         session = _TFIDF_SESSIONS[req.session_id]
-        if not _authorized_session_org(session["org_id"], org_id):
+        if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
+        if session["user_id"] != str(user_uuid):
+            raise HTTPException(403, detail="Document session does not belong to this user.")
         filename = session["filename"]
         matches = retrieve(req.question, session["index"], top_k=req.top_k)
     else:
