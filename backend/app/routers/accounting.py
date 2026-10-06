@@ -34,7 +34,8 @@ class LedgerLineIn(BaseModel):
 
 @router.post("/journal-entries")
 def create_journal_entry(
-    entry_date: str = Query(...), narration: str = Query(..., min_length=1, max_length=2000),\n    lines: list[LedgerLineIn] = Body(..., min_length=2, max_length=500),
+    entry_date: str = Query(...), narration: str = Query(..., min_length=1, max_length=2000),
+    lines: list[LedgerLineIn] = Body(..., min_length=2, max_length=500),
     org_id: str = Query(...), db=Depends(get_db),
     _user: str = Depends(require_permission("journal_entry", "create")),
 ):
@@ -53,6 +54,12 @@ def create_journal_entry(
         user_uuid = uuid.UUID(str(_user))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+
+    from datetime import date as date_type
+    try:
+        parsed_entry_date = date_type.fromisoformat(entry_date)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, detail="entry_date must be a valid ISO date (YYYY-MM-DD).") from exc
 
     lines_dec = [LedgerLine(**l.dict()) for l in lines]
     if len(lines_dec) < 2:
