@@ -151,9 +151,15 @@ def log_action(db: Session, org_id: str, user_id: str, action: str, entity_type:
     Not yet wired into every existing endpoint in this pass — see README."""
     from app.models.enterprise import AuditLog
 
-    entry = build_audit_entry(user_id, org_id, action, entity_type, entity_id, before, after)
+    try:
+        org_uuid = uuid.UUID(org_id)
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValueError("Invalid organization or user identifier.") from exc
+
+    entry = build_audit_entry(str(user_uuid), str(org_uuid), action, entity_type, entity_id, before, after)
     db.add(AuditLog(
-        org_id=org_id, user_id=user_id, action=entry.action,
+        org_id=org_uuid, user_id=user_uuid, action=entry.action,
         entity_type=entry.entity_type, entity_id=entry.entity_id, changes=entry.changes,
     ))
     db.commit()
@@ -292,8 +298,13 @@ def mark_notification_read(
 ):
     from app.models.enterprise import Notification
 
+    try:
+        org_uuid = uuid.UUID(org_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+
     notif = db.query(Notification).filter(
-        Notification.id == notification_id, Notification.org_id == org_id,
+        Notification.id == notification_id, Notification.org_id == org_uuid,
         Notification.user_id == _user,
     ).first()
     if not notif:
