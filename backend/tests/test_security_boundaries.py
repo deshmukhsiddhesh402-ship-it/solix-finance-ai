@@ -48,6 +48,16 @@ def test_membership_email_is_bounded():
 from app.routers.accounting import LedgerLineIn
 
 
+def test_tax_engine_rejects_invalid_numeric_inputs():
+    from app.services.tax_engine import calculate_gst, calculate_tds
+    with pytest.raises(ValueError):
+        calculate_gst(-100, 18, False)
+    with pytest.raises(ValueError):
+        calculate_gst(100, float("nan"), False)
+    with pytest.raises(ValueError):
+        calculate_tds(-1000, "194J")
+
+
 def test_accounting_rejects_non_finite_journal_amount():
     from app.routers.accounting import LedgerLineIn
     with pytest.raises(ValidationError):
