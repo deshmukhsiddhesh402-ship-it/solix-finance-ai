@@ -7,6 +7,18 @@ always confirm current rates before filing, and expose these as
 configurable inputs in the UI rather than hardcoding them permanently.
 """
 from dataclasses import dataclass
+import math
+
+
+def _require_finite_non_negative(value: float, label: str) -> None:
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{label} must be a finite, non-negative number.")
+
+
+def _require_rate(value: float, label: str) -> None:
+    if not math.isfinite(value) or value < 0 or value > 100:
+        raise ValueError(f"{label} must be a finite percentage between 0 and 100.")
+
 
 
 # ---------------------------------------------------------------------------
@@ -14,6 +26,8 @@ from dataclasses import dataclass
 # ---------------------------------------------------------------------------
 def calculate_gst(taxable_value: float, gst_rate_pct: float, is_interstate: bool) -> dict:
     """Split GST into IGST (interstate) or CGST+SGST (intrastate)."""
+    _require_finite_non_negative(taxable_value, "taxable_value")
+    _require_rate(gst_rate_pct, "gst_rate_pct")
     total_tax = round(taxable_value * (gst_rate_pct / 100), 2)
     if is_interstate:
         return {"taxable_value": taxable_value, "igst": total_tax, "cgst": 0.0,
@@ -32,6 +46,7 @@ class GstInvoiceLine:
 
 def gstr3b_summary(lines: list[GstInvoiceLine], input_tax_credit: float = 0.0) -> dict:
     """Aggregate outward supplies into a GSTR-3B-style summary with ITC set-off."""
+    _require_finite_non_negative(input_tax_credit, "input_tax_credit")
     total_taxable = sum(l.taxable_value for l in lines)
     total_tax = sum(calculate_gst(l.taxable_value, l.gst_rate_pct, l.is_interstate)["total_tax"] for l in lines)
     net_payable = max(0.0, round(total_tax - input_tax_credit, 2))
@@ -62,6 +77,7 @@ def calculate_tds(amount_paid: float, section: str, has_pan: bool = True) -> dic
     """Calculate TDS for a payment under a given section.
     If the deductee has no PAN, TDS is charged at 20% flat per Sec 206AA.
     """
+    _require_finite_non_negative(amount_paid, "amount_paid")
     rate = TDS_SECTION_RATES.get(section)
     if rate is None:
         raise ValueError(f"Section {section} requires slab-based calculation, not flat rate.")
