@@ -263,3 +263,16 @@ def test_excel_parser_rejects_oversized_dataframe():
     with pytest.raises(HTTPException) as exc:
         excel._validate_dataframe_shape(oversized)
     assert exc.value.status_code == 413
+
+
+def test_ai_excel_prompt_inputs_are_bounded():
+    from pydantic import ValidationError
+    from app.routers.excel_ai import FormulaRequest, FixFormulaRequest, TaskRequest
+    with pytest.raises(ValidationError):
+        FormulaRequest(formula="")
+    with pytest.raises(ValidationError):
+        FormulaRequest(formula="x" * 5001)
+    with pytest.raises(ValidationError):
+        FixFormulaRequest(formula="=A1", error_description="x" * 3001)
+    with pytest.raises(ValidationError):
+        TaskRequest(task_description="x" * 5001)
