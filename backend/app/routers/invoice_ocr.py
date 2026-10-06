@@ -10,6 +10,8 @@ from app.routers.enterprise import require_permission
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
 IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+MAX_INVOICE_BYTES = 10 * 1024 * 1024
+MAX_PDF_PAGES = 20
 
 def _strip_json_fences(text: str) -> str:
     return text.strip().replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
@@ -32,8 +34,10 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     file_bytes = await file.read()
     lower = (file.filename or "").lower()
+    if len(file_bytes) > MAX_INVOICE_BYTES:
+        raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
     if lower.endswith(".pdf"):
-        images = pdf_pages_to_images(file_bytes)
+        images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
         extracted = _extract_single_image(images[0], "image/png")
     elif any(lower.endswith(f".{ext}") for ext in IMAGE_MEDIA_TYPES):
