@@ -284,4 +284,4 @@ def test_audit_log_limit_rejects_non_positive_values():
     import inspect
     # FastAPI's Query metadata is attached to the parameter; verify the declared lower bound.
     param = inspect.signature(view_audit_log).parameters["limit"].default
-    assert getattr(param, "ge", None) == 1
+    assert any(getattr(item, "ge", None) == 1 for item in getattr(param, "metadata", []))
