@@ -99,7 +99,7 @@ def ask_question(
 
     if str(session_uuid) in _SEMANTIC_SESSIONS:
         session = _SEMANTIC_SESSIONS[str(session_uuid)]
-        if not _authorized_session_org(session["org_id"], org_id):
+        if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
             raise HTTPException(403, detail="Document session does not belong to this user.")
@@ -111,7 +111,7 @@ def ask_question(
         filename = session["filename"]
         query_embedding = get_query_embedding(req.question)
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
-    elif req.session_id in _TFIDF_SESSIONS:
+    elif str(session_uuid) in _TFIDF_SESSIONS:
         session = _TFIDF_SESSIONS[str(session_uuid)]
         if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
