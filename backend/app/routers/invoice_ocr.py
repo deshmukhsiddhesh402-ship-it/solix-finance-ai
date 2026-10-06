@@ -2,7 +2,7 @@
 import json, re, uuid, io
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
@@ -50,14 +50,18 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
 
 class JournalEntryRequest(BaseModel):
     session_id: str
-    expense_account: str = "Purchases"
+    expense_account: str = Field(default="Purchases", min_length=1, max_length=255)
 
 def _get_session(session_id: str, org_id: str, user_id: str) -> dict:
-    session = _EXTRACTED_INVOICES.get(session_id)
+    try:
+        session_uuid = uuid.UUID(str(session_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid invoice session identifier.") from exc
+    session = _EXTRACTED_INVOICES.get(str(session_uuid))
     if not session: raise HTTPException(404, detail="Session not found. Extract an invoice first.")
-    if session["org_id"] != org_id:
+    if session["org_id"] != str(uuid.UUID(str(org_id))):
         raise HTTPException(403, detail="Invoice session does not belong to this organization.")
-    if session["user_id"] != user_id:
+    if session["user_id"] != str(uuid.UUID(str(user_id))):
         raise HTTPException(403, detail="Invoice session does not belong to this user.")
     return session
 
