@@ -237,3 +237,29 @@ def test_chat_rejects_invalid_session_identifier():
             user_id="11111111-1111-4111-8111-111111111111",
         )
     assert exc.value.status_code == 400
+
+
+def test_excel_parser_has_resource_bounds():
+    import app.routers.excel_automation as excel
+    assert excel.MAX_ROWS == 100_000
+    assert excel.MAX_COLUMNS == 200
+    assert excel.MAX_EXCEL_ZIP_ENTRIES == 200
+    assert excel.MAX_EXCEL_UNCOMPRESSED_BYTES == 50 * 1024 * 1024
+
+
+def test_excel_parser_rejects_invalid_archive():
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+    with pytest.raises(HTTPException) as exc:
+        excel._read_upload_to_df("malicious.xlsx", b"not-a-zip")
+    assert exc.value.status_code == 400
+
+
+def test_excel_parser_rejects_oversized_dataframe():
+    import pandas as pd
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+    oversized = pd.DataFrame({"amount": range(excel.MAX_ROWS + 1)})
+    with pytest.raises(HTTPException) as exc:
+        excel._validate_dataframe_shape(oversized)
+    assert exc.value.status_code == 413
