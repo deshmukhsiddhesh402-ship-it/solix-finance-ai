@@ -76,3 +76,24 @@ from app.services.invoice_ocr_engine import pdf_pages_to_images
 def test_ocr_pdf_page_cap_is_forwarded():
     import inspect
     assert inspect.signature(pdf_pages_to_images).parameters["max_pages"].default == 20
+
+
+def test_ocr_session_rejects_cross_user_access():
+    from fastapi import HTTPException
+    import app.routers.invoice_ocr as ocr
+
+    ocr._EXTRACTED_INVOICES["security-test-session"] = {
+        "invoice": {"total_amount": 100},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            ocr._get_session(
+                "security-test-session",
+                "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+                "22222222-2222-4222-8222-222222222222",
+            )
+        assert exc.value.status_code == 403
+    finally:
+        ocr._EXTRACTED_INVOICES.pop("security-test-session", None)
