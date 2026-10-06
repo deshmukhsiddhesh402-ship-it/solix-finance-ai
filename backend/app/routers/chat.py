@@ -85,13 +85,20 @@ def ask_question(
     req: AskRequest,
     org_id: str = Query(...),
     db: Session = Depends(get_db),
-    _user: str = Depends(require_permission("chat", "view")),
+    user_id: str = Depends(require_permission("chat", "view")),
 ):
+    try:
+        session_uuid = uuid.UUID(str(req.session_id))
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid session, organization, or user identifier.") from exc
+
     filename = None
     matches: list[dict] = []
 
-    if req.session_id in _SEMANTIC_SESSIONS:
-        session = _SEMANTIC_SESSIONS[req.session_id]
+    if str(session_uuid) in _SEMANTIC_SESSIONS:
+        session = _SEMANTIC_SESSIONS[str(session_uuid)]
         if not _authorized_session_org(session["org_id"], org_id):
             raise HTTPException(403, detail="Document does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
@@ -105,7 +112,7 @@ def ask_question(
         query_embedding = get_query_embedding(req.question)
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
     elif req.session_id in _TFIDF_SESSIONS:
-        session = _TFIDF_SESSIONS[req.session_id]
+        session = _TFIDF_SESSIONS[str(session_uuid)]
         if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
