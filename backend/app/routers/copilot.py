@@ -73,7 +73,7 @@ TOOLS = [
 ]
 
 
-def _load_entries_for_copilot(db: Session, org_id: str, months_back: int = 12):
+def _load_entries_for_copilot(db: Session, org_id, months_back: int = 12):
     from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
 
     start = date.today() - timedelta(days=months_back * 31)
