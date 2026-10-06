@@ -181,7 +181,9 @@ CREATE TABLE chat_messages (
 );
 
 -- Indexes
-CREATE INDEX idx_journal_lines_account ON journal_lines(account_id);\nCREATE INDEX idx_journal_lines_gst_tag ON journal_lines(gst_type, gst_rate_pct);\nCREATE INDEX idx_journal_lines_tds_tag ON journal_lines(tds_section, tds_rate);
+CREATE INDEX idx_journal_lines_account ON journal_lines(account_id);
+CREATE INDEX idx_journal_lines_gst_tag ON journal_lines(gst_type, gst_rate_pct);
+CREATE INDEX idx_journal_lines_tds_tag ON journal_lines(tds_section, tds_rate);
 CREATE INDEX idx_journal_entries_org_date ON journal_entries(org_id, entry_date);
 CREATE INDEX idx_bank_statements_org ON bank_statements(org_id, txn_date);
 CREATE INDEX idx_doc_chunks_embedding ON document_chunks USING ivfflat (embedding vector_cosine_ops);
