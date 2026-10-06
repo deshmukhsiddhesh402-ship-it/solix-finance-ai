@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendAuthHeaders } from "@/lib/backend-auth";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
+  const auth = await getBackendAuthHeaders();
+  if (!auth) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   try {
     const formData = await req.formData();
     const res = await fetch(`${BACKEND_URL}/api/excel-automation/auto-clean`, {
