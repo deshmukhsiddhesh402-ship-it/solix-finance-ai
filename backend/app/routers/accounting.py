@@ -1,6 +1,7 @@
 """
 Module 2: Accounting — API layer over accounting_engine.py
 """
+import math
 import uuid
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
@@ -31,6 +32,17 @@ class LedgerLineIn(BaseModel):
 
     @model_validator(mode="after")
     def require_one_positive_side(self):
+        numeric_values = {
+            "debit": self.debit,
+            "credit": self.credit,
+            "gst_rate_pct": self.gst_rate_pct,
+            "gst_taxable_value": self.gst_taxable_value,
+            "tds_rate": self.tds_rate,
+            "tds_amount": self.tds_amount,
+        }
+        for field_name, value in numeric_values.items():
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{field_name} must be finite.")
         if (self.debit > 0) == (self.credit > 0):
             raise ValueError("Each journal line must have a positive amount on exactly one side.")
         return self
@@ -143,14 +155,21 @@ def balance_sheet(req: TrialBalanceRequest):
 
 
 class RatiosRequest(BaseModel):
-    current_assets: float
-    current_liabilities: float
-    inventory: float
-    total_debt: float
-    total_equity: float
+    current_assets: float = Field(ge=0)
+    current_liabilities: float = Field(ge=0)
+    inventory: float = Field(ge=0)
+    total_debt: float = Field(ge=0)
+    total_equity: float = Field(ge=0)
     net_profit: float
-    revenue: float
-    total_assets: float
+    revenue: float = Field(ge=0)
+    total_assets: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        for name, value in self.__dict__.items():
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite.")
+        return self
 
 
 @router.post("/ratios")
@@ -159,9 +178,17 @@ def ratios(req: RatiosRequest):
 
 
 class StraightLineRequest(BaseModel):
-    cost: float
-    salvage: float
-    useful_life_years: int
+    cost: float = Field(ge=0)
+    salvage: float = Field(ge=0)
+    useful_life_years: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_inputs(self):
+        if not all(math.isfinite(v) for v in (self.cost, self.salvage)):
+            raise ValueError("cost and salvage must be finite.")
+        if self.salvage > self.cost:
+            raise ValueError("salvage cannot exceed cost.")
+        return self
 
 
 @router.post("/depreciation/straight-line")
@@ -171,9 +198,15 @@ def depreciation_straight_line(req: StraightLineRequest):
 
 
 class WdvRequest(BaseModel):
-    cost: float
-    rate_pct: float
-    years: int
+    cost: float = Field(ge=0)
+    rate_pct: float = Field(gt=0, le=100)
+    years: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        if not all(math.isfinite(v) for v in (self.cost, self.rate_pct)):
+            raise ValueError("cost and rate_pct must be finite.")
+        return self
 
 
 @router.post("/depreciation/wdv")
@@ -183,8 +216,14 @@ def depreciation_wdv(req: WdvRequest):
 
 class InventoryTxnIn(BaseModel):
     txn_type: Literal["purchase", "sale"]
-    quantity: float
-    unit_cost: float = 0.0
+    quantity: float = Field(gt=0)
+    unit_cost: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        if not all(math.isfinite(v) for v in (self.quantity, self.unit_cost)):
+            raise ValueError("quantity and unit_cost must be finite.")
+        return self
 
 
 class InventoryValuationRequest(BaseModel):
