@@ -43,3 +43,28 @@ def test_membership_email_is_bounded():
             user_email="x" * 256,
             role="accountant",
         )
+
+
+from app.routers.accounting import LedgerLineIn
+
+
+def test_tax_tags_accept_bounded_values():
+    line = LedgerLineIn(
+        account_name="GST Input", account_type="asset", debit=1180, credit=0,
+        gst_rate_pct=18, gst_type="CGST", gst_taxable_value=1000,
+    )
+    assert line.gst_rate_pct == 18
+    assert line.gst_type == "CGST"
+
+
+def test_tax_tags_reject_out_of_range_values():
+    with pytest.raises(ValidationError):
+        LedgerLineIn(
+            account_name="GST Input", account_type="asset", debit=1180, credit=0,
+            gst_rate_pct=101,
+        )
+    with pytest.raises(ValidationError):
+        LedgerLineIn(
+            account_name="TDS Payable", account_type="liability", debit=0, credit=1000,
+            tds_rate=-1,
+        )
