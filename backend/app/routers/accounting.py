@@ -22,6 +22,12 @@ class LedgerLineIn(BaseModel):
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
     debit: float = Field(default=0.0, ge=0)
     credit: float = Field(default=0.0, ge=0)
+    gst_rate_pct: float | None = Field(default=None, ge=0, le=100)
+    gst_type: Literal["IGST", "CGST", "SGST", "NONE"] | None = None
+    gst_taxable_value: float | None = Field(default=None, ge=0)
+    tds_section: str | None = Field(default=None, min_length=3, max_length=10)
+    tds_rate: float | None = Field(default=None, ge=0, le=100)
+    tds_amount: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def require_one_positive_side(self):
