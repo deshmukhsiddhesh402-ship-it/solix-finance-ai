@@ -48,6 +48,12 @@ def create_journal_entry(
     from datetime import date as date_type
     from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
 
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+
     lines_dec = [LedgerLine(**l.dict()) for l in lines]
     if len(lines_dec) < 2:
         raise HTTPException(422, detail="A journal entry requires at least two lines.")
@@ -55,21 +61,21 @@ def create_journal_entry(
     if not tb_check["is_balanced"]:
         raise HTTPException(422, detail="Journal entry does not balance (total debits != total credits).")
 
-    entry = JournalEntry(org_id=org_id, entry_date=date_type.fromisoformat(entry_date), narration=narration, created_by=uuid.UUID(_user))
+    entry = JournalEntry(org_id=org_uuid, entry_date=date_type.fromisoformat(entry_date), narration=narration, created_by=user_uuid)
     db.add(entry)
     db.flush()
 
     for line in lines:
         account = (
             db.query(ChartOfAccount)
-            .filter(ChartOfAccount.org_id == org_id, ChartOfAccount.name == line.account_name)
+            .filter(ChartOfAccount.org_id == org_uuid, ChartOfAccount.name == line.account_name)
             .first()
         )
         if account and account.account_type != line.account_type:
             raise HTTPException(422, detail="Account name already exists with a different account type.")
         if not account:
             account = ChartOfAccount(
-                org_id=org_id, code=line.account_name[:10].upper(),
+                org_id=org_uuid, code=line.account_name[:10].upper(),
                 name=line.account_name, account_type=line.account_type,
             )
             db.add(account)
@@ -78,7 +84,7 @@ def create_journal_entry(
 
     from app.models.enterprise import AuditLog
     db.add(AuditLog(
-        org_id=org_id, user_id=uuid.UUID(_user), action="create",
+        org_id=org_uuid, user_id=user_uuid, action="create",
         entity_type="journal_entry", entity_id=str(entry.id),
         changes={"entry_date": entry.entry_date.isoformat(), "line_count": len(lines)},
     ))
