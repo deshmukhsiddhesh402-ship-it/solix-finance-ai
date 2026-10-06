@@ -18,6 +18,27 @@ def test_invalid_uuid_is_rejected_as_http_400():
     assert exc.value.status_code == 400
 
 
+def test_api_key_engine_generation_hash_verification_and_masking():
+    from app.services.api_key_engine import (
+        generate_api_key,
+        hash_api_key,
+        mask_api_key,
+        verify_api_key,
+    )
+
+    plaintext, stored_hash = generate_api_key()
+    assert plaintext.startswith("solix_")
+    assert stored_hash == hash_api_key(plaintext)
+    assert stored_hash != plaintext
+    assert verify_api_key(plaintext, stored_hash)
+    assert not verify_api_key(plaintext + "x", stored_hash)
+
+    masked = mask_api_key(plaintext)
+    assert masked != plaintext
+    assert plaintext[:10] in masked
+    assert plaintext[-4:] in masked
+    assert "..." in masked
+
 def test_api_key_name_is_bounded():
     with pytest.raises(ValidationError):
         CreateApiKeyRequest(org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22", name="")
