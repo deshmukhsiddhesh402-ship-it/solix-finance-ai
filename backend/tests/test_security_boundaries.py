@@ -276,3 +276,12 @@ def test_ai_excel_prompt_inputs_are_bounded():
         FixFormulaRequest(formula="=A1", error_description="x" * 3001)
     with pytest.raises(ValidationError):
         TaskRequest(task_description="x" * 5001)
+
+
+def test_audit_log_limit_rejects_non_positive_values():
+    from pydantic import ValidationError
+    from app.routers.enterprise import view_audit_log
+    import inspect
+    # FastAPI's Query metadata is attached to the parameter; verify the declared lower bound.
+    param = inspect.signature(view_audit_log).parameters["limit"].default
+    assert getattr(param, "ge", None) == 1
