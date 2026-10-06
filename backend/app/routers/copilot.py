@@ -7,6 +7,7 @@ numbers. This two-step tool-use pattern is what prevents the classic
 "AI makes up a plausible-sounding number" failure mode.
 """
 import json
+import uuid
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -118,7 +119,13 @@ def ask_copilot(
     req: CopilotRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _user: str = Depends(require_permission("reports", "view")),
 ):
-    entries = _load_entries_for_copilot(db, org_id)
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        from fastapi import HTTPException
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+
+    entries = _load_entries_for_copilot(db, org_uuid)
 
     first_response = ask_claude_with_tools(COPILOT_SYSTEM_PROMPT, req.question, TOOLS)
 
