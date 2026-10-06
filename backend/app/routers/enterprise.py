@@ -102,6 +102,9 @@ def add_membership(
     if not target_user:
         raise HTTPException(404, detail=f"No user found with email {req.user_email}.")
 
+    existing = db.query(OrgMembership).filter(OrgMembership.user_id == target_user.id, OrgMembership.org_id == org_uuid).first()
+    if existing:
+        raise HTTPException(409, detail="User is already a member of this organization.")
     membership = OrgMembership(user_id=target_user.id, org_id=org_uuid, role=req.role)
     db.add(membership)
     db.commit()
