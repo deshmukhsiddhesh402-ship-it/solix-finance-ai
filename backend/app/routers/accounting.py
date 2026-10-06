@@ -86,7 +86,7 @@ def create_journal_entry(
             )
             db.add(account)
             db.flush()
-        db.add(JournalLine(journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit))
+        db.add(JournalLine(\n            journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit,\n            gst_rate_pct=line.gst_rate_pct, gst_type=line.gst_type, gst_taxable_value=line.gst_taxable_value,\n            tds_section=line.tds_section, tds_rate=line.tds_rate, tds_amount=line.tds_amount,\n        ))
 
     from app.models.enterprise import AuditLog
     db.add(AuditLog(
