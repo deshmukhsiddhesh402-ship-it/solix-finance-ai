@@ -57,14 +57,15 @@ def require_permission(resource: str, action: str):
 
         try:
             user_uuid = uuid.UUID(str(user_id))
+            org_uuid = uuid.UUID(str(org_id))
         except (ValueError, AttributeError, TypeError) as exc:
-            raise HTTPException(401, detail="Invalid token subject.") from exc
+            raise HTTPException(400, detail="Invalid organization identifier.") from exc
 
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
             raise HTTPException(403, detail="User not found.")
         membership = db.query(OrgMembership).filter(
-            OrgMembership.user_id == user.id, OrgMembership.org_id == org_id
+            OrgMembership.user_id == user.id, OrgMembership.org_id == org_uuid
         ).first()
         if not membership:
             raise HTTPException(403, detail="You are not a member of this organization.")
