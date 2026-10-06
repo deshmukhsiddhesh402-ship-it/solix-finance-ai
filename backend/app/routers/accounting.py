@@ -2,7 +2,7 @@
 Module 2: Accounting — API layer over accounting_engine.py
 """
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
@@ -34,7 +34,7 @@ class LedgerLineIn(BaseModel):
 
 @router.post("/journal-entries")
 def create_journal_entry(
-    entry_date: str, narration: str, lines: list[LedgerLineIn],
+    entry_date: str = Query(...), narration: str = Query(..., min_length=1, max_length=2000),\n    lines: list[LedgerLineIn] = Body(..., min_length=2, max_length=500),
     org_id: str = Query(...), db=Depends(get_db),
     _user: str = Depends(require_permission("journal_entry", "create")),
 ):
@@ -61,7 +61,7 @@ def create_journal_entry(
     if not tb_check["is_balanced"]:
         raise HTTPException(422, detail="Journal entry does not balance (total debits != total credits).")
 
-    entry = JournalEntry(org_id=org_uuid, entry_date=date_type.fromisoformat(entry_date), narration=narration, created_by=user_uuid)
+    entry = JournalEntry(org_id=org_uuid, entry_date=parsed_entry_date, narration=narration, created_by=user_uuid)
     db.add(entry)
     db.flush()
 
