@@ -8,6 +8,7 @@ Fine for a single-user demo; production should use Redis or object storage
 """
 import io
 import uuid
+import zipfile
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -20,6 +21,10 @@ from app.services.excel_automation_engine import (
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_ROWS = 100_000
+MAX_COLUMNS = 200
+MAX_EXCEL_ZIP_ENTRIES = 200
+MAX_EXCEL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
 _CLEANED_FILES: dict[str, dict] = {}
 
@@ -41,13 +46,38 @@ def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
     return session
 
 
+def _validate_excel_archive(file_bytes: bytes) -> None:
+    """Reject ZIP-based spreadsheets with excessive archive expansion/entries."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_EXCEL_ZIP_ENTRIES:
+                raise HTTPException(413, detail="Spreadsheet contains too many archive entries.")
+            total_uncompressed = sum(max(0, info.file_size) for info in infos)
+            if total_uncompressed > MAX_EXCEL_UNCOMPRESSED_BYTES:
+                raise HTTPException(413, detail="Spreadsheet expands beyond the supported size limit.")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, detail="Invalid XLSX/XLSM archive.") from exc
+
+
+def _validate_dataframe_shape(df: pd.DataFrame) -> pd.DataFrame:
+    if len(df.index) > MAX_ROWS:
+        raise HTTPException(413, detail=f"Spreadsheet exceeds the {MAX_ROWS:,}-row limit.")
+    if len(df.columns) > MAX_COLUMNS:
+        raise HTTPException(413, detail=f"Spreadsheet exceeds the {MAX_COLUMNS}-column limit.")
+    return df
+
+
 def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
     lower = filename.lower()
     if lower.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(file_bytes))
-    if lower.endswith((".xlsx", ".xlsm")):
-        return pd.read_excel(io.BytesIO(file_bytes))
-    raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
+        df = pd.read_csv(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
+    elif lower.endswith((".xlsx", ".xlsm")):
+        _validate_excel_archive(file_bytes)
+        df = pd.read_excel(io.BytesIO(file_bytes))
+    else:
+        raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
+    return _validate_dataframe_shape(df)
 
 
 @router.post("/auto-clean")
