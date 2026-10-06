@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -32,7 +32,7 @@ def permissions_matrix():
     return {role: list_permissions(role) for role in ["admin", "accountant", "auditor"]}
 
 
-def require_permission(resource: str, action: str):
+def _parse_uuid(value: str, label: str = "identifier") -> uuid.UUID:\n    try:\n        return uuid.UUID(str(value))\n    except (ValueError, AttributeError, TypeError) as exc:\n        raise HTTPException(400, detail=f"Invalid {label}.") from exc\n\n\ndef require_permission(resource: str, action: str):
     """Dependency factory: returns a FastAPI dependency that verifies the
     calling user (via Bearer JWT) has `action` permission on `resource`
     within the org given by the `org_id` query/body param. Fails closed —
@@ -98,9 +98,9 @@ def add_membership(
     from app.models.enterprise import OrgMembership
     from app.models.auth_user import User
 
-    target_user = db.query(User).filter(User.email == req.user_email).first()
+    target_email = req.user_email.strip().lower()\n    target_user = db.query(User).filter(User.email == target_email).first()
     if not target_user:
-        raise HTTPException(404, detail=f"No user found with email {req.user_email}.")
+        raise HTTPException(404, detail=f"No user found with email {target_email}.")
 
     existing = db.query(OrgMembership).filter(OrgMembership.user_id == target_user.id, OrgMembership.org_id == org_uuid).first()
     if existing:
