@@ -180,12 +180,9 @@ def create_api_key(
     req: CreateApiKeyRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _user: str = Depends(require_permission("api_keys", "create")),
 ):
-    if req.org_id != org_id:
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    if _parse_uuid(req.org_id, "request organization identifier") != org_uuid:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import ApiKey
 
     plaintext, hashed = generate_api_key()
@@ -248,12 +245,9 @@ def create_scheduled_report(
     req: ScheduledReportRequest, org_id: str = Query(...), db: Session = Depends(get_db),
     _user: str = Depends(require_permission("reports", "create")),
 ):
-    if req.org_id != org_id:
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    if _parse_uuid(req.org_id, "request organization identifier") != org_uuid:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(400, detail="Invalid organization identifier.") from exc
     from app.models.enterprise import ScheduledReport
 
     report = ScheduledReport(
