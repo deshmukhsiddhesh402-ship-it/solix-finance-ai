@@ -59,9 +59,14 @@ def _get_session(session_id: str, org_id: str, user_id: str) -> dict:
         raise HTTPException(400, detail="Invalid invoice session identifier.") from exc
     session = _EXTRACTED_INVOICES.get(str(session_uuid))
     if not session: raise HTTPException(404, detail="Session not found. Extract an invoice first.")
-    if session["org_id"] != str(uuid.UUID(str(org_id))):
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+    if session["org_id"] != str(org_uuid):
         raise HTTPException(403, detail="Invoice session does not belong to this organization.")
-    if session["user_id"] != str(uuid.UUID(str(user_id))):
+    if session["user_id"] != str(user_uuid):
         raise HTTPException(403, detail="Invoice session does not belong to this user.")
     return session
 
