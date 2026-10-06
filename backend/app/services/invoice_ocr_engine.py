@@ -56,7 +56,7 @@ def extract_state_code(gstin: str) -> str | None:
 # ---------------------------------------------------------------------------
 # PDF -> image rasterization (for scanned/image-based invoice PDFs)
 # ---------------------------------------------------------------------------
-def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200) -> list[bytes]:
+def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -> list[bytes]:
     """Rasterize each PDF page to a PNG image (as bytes) using PyMuPDF.
     Needed because scanned invoice PDFs have no extractable text layer —
     Claude's vision has to look at the page as a picture.
@@ -66,7 +66,7 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200) -> list[bytes]:
     images = []
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
-    for page in doc:
+    for page in list(doc)[:max_pages]:
         pix = page.get_pixmap(matrix=matrix)
         images.append(pix.tobytes("png"))
     return images
