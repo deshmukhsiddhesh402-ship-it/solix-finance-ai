@@ -19,6 +19,7 @@ from app.services.excel_automation_engine import (
 )
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 _CLEANED_FILES: dict[str, dict] = {}
 
@@ -43,8 +44,15 @@ async def auto_clean(
     """Run the full pipeline: clean -> dedupe -> detect errors -> (optional) categorize.
     Returns a JSON summary + preview rows, plus a session_id to download the cleaned file.
     """
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     file_bytes = await file.read()
-    df = _read_upload_to_df(file.filename, file_bytes)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
+    df = _read_upload_to_df(file.filename or "", file_bytes)
 
     cleaned, clean_report = clean_dataframe(df)
 
@@ -61,7 +69,7 @@ async def auto_clean(
             raise HTTPException(422, detail=str(e))
 
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": cleaned, "org_id": org_id, "user_id": user_id}
+    _CLEANED_FILES[session_id] = {"df": cleaned, "org_id": str(org_uuid), "user_id": str(user_uuid)}
 
     preview = cleaned.head(10).fillna("").to_dict(orient="records")
 
@@ -78,11 +86,19 @@ async def auto_clean(
 
 @router.get("/download/{session_id}")
 def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("reports", "view"))):
-    session = _CLEANED_FILES.get(session_id)
+    try:
+        session_uuid = uuid.UUID(str(session_id))
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+    session = _CLEANED_FILES.get(str(session_uuid))
     if session is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
-    if session["org_id"] != org_id:
+    if session["org_id"] != str(org_uuid):
         raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
+    if session["user_id"] != str(user_uuid):
+        raise HTTPException(403, detail="Cleaned file session does not belong to this user.")
     df = session["df"]
     if df is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
@@ -107,19 +123,30 @@ class MergeRequest(BaseModel):
 def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id: str = Depends(require_permission("reports", "create"))):
     """Merge previously-cleaned sessions (by concatenation) into one dataset."""
     dfs = []
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     for sid in req.session_ids:
-        session = _CLEANED_FILES.get(sid)
+        try:
+            session_uuid = uuid.UUID(str(sid))
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise HTTPException(400, detail="Invalid cleaned-file session identifier.") from exc
+        session = _CLEANED_FILES.get(str(session_uuid))
         if session is None:
             raise HTTPException(404, detail=f"Session {sid} not found.")
-        if session["org_id"] != org_id:
+        if session["org_id"] != str(org_uuid):
             raise HTTPException(403, detail=f"Session {sid} does not belong to this organization.")
+        if session["user_id"] != str(user_uuid):
+            raise HTTPException(403, detail=f"Session {sid} does not belong to this user.")
         dfs.append(session["df"])
     if not dfs:
         raise HTTPException(422, detail="No valid sessions provided.")
 
     merged = pd.concat(dfs, ignore_index=True, sort=False)
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": merged, "org_id": org_id, "user_id": user_id}
+    _CLEANED_FILES[session_id] = {"df": merged, "org_id": str(org_uuid), "user_id": str(user_uuid)}
     return {
         "session_id": session_id,
         "row_count": len(merged),
