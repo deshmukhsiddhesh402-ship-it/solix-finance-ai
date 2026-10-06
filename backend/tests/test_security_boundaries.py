@@ -82,7 +82,7 @@ def test_ocr_session_rejects_cross_user_access():
     from fastapi import HTTPException
     import app.routers.invoice_ocr as ocr
 
-    ocr._EXTRACTED_INVOICES["security-test-session"] = {
+    ocr._EXTRACTED_INVOICES["33333333-3333-4333-8333-333333333333"] = {
         "invoice": {"total_amount": 100},
         "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
         "user_id": "11111111-1111-4111-8111-111111111111",
@@ -90,13 +90,28 @@ def test_ocr_session_rejects_cross_user_access():
     try:
         with pytest.raises(HTTPException) as exc:
             ocr._get_session(
-                "security-test-session",
+                "33333333-3333-4333-8333-333333333333",
                 "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
                 "22222222-2222-4222-8222-222222222222",
             )
         assert exc.value.status_code == 403
     finally:
-        ocr._EXTRACTED_INVOICES.pop("security-test-session", None)
+        ocr._EXTRACTED_INVOICES.pop("33333333-3333-4333-8333-333333333333", None)
+
+
+def test_ocr_session_rejects_invalid_identifier():
+    from fastapi import HTTPException
+    import app.routers.invoice_ocr as ocr
+
+    with pytest.raises(HTTPException) as exc:
+        ocr._get_session("not-a-uuid", "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22", "11111111-1111-4111-8111-111111111111")
+    assert exc.value.status_code == 400
+
+
+def test_ocr_journal_request_bounds_expense_account():
+    from app.routers.invoice_ocr import JournalEntryRequest
+    with pytest.raises(ValidationError):
+        JournalEntryRequest(session_id="33333333-3333-4333-8333-333333333333", expense_account="x" * 256)
 
 
 def test_ocr_journal_rejects_unreconciled_total():
