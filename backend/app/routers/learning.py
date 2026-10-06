@@ -5,7 +5,7 @@ Excel, Tally Prime, Power BI, GST, TDS, ITR, Accounting, Finance, and US CMA.
 import json
 import re
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.claude_service import ask_claude, learning_tutor_prompt, quiz_generation_prompt
 
@@ -23,9 +23,9 @@ def list_topics():
 
 
 class AskTutorRequest(BaseModel):
-    topic: str
-    level: str = "beginner"  # beginner, intermediate, advanced
-    question: str
+    topic: str = Field(min_length=1, max_length=100)
+    level: str = Field(default="beginner", pattern=r"^(beginner|intermediate|advanced)$")
+    question: str = Field(min_length=1, max_length=2000)
 
 
 @router.post("/ask")
@@ -35,9 +35,9 @@ def ask_tutor(req: AskTutorRequest):
 
 
 class QuizRequest(BaseModel):
-    topic: str
-    level: str = "beginner"
-    num_questions: int = 5
+    topic: str = Field(min_length=1, max_length=100)
+    level: str = Field(default="beginner", pattern=r"^(beginner|intermediate|advanced)$")
+    num_questions: int = Field(default=5, ge=1, le=20)
 
 
 def _strip_json_fences(text: str) -> str:
