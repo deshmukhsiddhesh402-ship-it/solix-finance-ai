@@ -48,6 +48,23 @@ def test_membership_email_is_bounded():
 from app.routers.accounting import LedgerLineIn
 
 
+def test_accounting_rejects_non_finite_journal_amount():
+    from app.routers.accounting import LedgerLineIn
+    with pytest.raises(ValidationError):
+        LedgerLineIn(
+            account_name="Cash", account_type="asset",
+            debit=float("nan"), credit=0,
+        )
+
+
+def test_accounting_rejects_invalid_inventory_inputs():
+    from app.routers.accounting import InventoryTxnIn
+    with pytest.raises(ValidationError):
+        InventoryTxnIn(txn_type="purchase", quantity=0, unit_cost=100)
+    with pytest.raises(ValidationError):
+        InventoryTxnIn(txn_type="purchase", quantity=1, unit_cost=float("inf"))
+
+
 def test_tax_tags_accept_bounded_values():
     line = LedgerLineIn(
         account_name="GST Input", account_type="asset", debit=1180, credit=0,
