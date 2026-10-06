@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendAuthHeaders } from "@/lib/backend-auth";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
+  const auth = await getBackendAuthHeaders();
+  if (!auth) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await req.json();
+  body.org_id = auth.orgId;
   try {
     const res = await fetch(`${BACKEND_URL}/api/copilot/ask`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...auth.headers },
       body: JSON.stringify(body),
     });
     const data = await res.json();
