@@ -50,12 +50,17 @@ def require_permission(resource: str, action: str):
         payload = decode_access_token(token)
         if not payload or "sub" not in payload:
             raise HTTPException(401, detail="Invalid or expired token.")
-        user_email = payload["sub"]
+        user_id = payload["sub"]
 
         from app.models.enterprise import OrgMembership
         from app.models.auth_user import User  # local import — see note below
 
-        user = db.query(User).filter(User.email == user_email).first()
+        try:
+            user_uuid = uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise HTTPException(401, detail="Invalid token subject.") from exc
+
+        user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
             raise HTTPException(403, detail="User not found.")
         membership = db.query(OrgMembership).filter(
