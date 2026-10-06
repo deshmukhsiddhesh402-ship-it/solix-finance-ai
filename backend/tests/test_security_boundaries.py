@@ -145,8 +145,13 @@ def test_excel_session_rejects_cross_user_access():
         "user_id": "11111111-1111-4111-8111-111111111111",
     }
     try:
-        session = excel._CLEANED_FILES.get(sid)
-        assert session["user_id"] != "22222222-2222-4222-8222-222222222222"
+        with pytest.raises(HTTPException) as exc:
+            excel._get_cleaned_session(
+                sid,
+                "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+                "22222222-2222-4222-8222-222222222222",
+            )
+        assert exc.value.status_code == 403
     finally:
         excel._CLEANED_FILES.pop(sid, None)
 
