@@ -2,6 +2,7 @@
  * Proxy route: forwards Banking module requests to the FastAPI backend.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendAuthHeaders } from "@/lib/backend-auth";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
@@ -10,7 +11,10 @@ const ACTION_TO_PATH: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const auth = await getBackendAuthHeaders();
+  if (!auth) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await req.json();
+  body.org_id = auth.orgId;
   const { action, ...payload } = body;
 
   const path = ACTION_TO_PATH[action];
@@ -21,7 +25,7 @@ export async function POST(req: NextRequest) {
   try {
     const res = await fetch(`${BACKEND_URL}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...auth.headers },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
