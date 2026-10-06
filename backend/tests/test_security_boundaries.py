@@ -18,6 +18,15 @@ def test_invalid_uuid_is_rejected_as_http_400():
     assert exc.value.status_code == 400
 
 
+def test_rbac_fails_closed_for_unknown_role_action_and_resource():
+    from app.services.rbac_engine import has_permission, list_permissions
+
+    assert not has_permission("unknown-role", "journal_entry", "view")
+    assert not has_permission("admin", "unknown-resource", "view")
+    assert not has_permission("admin", "journal_entry", "unknown-action")
+    assert list_permissions("unknown-role") == {}
+
+
 def test_api_key_engine_generation_hash_verification_and_masking():
     from app.services.api_key_engine import (
         generate_api_key,
