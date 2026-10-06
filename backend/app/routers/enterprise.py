@@ -118,7 +118,7 @@ def add_membership(
 # ---------------------------------------------------------------------------
 @router.get("/audit-log")
 def view_audit_log(
-    org_id: str = Query(...), limit: int = Query(default=50, le=200),
+    org_id: str = Query(...), limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     _user: str = Depends(require_permission("audit_log", "view")),
 ):
