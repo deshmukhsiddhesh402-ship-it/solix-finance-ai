@@ -8,8 +8,10 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   try {
     const formData = await req.formData();
+    formData.set("org_id", auth.orgId);
     const res = await fetch(`${BACKEND_URL}/api/excel-automation/auto-clean`, {
       method: "POST",
+      headers: auth.headers,
       body: formData,
     });
     const data = await res.json();
