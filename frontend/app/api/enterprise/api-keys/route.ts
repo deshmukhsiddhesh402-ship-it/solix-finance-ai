@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendAuthHeaders } from "@/lib/backend-auth";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
@@ -7,7 +8,7 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   try {
     const res = await fetch(`${BACKEND_URL}/api/enterprise/api-keys${search}`, {
-      headers: { Authorization: authHeader },
+      headers: auth.headers,
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/enterprise/api-keys`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: authHeader },
+      headers: { "Content-Type": "application/json", ...auth.headers },
       body: JSON.stringify(body),
     });
     const data = await res.json();
