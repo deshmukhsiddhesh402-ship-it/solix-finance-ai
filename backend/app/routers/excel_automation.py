@@ -9,17 +9,18 @@ Fine for a single-user demo; production should use Redis or object storage
 import io
 import uuid
 import pandas as pd
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.routers.enterprise import require_permission
 from app.services.excel_automation_engine import (
     clean_dataframe, remove_duplicates, detect_errors, auto_categorize_expenses,
 )
 
 router = APIRouter()
 
-_CLEANED_FILES: dict[str, pd.DataFrame] = {}
+_CLEANED_FILES: dict[str, dict] = {}
 
 
 def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
@@ -36,6 +37,8 @@ async def auto_clean(
     file: UploadFile = File(...),
     dedupe: bool = Form(True),
     categorize_column: str | None = Form(None),
+    org_id: str = Query(...),
+    user_id: str = Depends(require_permission("reports", "create")),
 ):
     """Run the full pipeline: clean -> dedupe -> detect errors -> (optional) categorize.
     Returns a JSON summary + preview rows, plus a session_id to download the cleaned file.
@@ -58,7 +61,7 @@ async def auto_clean(
             raise HTTPException(422, detail=str(e))
 
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = cleaned
+    _CLEANED_FILES[session_id] = {"df": cleaned, "org_id": org_id, "user_id": user_id}
 
     preview = cleaned.head(10).fillna("").to_dict(orient="records")
 
@@ -74,8 +77,13 @@ async def auto_clean(
 
 
 @router.get("/download/{session_id}")
-def download_cleaned_file(session_id: str):
-    df = _CLEANED_FILES.get(session_id)
+def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("reports", "view"))):
+    session = _CLEANED_FILES.get(session_id)
+    if session is None:
+        raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
+    if session["org_id"] != org_id:
+        raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
+    df = session["df"]
     if df is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
 
@@ -96,20 +104,22 @@ class MergeRequest(BaseModel):
 
 
 @router.post("/merge")
-def merge_cleaned_sessions(req: MergeRequest):
+def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id: str = Depends(require_permission("reports", "create"))):
     """Merge previously-cleaned sessions (by concatenation) into one dataset."""
     dfs = []
     for sid in req.session_ids:
-        df = _CLEANED_FILES.get(sid)
-        if df is None:
+        session = _CLEANED_FILES.get(sid)
+        if session is None:
             raise HTTPException(404, detail=f"Session {sid} not found.")
-        dfs.append(df)
+        if session["org_id"] != org_id:
+            raise HTTPException(403, detail=f"Session {sid} does not belong to this organization.")
+        dfs.append(session["df"])
     if not dfs:
         raise HTTPException(422, detail="No valid sessions provided.")
 
     merged = pd.concat(dfs, ignore_index=True, sort=False)
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = merged
+    _CLEANED_FILES[session_id] = {"df": merged, "org_id": org_id, "user_id": user_id}
     return {
         "session_id": session_id,
         "row_count": len(merged),
