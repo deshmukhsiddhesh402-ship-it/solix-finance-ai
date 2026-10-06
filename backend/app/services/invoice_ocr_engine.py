@@ -127,6 +127,8 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
     if not all(math.isfinite(v) for v in values.values()):
         raise ValueError("Invoice amounts must be finite numeric values.")
+    if any(v < 0 for v in values.values()):
+        raise ValueError("Invoice monetary values cannot be negative.")
     expected_total = round(taxable + cgst + sgst + igst, 2)
     if abs(expected_total - total) > 0.01:
         raise ValueError(
