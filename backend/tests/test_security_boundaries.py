@@ -18,6 +18,16 @@ def test_invalid_uuid_is_rejected_as_http_400():
     assert exc.value.status_code == 400
 
 
+def test_pdf_ocr_rejects_non_positive_render_limits():
+    from app.services.invoice_ocr_engine import pdf_pages_to_images
+
+    with pytest.raises(ValueError, match="DPI must be positive"):
+        pdf_pages_to_images(b"not-a-pdf", dpi=0)
+
+    with pytest.raises(ValueError, match="max_pages must be positive"):
+        pdf_pages_to_images(b"not-a-pdf", max_pages=0)
+
+
 def test_rbac_fails_closed_for_unknown_role_action_and_resource():
     from app.services.rbac_engine import has_permission, list_permissions
 
