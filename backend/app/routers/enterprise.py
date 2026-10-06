@@ -122,9 +122,14 @@ def view_audit_log(
 ):
     from app.models.enterprise import AuditLog
 
+    try:
+        org_uuid = uuid.UUID(org_id)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+
     rows = (
         db.query(AuditLog)
-        .filter(AuditLog.org_id == org_id)
+        .filter(AuditLog.org_id == org_uuid)
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
         .all()
