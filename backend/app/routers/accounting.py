@@ -2,7 +2,7 @@
 Module 2: Accounting — API layer over accounting_engine.py
 """
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
@@ -35,7 +35,7 @@ class LedgerLineIn(BaseModel):
 @router.post("/journal-entries")
 def create_journal_entry(
     entry_date: str, narration: str, lines: list[LedgerLineIn],
-    org_id: str, db=Depends(get_db),
+    org_id: str = Query(...), db=Depends(get_db),
     _user: str = Depends(require_permission("journal_entry", "create")),
 ):
     """Persist a journal entry to the database — this is what makes the
