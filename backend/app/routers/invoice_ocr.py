@@ -52,20 +52,23 @@ class JournalEntryRequest(BaseModel):
     session_id: str
     expense_account: str = "Purchases"
 
-def _get_session(session_id: str, org_id: str) -> dict:
+def _get_session(session_id: str, org_id: str, user_id: str) -> dict:
     session = _EXTRACTED_INVOICES.get(session_id)
     if not session: raise HTTPException(404, detail="Session not found. Extract an invoice first.")
-    if session["org_id"] != org_id: raise HTTPException(403, detail="Invoice session does not belong to this organization.")
+    if session["org_id"] != org_id:
+        raise HTTPException(403, detail="Invoice session does not belong to this organization.")
+    if session["user_id"] != user_id:
+        raise HTTPException(403, detail="Invoice session does not belong to this user.")
     return session
 
 @router.post("/to-journal-entry")
 def to_journal_entry(req: JournalEntryRequest, org_id: str = Query(...), _user: str = Depends(require_permission("invoice_ocr", "view"))):
-    session = _get_session(req.session_id, org_id)
+    session = _get_session(req.session_id, org_id, _user)
     try: lines = invoice_to_journal_lines(session["invoice"], req.expense_account)
     except ValueError as exc: raise HTTPException(422, detail=str(exc)) from exc
     return {"journal_lines": lines}
 
 @router.get("/export/{session_id}")
 def export_to_excel(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("invoice_ocr", "view"))):
-    session = _get_session(session_id, org_id)
+    session = _get_session(session_id, org_id, _user)
     return StreamingResponse(io.BytesIO(invoices_to_excel([session["invoice"]])), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=solix_extracted_invoices.xlsx"})
