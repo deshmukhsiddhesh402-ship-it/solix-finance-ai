@@ -68,3 +68,11 @@ def test_tax_tags_reject_out_of_range_values():
             account_name="TDS Payable", account_type="liability", debit=0, credit=1000,
             tds_rate=-1,
         )
+
+
+from app.services.invoice_ocr_engine import pdf_pages_to_images
+
+
+def test_ocr_pdf_page_cap_is_forwarded():
+    import inspect
+    assert inspect.signature(pdf_pages_to_images).parameters["max_pages"].default == 20
