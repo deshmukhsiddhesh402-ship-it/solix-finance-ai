@@ -7,14 +7,14 @@ from app.core.security import MAX_OTP_ATTEMPTS, _OTP_STORE, generate_otp, verify
 
 
 def test_otp_is_single_use():
-    email = "otp-once@example.test"
+    email = "otp-once@example.com"
     otp = generate_otp(email)
     assert verify_otp(email, otp) is True
     assert verify_otp(email, otp) is False
 
 
 def test_otp_is_case_insensitive_and_rate_limited():
-    email = "otp-cooldown@example.test"
+    email = "otp-cooldown@example.com"
     otp = generate_otp(email)
     assert verify_otp(email.upper(), otp) is True
     with pytest.raises(ValueError):
@@ -22,7 +22,7 @@ def test_otp_is_case_insensitive_and_rate_limited():
 
 
 def test_otp_expires_after_maximum_failed_attempts():
-    email = "otp-attempts@example.test"
+    email = "otp-attempts@example.com"
     otp = generate_otp(email)
     for _ in range(MAX_OTP_ATTEMPTS):
         assert verify_otp(email, "not-the-issued-code") is False
@@ -65,7 +65,7 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
     user = User(
         id=uuid4(),
         org_id=uuid4(),
-        email="legacy-user@example.test",
+        email="legacy-user@example.com",
         full_name="Legacy User",
         auth_provider="otp",
         role="accountant",
