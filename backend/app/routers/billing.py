@@ -9,7 +9,7 @@ from app.core.db import get_db
 from app.core.config import settings
 from app.services.billing_engine import (
     PLANS, build_order_payload, verify_webhook_signature, verify_payment_signature,
-    is_within_limit,
+    validate_gateway_payment, is_within_limit,
 )
 from app.routers.enterprise import require_permission
 
@@ -81,6 +81,26 @@ def verify_payment(
         req.razorpay_order_id, req.razorpay_payment_id, req.razorpay_signature, settings.RAZORPAY_KEY_SECRET,
     ):
         raise HTTPException(400, detail="Payment signature verification failed — this payment cannot be trusted.")
+
+    import razorpay
+    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    try:
+        gateway_order = client.order.fetch(req.razorpay_order_id)
+        gateway_payment = client.payment.fetch(req.razorpay_payment_id)
+    except Exception as exc:
+        raise HTTPException(502, detail="Payment could not be verified with the payment provider.") from exc
+
+    try:
+        validate_gateway_payment(
+            gateway_order,
+            gateway_payment,
+            req.razorpay_order_id,
+            req.razorpay_payment_id,
+            str(org_uuid),
+            req.plan,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail="Payment details do not match the requested organization or plan.") from exc
 
     from app.models.billing import Subscription
     sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
