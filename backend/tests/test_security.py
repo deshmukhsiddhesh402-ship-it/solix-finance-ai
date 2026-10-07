@@ -101,3 +101,30 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
         )
 
     assert exc_info.value.status_code == 403
+
+
+def test_get_db_rolls_back_and_closes_on_request_exception(monkeypatch):
+    import app.core.db as db_module
+
+    class FakeSession:
+        def __init__(self):
+            self.rollback_called = False
+            self.close_called = False
+
+        def rollback(self):
+            self.rollback_called = True
+
+        def close(self):
+            self.close_called = True
+
+    session = FakeSession()
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: session)
+
+    dependency = db_module.get_db()
+    assert next(dependency) is session
+
+    with pytest.raises(RuntimeError, match="request failed"):
+        dependency.throw(RuntimeError("request failed"))
+
+    assert session.rollback_called is True
+    assert session.close_called is True
