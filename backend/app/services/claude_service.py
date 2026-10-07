@@ -78,6 +78,9 @@ def ask_claude_with_tools(
     stop_reason and content blocks (see app.routers.copilot for the full
     two-step orchestration: ask -> execute tool -> ask again with result).
     """
+    _validate_request(system_prompt, user_message, max_tokens)
+    if not isinstance(tools, list) or len(tools) > MAX_CLAUDE_TOOL_COUNT:
+        raise ValueError("Tool count exceeds the supported limit.")
     return _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
