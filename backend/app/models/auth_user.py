@@ -10,6 +10,7 @@ from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
+# Canonical tenant membership mapping shared by auth and enterprise authorization.
 from app.models.enterprise import OrgMembership
 
 Base = declarative_base()
@@ -34,5 +35,3 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-# Re-export the canonical enterprise membership mapping so auth and enterprise
-# authorization paths operate on one ORM class for the same table.
