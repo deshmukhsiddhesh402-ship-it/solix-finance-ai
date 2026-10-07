@@ -550,3 +550,18 @@ def test_claude_tool_result_and_tool_count_bounds():
         claude.continue_with_tool_result(
             "system", "user", [], [], "", {"data": "x"}, 1
         )
+
+
+def test_copilot_tool_inputs_fail_closed():
+    from app.routers.copilot import _execute_tool
+
+    with pytest.raises(ValueError):
+        _execute_tool("unknown_tool", {}, [])
+    with pytest.raises(ValueError):
+        _execute_tool("filter_transactions", {"min_amount": float("nan")}, [])
+    with pytest.raises(ValueError):
+        _execute_tool("filter_transactions", {"min_amount": -1}, [])
+    with pytest.raises(ValueError):
+        _execute_tool("compare_periods", {"period_a": "2026-13", "period_b": "2026-10"}, [])
+    with pytest.raises(ValueError):
+        _execute_tool("predict_cash_flow", {"months_ahead": 25}, [])
