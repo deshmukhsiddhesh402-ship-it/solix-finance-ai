@@ -331,3 +331,64 @@ def test_auth_and_enterprise_share_one_org_membership_mapping():
     from app.models.enterprise import OrgMembership as EnterpriseOrgMembership
 
     assert AuthOrgMembership is EnterpriseOrgMembership
+
+
+def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(monkeypatch):
+    import hmac
+    import hashlib
+    import asyncio
+    import json
+    import app.routers.billing as billing_router
+
+    secret = "webhook-test-secret"
+    payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "order_id": "order-old",
+                    "notes": {"org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"},
+                }
+            }
+        },
+    }
+    body = json.dumps(payload).encode()
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    class FakeHeaders:
+        def get(self, name, default=""):
+            return signature if name == "X-Razorpay-Signature" else default
+
+    class FakeRequest:
+        headers = FakeHeaders()
+
+        async def body(self):
+            return body
+
+        async def json(self):
+            return payload
+
+    class FakeQuery:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return None
+
+    class FakeDB:
+        def __init__(self):
+            self.commit_called = False
+
+        def query(self, model):
+            return FakeQuery()
+
+        def commit(self):
+            self.commit_called = True
+
+    db = FakeDB()
+    monkeypatch.setattr(billing_router.settings, "RAZORPAY_WEBHOOK_SECRET", secret)
+
+    result = asyncio.run(billing_router.razorpay_webhook(FakeRequest(), db))
+
+    assert result == {"status": "ok"}
+    assert db.commit_called is False
