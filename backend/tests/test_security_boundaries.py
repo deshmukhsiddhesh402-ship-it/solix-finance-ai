@@ -621,6 +621,17 @@ def test_copilot_tool_inputs_fail_closed():
         _execute_tool("predict_cash_flow", {"months_ahead": 25}, [])
 
 
+def test_copilot_engine_rejects_invalid_period_months():
+    from app.services.copilot_engine import compare_periods
+
+    with pytest.raises(ValueError):
+        compare_periods([], "2026-00", "2026-10")
+    with pytest.raises(ValueError):
+        compare_periods([], "2026-13", "2026-10")
+    with pytest.raises(ValueError):
+        compare_periods([], "abcd-10", "2026-10")
+
+
 def test_copilot_engine_bounds_are_fail_closed():
     from app.services.copilot_engine import filter_transactions, predict_cash_flow
 
