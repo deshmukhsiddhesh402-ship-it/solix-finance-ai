@@ -482,3 +482,27 @@ def test_plain_text_extraction_enforces_direct_caller_limit():
 
     # Validate the shared extraction ceiling without constructing a real PDF.
     assert engine.MAX_DOCUMENT_EXTRACTED_CHARS == 5_000_000
+
+
+def test_rag_limits_fail_closed_for_direct_callers():
+    from app.services.rag_engine import (
+        MAX_RAG_CHUNKS,
+        MAX_RAG_QUERY_CHARS,
+        MAX_RAG_TOP_K,
+        build_index,
+        retrieve,
+    )
+
+    assert MAX_RAG_CHUNKS == 10_000
+    assert MAX_RAG_QUERY_CHARS == 4_000
+    assert MAX_RAG_TOP_K == 10
+
+    with pytest.raises(ValueError):
+        build_index(["chunk"] * (MAX_RAG_CHUNKS + 1))
+    index = build_index(["cash flow"])
+    with pytest.raises(ValueError):
+        retrieve("x" * (MAX_RAG_QUERY_CHARS + 1), index)
+    with pytest.raises(ValueError):
+        retrieve("cash", index, top_k=0)
+    with pytest.raises(ValueError):
+        retrieve("cash", index, top_k=MAX_RAG_TOP_K + 1)
