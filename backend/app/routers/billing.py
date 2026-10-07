@@ -162,11 +162,17 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         payload = await request.json()
     except ValueError as exc:
         raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(400, detail="Webhook payload must be a JSON object.")
     event = payload.get("event", "")
     from app.models.billing import Subscription
 
     if event == "payment.failed":
-        org_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("notes", {}).get("org_id")
+        event_payload = payload.get("payload")
+        payment = event_payload.get("payment") if isinstance(event_payload, dict) else None
+        entity = payment.get("entity") if isinstance(payment, dict) else None
+        notes = entity.get("notes") if isinstance(entity, dict) else None
+        org_id = notes.get("org_id") if isinstance(notes, dict) else None
         try:
             org_uuid = uuid.UUID(str(org_id))
         except (ValueError, AttributeError, TypeError):
