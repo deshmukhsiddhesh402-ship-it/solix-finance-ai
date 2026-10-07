@@ -128,3 +128,48 @@ def test_get_db_rolls_back_and_closes_on_request_exception(monkeypatch):
 
     assert session.rollback_called is True
     assert session.close_called is True
+
+
+def test_razorpay_payment_binding_rejects_tenant_or_plan_mismatch():
+    from app.services.billing_engine import validate_gateway_payment
+
+    order = {
+        "id": "order_123",
+        "amount": 299900,
+        "currency": "INR",
+        "notes": {"org_id": "org_a", "plan": "pro"},
+    }
+    payment = {
+        "id": "pay_123",
+        "order_id": "order_123",
+        "amount": 299900,
+        "currency": "INR",
+        "status": "captured",
+    }
+
+    with pytest.raises(ValueError, match="organization mismatch"):
+        validate_gateway_payment(order, payment, "order_123", "pay_123", "org_b", "pro")
+
+    with pytest.raises(ValueError, match="plan mismatch"):
+        validate_gateway_payment(order, payment, "order_123", "pay_123", "org_a", "enterprise")
+
+
+def test_razorpay_payment_binding_rejects_uncaptured_payment():
+    from app.services.billing_engine import validate_gateway_payment
+
+    order = {
+        "id": "order_123",
+        "amount": 299900,
+        "currency": "INR",
+        "notes": {"org_id": "org_a", "plan": "pro"},
+    }
+    payment = {
+        "id": "pay_123",
+        "order_id": "order_123",
+        "amount": 299900,
+        "currency": "INR",
+        "status": "authorized",
+    }
+
+    with pytest.raises(ValueError, match="not captured"):
+        validate_gateway_payment(order, payment, "order_123", "pay_123", "org_a", "pro")
