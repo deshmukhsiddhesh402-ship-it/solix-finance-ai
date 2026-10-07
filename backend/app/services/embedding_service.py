@@ -34,8 +34,6 @@ def get_embeddings(texts: list[str], input_type: str = "document") -> list[list[
     'query' when embedding a user's question — Voyage tunes the embedding
     differently for each, which measurably improves retrieval quality.
     """
-    if not _client:
-        raise RuntimeError("VOYAGE_API_KEY is not configured — embeddings unavailable.")
     if input_type not in {"document", "query"}:
         raise ValueError("input_type must be 'document' or 'query'.")
     if not isinstance(texts, list) or len(texts) < 1 or len(texts) > MAX_EMBEDDING_BATCH:
@@ -46,6 +44,8 @@ def get_embeddings(texts: list[str], input_type: str = "document") -> list[list[
         raise ValueError("An embedding input exceeds the supported text length.")
     if sum(len(text) for text in texts) > MAX_EMBEDDING_TEXTS_CHARS:
         raise ValueError("Embedding batch exceeds the supported total text length.")
+    if not _client:
+        raise RuntimeError("VOYAGE_API_KEY is not configured — embeddings unavailable.")
     result = _client.embed(texts, model=EMBEDDING_MODEL, input_type=input_type)
     embeddings = result.embeddings
     if len(embeddings) != len(texts):
