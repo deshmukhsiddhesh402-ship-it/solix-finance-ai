@@ -12,6 +12,7 @@ returns False and the RAG router falls back to the TF-IDF retrieval already
 built in rag_engine.py — so the app keeps working out of the box without
 requiring a second API key, and upgrades automatically once one is added.
 """
+import math
 import voyageai
 from app.core.config import settings
 
@@ -51,6 +52,12 @@ def get_embeddings(texts: list[str], input_type: str = "document") -> list[list[
         raise RuntimeError("Embedding provider returned an unexpected result count.")
     if any(len(vector) != EMBEDDING_DIMENSIONS for vector in embeddings):
         raise RuntimeError("Embedding provider returned an unexpected vector dimension.")
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+        for vector in embeddings
+        for value in vector
+    ):
+        raise RuntimeError("Embedding provider returned a non-finite or invalid vector value.")
     return embeddings
 
 
