@@ -36,6 +36,12 @@ def filter_transactions(
     Amount compared is debit for expense/asset, credit for income/liability
     (i.e. the "natural" side of that account type).
     """
+    _validate_entries(entries)
+    min_amount = _finite_number(min_amount, "min_amount")
+    if min_amount < 0:
+        raise ValueError("min_amount cannot be negative.")
+    if account_type is not None and account_type not in {"expense", "income", "asset", "liability", "equity"}:
+        raise ValueError("Invalid account_type.")
     results = []
     for e in entries:
         if account_type and e["account_type"] != account_type:
@@ -59,6 +65,10 @@ def compare_periods(entries: list[dict], period_a_prefix: str, period_b_prefix: 
     accounts drove the change in revenue, expenses, and net profit.
     period_a is treated as the earlier/baseline period, period_b as current.
     """
+    _validate_entries(entries)
+    for prefix in (period_a_prefix, period_b_prefix):
+        if not isinstance(prefix, str) or len(prefix) != 7 or prefix[4] != "-":
+            raise ValueError("Periods must use YYYY-MM format.")
     def _period_totals(prefix: str) -> dict:
         by_account = defaultdict(lambda: {"type": None, "net": 0.0})
         for e in entries:
@@ -109,6 +119,11 @@ def predict_cash_flow(monthly_net: list[float], months_ahead: int = 1) -> dict:
     seasonality, one-off events, or trend changes. Say so to the user
     rather than presenting it as more certain than it is.
     """
+    if not isinstance(monthly_net, list) or len(monthly_net) > 120:
+        raise ValueError("Historical cash-flow series exceeds the supported limit.")
+    if isinstance(months_ahead, bool) or not isinstance(months_ahead, int) or not 1 <= months_ahead <= MAX_COPILOT_MONTHS_AHEAD:
+        raise ValueError("months_ahead must be between 1 and 24.")
+    monthly_net = [_finite_number(v, "monthly_net") for v in monthly_net]
     n = len(monthly_net)
     if n < 2:
         raise ValueError("Need at least 2 months of history to project a trend.")
@@ -140,6 +155,7 @@ def gst_summary_from_entries(entries: list[dict]) -> dict:
     complements the standalone GST calculator (tax_engine.py) which works
     from manually-entered invoice values instead of posted books.
     """
+    _validate_entries(entries)
     gst_accounts = defaultdict(float)
     for e in entries:
         if e["account_type"] == "liability" and "gst" in (e["account_name"] or "").lower():
