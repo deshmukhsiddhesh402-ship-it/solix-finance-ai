@@ -395,3 +395,22 @@ def test_ocr_session_store_has_capacity_bound():
 
     assert ocr.MAX_OCR_SESSIONS == 1000
     assert ocr.OCR_SESSION_TTL_SECONDS == 30 * 60
+
+
+def test_otp_tracking_has_capacity_bound_and_expiry_cleanup():
+    import app.core.security as security
+    from datetime import datetime, timedelta, timezone
+
+    assert security.MAX_OTP_TRACKED_EMAILS == 10000
+    now = datetime.now(timezone.utc)
+    key = "expired@example.com"
+    security._OTP_STORE[key] = {
+        "otp": "123456",
+        "expires_at": now - timedelta(seconds=1),
+        "attempts": 0,
+    }
+    try:
+        security._purge_expired_otp_records(now)
+        assert key not in security._OTP_STORE
+    finally:
+        security._OTP_STORE.pop(key, None)
