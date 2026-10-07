@@ -10,6 +10,7 @@ import io
 import uuid
 import zipfile
 import pandas as pd
+import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -25,9 +26,26 @@ MAX_ROWS = 100_000
 MAX_COLUMNS = 200
 MAX_EXCEL_ZIP_ENTRIES = 200
 MAX_EXCEL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_CLEANED_SESSIONS = 1000
+CLEANED_SESSION_TTL_SECONDS = 30 * 60
 
 _CLEANED_FILES: dict[str, dict] = {}
 
+def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
+    current = time.time() if now is None else now
+    expired = [
+        sid for sid, session in _CLEANED_FILES.items()
+        if current - session.get("created_at", current) >= CLEANED_SESSION_TTL_SECONDS
+    ]
+    for sid in expired:
+        _CLEANED_FILES.pop(sid, None)
+
+def _store_cleaned_session(session_id: str, session: dict) -> None:
+    _purge_expired_cleaned_sessions()
+    if len(_CLEANED_FILES) >= MAX_CLEANED_SESSIONS:
+        oldest = min(_CLEANED_FILES, key=lambda sid: _CLEANED_FILES[sid].get("created_at", 0))
+        _CLEANED_FILES.pop(oldest, None)
+    _CLEANED_FILES[session_id] = session
 
 def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
     try:
@@ -36,6 +54,7 @@ def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+    _purge_expired_cleaned_sessions()
     session = _CLEANED_FILES.get(str(session_uuid))
     if session is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
@@ -116,7 +135,7 @@ async def auto_clean(
             raise HTTPException(422, detail=str(e))
 
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": cleaned, "org_id": str(org_uuid), "user_id": str(user_uuid)}
+    _store_cleaned_session(session_id, {"df": cleaned, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
 
     preview = cleaned.head(10).fillna("").to_dict(orient="records")
 
@@ -181,7 +200,7 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
 
     merged = pd.concat(dfs, ignore_index=True, sort=False)
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": merged, "org_id": str(org_uuid), "user_id": str(user_uuid)}
+    _store_cleaned_session(session_id, {"df": merged, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     return {
         "session_id": session_id,
         "row_count": len(merged),
