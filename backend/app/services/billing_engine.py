@@ -97,3 +97,40 @@ def verify_payment_signature(order_id: str, payment_id: str, received_signature:
         digestmod=hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(expected_signature, received_signature)
+
+
+def validate_gateway_payment(
+    order: dict,
+    payment: dict,
+    order_id: str,
+    payment_id: str,
+    org_id: str,
+    plan: str,
+) -> None:
+    """Validate gateway-side order/payment state against Solix's trusted intent."""
+    plan_info = PLANS.get(plan)
+    if not plan_info or plan_info["price_inr_per_month"] <= 0:
+        raise ValueError("Invalid paid plan.")
+
+    expected_amount = plan_info["price_inr_per_month"] * 100
+    notes = order.get("notes")
+    if not isinstance(notes, dict):
+        raise ValueError("Razorpay order metadata is missing.")
+
+    if str(order.get("id", "")) != order_id:
+        raise ValueError("Razorpay order identifier mismatch.")
+    if str(notes.get("org_id", "")) != org_id:
+        raise ValueError("Razorpay order organization mismatch.")
+    if str(notes.get("plan", "")) != plan:
+        raise ValueError("Razorpay order plan mismatch.")
+    if order.get("currency") != "INR" or order.get("amount") != expected_amount:
+        raise ValueError("Razorpay order amount mismatch.")
+
+    if str(payment.get("id", "")) != payment_id:
+        raise ValueError("Razorpay payment identifier mismatch.")
+    if str(payment.get("order_id", "")) != order_id:
+        raise ValueError("Razorpay payment is not attached to this order.")
+    if payment.get("currency") != "INR" or payment.get("amount") != expected_amount:
+        raise ValueError("Razorpay payment amount mismatch.")
+    if payment.get("status") != "captured":
+        raise ValueError("Razorpay payment is not captured.")
