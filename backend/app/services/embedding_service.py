@@ -19,6 +19,9 @@ _client = voyageai.Client(api_key=settings.VOYAGE_API_KEY) if settings.VOYAGE_AP
 
 EMBEDDING_MODEL = "voyage-3"
 EMBEDDING_DIMENSIONS = 1024  # voyage-3 default output dimension
+MAX_EMBEDDING_BATCH = 128
+MAX_EMBEDDING_TEXTS_CHARS = 5_000_000
+MAX_EMBEDDING_TEXT_CHARS = 4_000
 
 
 def embeddings_available() -> bool:
@@ -32,8 +35,23 @@ def get_embeddings(texts: list[str], input_type: str = "document") -> list[list[
     """
     if not _client:
         raise RuntimeError("VOYAGE_API_KEY is not configured — embeddings unavailable.")
+    if input_type not in {"document", "query"}:
+        raise ValueError("input_type must be 'document' or 'query'.")
+    if not isinstance(texts, list) or len(texts) < 1 or len(texts) > MAX_EMBEDDING_BATCH:
+        raise ValueError("Embedding batch size must be between 1 and 128.")
+    if any(not isinstance(text, str) or not text for text in texts):
+        raise ValueError("Embedding inputs must be non-empty strings.")
+    if any(len(text) > MAX_EMBEDDING_TEXT_CHARS for text in texts):
+        raise ValueError("An embedding input exceeds the supported text length.")
+    if sum(len(text) for text in texts) > MAX_EMBEDDING_TEXTS_CHARS:
+        raise ValueError("Embedding batch exceeds the supported total text length.")
     result = _client.embed(texts, model=EMBEDDING_MODEL, input_type=input_type)
-    return result.embeddings
+    embeddings = result.embeddings
+    if len(embeddings) != len(texts):
+        raise RuntimeError("Embedding provider returned an unexpected result count.")
+    if any(len(vector) != EMBEDDING_DIMENSIONS for vector in embeddings):
+        raise RuntimeError("Embedding provider returned an unexpected vector dimension.")
+    return embeddings
 
 
 def get_query_embedding(query: str) -> list[float]:
