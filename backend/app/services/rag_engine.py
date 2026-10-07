@@ -17,6 +17,9 @@ from collections import Counter
 
 
 _WORD_RE = re.compile(r"[a-zA-Z0-9₹%]+")
+MAX_RAG_CHUNKS = 10_000
+MAX_RAG_QUERY_CHARS = 4_000
+MAX_RAG_TOP_K = 10
 
 
 def _tokenize(text: str) -> list[str]:
@@ -25,6 +28,8 @@ def _tokenize(text: str) -> list[str]:
 
 def build_index(chunks: list[str]) -> dict:
     """Build TF-IDF vectors for a list of text chunks."""
+    if len(chunks) > MAX_RAG_CHUNKS:
+        raise ValueError("RAG index exceeds the supported chunk limit.")
     tokenized = [_tokenize(c) for c in chunks]
     doc_count = len(tokenized)
 
@@ -58,6 +63,10 @@ def _cosine_similarity(vec_a: dict, vec_b: dict) -> float:
 
 def retrieve(query: str, index: dict, top_k: int = 4) -> list[dict]:
     """Return the top_k most relevant chunks for a query, with scores."""
+    if not isinstance(query, str) or len(query) > MAX_RAG_QUERY_CHARS:
+        raise ValueError("RAG query exceeds the supported length limit.")
+    if top_k < 1 or top_k > MAX_RAG_TOP_K:
+        raise ValueError("top_k must be between 1 and 10.")
     tokens = _tokenize(query)
     tf = Counter(tokens)
     length = len(tokens) or 1
@@ -81,6 +90,9 @@ def semantic_retrieve(db, document_id, query_embedding: list[float], top_k: int 
     `db` is a SQLAlchemy Session (see app.core.db.get_db).
     """
     from app.models.document import DocumentChunk  # local import: avoids a hard DB dependency for TF-IDF-only setups
+
+    if top_k < 1 or top_k > MAX_RAG_TOP_K:
+        raise ValueError("top_k must be between 1 and 10.")
 
     rows = (
         db.query(DocumentChunk, DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"))
