@@ -13,6 +13,19 @@ IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/pn
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
 MAX_PDF_PAGES = 20
 
+def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
+    """Reject extension/content mismatches before invoking PDF/image processing."""
+    signatures = {
+        "pdf": lambda b: b.startswith(b"%PDF-"),
+        "jpg": lambda b: b.startswith(b"\xff\xd8\xff"),
+        "jpeg": lambda b: b.startswith(b"\xff\xd8\xff"),
+        "png": lambda b: b.startswith(b"\x89PNG\r\n\x1a\n"),
+        "webp": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP",
+    }
+    checker = signatures.get(extension)
+    return bool(checker and checker(file_bytes))
+
+
 def _strip_json_fences(text: str) -> str:
     return text.strip().replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
 
@@ -36,14 +49,20 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
     lower = (file.filename or "").lower()
     if len(file_bytes) > MAX_INVOICE_BYTES:
         raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
-    if lower.endswith(".pdf"):
-        images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
+    extension = lower.rsplit(".", 1)[-1] if "." in lower else ""
+    if extension not in {"jpg", "jpeg", "png", "webp", "pdf"}:
+        raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
+    if not _has_expected_file_signature(file_bytes, extension):
+        raise HTTPException(400, detail="Invoice file content does not match its file type.")
+    if extension == "pdf":
+        try:
+            images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
         extracted = _extract_single_image(images[0], "image/png")
-    elif any(lower.endswith(f".{ext}") for ext in IMAGE_MEDIA_TYPES):
-        extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[lower.rsplit(".", 1)[-1]])
     else:
-        raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
+        extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
     session_id = str(uuid.uuid4())
     _EXTRACTED_INVOICES[session_id] = {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid)}
     return {"session_id": session_id, "invoice": extracted}
