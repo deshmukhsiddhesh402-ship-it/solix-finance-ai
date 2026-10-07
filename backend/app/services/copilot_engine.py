@@ -7,6 +7,22 @@ model inventing figures.
 """
 from collections import defaultdict
 from datetime import date
+import math
+
+
+MAX_COPILOT_ENTRIES = 100_000
+MAX_COPILOT_MONTHS_AHEAD = 24
+
+
+def _validate_entries(entries: list[dict]) -> None:
+    if not isinstance(entries, list) or len(entries) > MAX_COPILOT_ENTRIES:
+        raise ValueError("Entry set exceeds the supported Copilot limit.")
+
+
+def _finite_number(value, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{field} must be a finite number.")
+    return float(value)
 
 
 # ---------------------------------------------------------------------------
