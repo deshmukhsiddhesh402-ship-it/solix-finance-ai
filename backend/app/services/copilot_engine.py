@@ -67,8 +67,15 @@ def compare_periods(entries: list[dict], period_a_prefix: str, period_b_prefix: 
     """
     _validate_entries(entries)
     for prefix in (period_a_prefix, period_b_prefix):
-        if not isinstance(prefix, str) or len(prefix) != 7 or prefix[4] != "-":
-            raise ValueError("Periods must use YYYY-MM format.")
+        if (
+            not isinstance(prefix, str)
+            or len(prefix) != 7
+            or prefix[4] != "-"
+            or not prefix[:4].isdigit()
+            or not prefix[5:].isdigit()
+            or not 1 <= int(prefix[5:]) <= 12
+        ):
+            raise ValueError("Periods must use YYYY-MM format with a valid month.")
     def _period_totals(prefix: str) -> dict:
         by_account = defaultdict(lambda: {"type": None, "net": 0.0})
         for e in entries:
