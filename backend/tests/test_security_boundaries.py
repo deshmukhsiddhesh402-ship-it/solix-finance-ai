@@ -606,6 +606,18 @@ def test_billing_payment_inputs_are_bounded():
         VerifyPaymentRequest(**{**base, "razorpay_payment_id": "x" * 101})
 
 
+def test_audit_entry_fields_are_bounded():
+    from app.services.audit_engine import build_audit_entry
+
+    build_audit_entry("user-1", "org-1", "edit", "invoice", "123")
+    with pytest.raises(ValueError):
+        build_audit_entry("user-1", "org-1", "x" * 21, "invoice", "123")
+    with pytest.raises(ValueError):
+        build_audit_entry("user-1", "org-1", "edit", "x" * 51, "123")
+    with pytest.raises(ValueError):
+        build_audit_entry("user-1", "org-1", "edit", "invoice", "x" * 101)
+
+
 def test_copilot_tool_inputs_fail_closed():
     from app.routers.copilot import _execute_tool
 
