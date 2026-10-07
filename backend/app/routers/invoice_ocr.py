@@ -1,5 +1,5 @@
 """Module: OCR & Invoice Processing — tenant-scoped API."""
-import json, re, uuid, io
+import json, re, uuid, io, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -9,6 +9,8 @@ from app.routers.enterprise import require_permission
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
+MAX_OCR_SESSIONS = 1000
+OCR_SESSION_TTL_SECONDS = 30 * 60
 IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
 MAX_PDF_PAGES = 20
@@ -25,6 +27,26 @@ def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     checker = signatures.get(extension)
     return bool(checker and checker(file_bytes))
 
+
+def _purge_expired_sessions(now: float | None = None) -> None:
+    current = time.time() if now is None else now
+    expired = [
+        session_id
+        for session_id, session in _EXTRACTED_INVOICES.items()
+        if current - session.get("created_at", current) > OCR_SESSION_TTL_SECONDS
+    ]
+    for session_id in expired:
+        _EXTRACTED_INVOICES.pop(session_id, None)
+
+def _store_session(session_id: str, session: dict) -> None:
+    _purge_expired_sessions()
+    if len(_EXTRACTED_INVOICES) >= MAX_OCR_SESSIONS:
+        oldest_id = min(
+            _EXTRACTED_INVOICES,
+            key=lambda sid: _EXTRACTED_INVOICES[sid].get("created_at", 0),
+        )
+        _EXTRACTED_INVOICES.pop(oldest_id, None)
+    _EXTRACTED_INVOICES[session_id] = session
 
 def _strip_json_fences(text: str) -> str:
     return text.strip().replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
@@ -64,7 +86,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
     session_id = str(uuid.uuid4())
-    _EXTRACTED_INVOICES[session_id] = {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid)}
+    _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     return {"session_id": session_id, "invoice": extracted}
 
 class JournalEntryRequest(BaseModel):
@@ -76,6 +98,7 @@ def _get_session(session_id: str, org_id: str, user_id: str) -> dict:
         session_uuid = uuid.UUID(str(session_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid invoice session identifier.") from exc
+    _purge_expired_sessions()
     session = _EXTRACTED_INVOICES.get(str(session_uuid))
     if not session: raise HTTPException(404, detail="Session not found. Extract an invoice first.")
     try:
