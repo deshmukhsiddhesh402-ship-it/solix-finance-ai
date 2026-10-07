@@ -554,6 +554,25 @@ def test_claude_tool_result_and_tool_count_bounds():
         )
 
 
+def test_billing_payment_inputs_are_bounded():
+    from app.routers.billing import VerifyPaymentRequest
+
+    base = {
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "plan": "pro",
+        "razorpay_order_id": "order_123",
+        "razorpay_payment_id": "pay_123",
+        "razorpay_signature": "a" * 64,
+    }
+    VerifyPaymentRequest(**base)
+    with pytest.raises(ValidationError):
+        VerifyPaymentRequest(**{**base, "razorpay_order_id": ""})
+    with pytest.raises(ValidationError):
+        VerifyPaymentRequest(**{**base, "razorpay_signature": "short"})
+    with pytest.raises(ValidationError):
+        VerifyPaymentRequest(**{**base, "razorpay_payment_id": "x" * 101})
+
+
 def test_copilot_tool_inputs_fail_closed():
     from app.routers.copilot import _execute_tool
 
