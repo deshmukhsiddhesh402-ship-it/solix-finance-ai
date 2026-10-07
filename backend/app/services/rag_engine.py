@@ -20,6 +20,8 @@ _WORD_RE = re.compile(r"[a-zA-Z0-9₹%]+")
 MAX_RAG_CHUNKS = 10_000
 MAX_RAG_QUERY_CHARS = 4_000
 MAX_RAG_TOP_K = 10
+MAX_RAG_CHUNK_CHARS = 20_000
+MAX_RAG_TOTAL_CHARS = 5_000_000
 
 
 def _tokenize(text: str) -> list[str]:
@@ -28,8 +30,14 @@ def _tokenize(text: str) -> list[str]:
 
 def build_index(chunks: list[str]) -> dict:
     """Build TF-IDF vectors for a list of text chunks."""
-    if len(chunks) > MAX_RAG_CHUNKS:
+    if not isinstance(chunks, list) or len(chunks) > MAX_RAG_CHUNKS:
         raise ValueError("RAG index exceeds the supported chunk limit.")
+    if any(not isinstance(chunk, str) or not chunk for chunk in chunks):
+        raise ValueError("RAG chunks must be non-empty strings.")
+    if any(len(chunk) > MAX_RAG_CHUNK_CHARS for chunk in chunks):
+        raise ValueError("A RAG chunk exceeds the supported size limit.")
+    if sum(len(chunk) for chunk in chunks) > MAX_RAG_TOTAL_CHARS:
+        raise ValueError("RAG input exceeds the supported total text limit.")
     tokenized = [_tokenize(c) for c in chunks]
     doc_count = len(tokenized)
 
@@ -65,7 +73,7 @@ def retrieve(query: str, index: dict, top_k: int = 4) -> list[dict]:
     """Return the top_k most relevant chunks for a query, with scores."""
     if not isinstance(query, str) or len(query) > MAX_RAG_QUERY_CHARS:
         raise ValueError("RAG query exceeds the supported length limit.")
-    if top_k < 1 or top_k > MAX_RAG_TOP_K:
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1 or top_k > MAX_RAG_TOP_K:
         raise ValueError("top_k must be between 1 and 10.")
     tokens = _tokenize(query)
     tf = Counter(tokens)
@@ -85,14 +93,27 @@ def retrieve(query: str, index: dict, top_k: int = 4) -> list[dict]:
 # configured. Requires a live Postgres connection with the pgvector
 # extension enabled (see database/schema.sql).
 # ---------------------------------------------------------------------------
+def _validate_query_embedding(query_embedding: list[float]) -> None:
+    from app.services.embedding_service import EMBEDDING_DIMENSIONS
+
+    if not isinstance(query_embedding, list) or len(query_embedding) != EMBEDDING_DIMENSIONS:
+        raise ValueError("RAG query embedding has an unexpected dimension.")
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+        for value in query_embedding
+    ):
+        raise ValueError("RAG query embedding contains invalid values.")
+
+
 def semantic_retrieve(db, document_id, query_embedding: list[float], top_k: int = 4) -> list[dict]:
     """Cosine-similarity search over a document's chunks using pgvector.
     `db` is a SQLAlchemy Session (see app.core.db.get_db).
     """
     from app.models.document import DocumentChunk  # local import: avoids a hard DB dependency for TF-IDF-only setups
 
-    if top_k < 1 or top_k > MAX_RAG_TOP_K:
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1 or top_k > MAX_RAG_TOP_K:
         raise ValueError("top_k must be between 1 and 10.")
+    _validate_query_embedding(query_embedding)
 
     rows = (
         db.query(DocumentChunk, DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"))
