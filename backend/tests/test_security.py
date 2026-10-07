@@ -311,3 +311,16 @@ def test_billing_webhook_rejects_signed_non_object_json(monkeypatch):
         asyncio.run(billing_router.razorpay_webhook(FakeRequest(), None))
 
     assert exc_info.value.status_code == 400
+
+
+def test_rag_service_rejects_oversized_chunks_and_invalid_embeddings():
+    from app.services.rag_engine import build_index, semantic_retrieve
+
+    with pytest.raises(ValueError, match="chunk exceeds"):
+        build_index(["x" * 20_001])
+
+    with pytest.raises(ValueError, match="invalid values"):
+        semantic_retrieve(None, "document-id", [float("nan")] * 1024)
+
+    with pytest.raises(ValueError, match="unexpected dimension"):
+        semantic_retrieve(None, "document-id", [0.0] * 10)
