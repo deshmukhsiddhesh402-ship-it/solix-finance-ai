@@ -229,3 +229,19 @@ def test_invoice_ocr_rejects_non_object_provider_response(monkeypatch):
         invoice_ocr._extract_single_image(b"image", "image/png")
 
     assert exc_info.value.status_code == 502
+
+
+def test_embedding_provider_rejects_non_finite_vector(monkeypatch):
+    import app.services.embedding_service as embedding_service
+
+    class FakeResult:
+        embeddings = [[float("nan")] * embedding_service.EMBEDDING_DIMENSIONS]
+
+    class FakeClient:
+        def embed(self, *args, **kwargs):
+            return FakeResult()
+
+    monkeypatch.setattr(embedding_service, "_client", FakeClient())
+
+    with pytest.raises(RuntimeError, match="non-finite"):
+        embedding_service.get_embeddings(["valid text"])
