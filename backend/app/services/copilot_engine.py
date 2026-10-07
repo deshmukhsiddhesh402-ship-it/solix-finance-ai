@@ -6,7 +6,7 @@ the numbers, so answers are grounded in real arithmetic rather than the
 model inventing figures.
 """
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 import math
 
 
@@ -17,6 +17,33 @@ MAX_COPILOT_MONTHS_AHEAD = 24
 def _validate_entries(entries: list[dict]) -> None:
     if not isinstance(entries, list) or len(entries) > MAX_COPILOT_ENTRIES:
         raise ValueError("Entry set exceeds the supported Copilot limit.")
+
+    valid_account_types = {"expense", "income", "asset", "liability", "equity"}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Each Copilot entry must be an object.")
+        if not isinstance(entry.get("account_name"), str) or not 1 <= len(entry["account_name"]) <= 255:
+            raise ValueError("Each Copilot entry must have a valid account_name.")
+        if entry.get("account_type") not in valid_account_types:
+            raise ValueError("Each Copilot entry must have a valid account_type.")
+        _entry_date(entry.get("date"))
+        _finite_number(entry.get("debit"), "debit")
+        _finite_number(entry.get("credit"), "credit")
+        if entry["debit"] < 0 or entry["credit"] < 0:
+            raise ValueError("Copilot debit and credit values cannot be negative.")
+
+
+def _entry_date(value) -> date:
+    if isinstance(value, datetime):
+        raise ValueError("Copilot dates must be calendar dates, not datetimes.")
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("Copilot dates must use YYYY-MM-DD.") from exc
+    raise ValueError("Copilot dates must use YYYY-MM-DD.")
 
 
 def _finite_number(value, field: str) -> float:
@@ -46,9 +73,10 @@ def filter_transactions(
     for e in entries:
         if account_type and e["account_type"] != account_type:
             continue
-        if start_date and e["date"] < start_date:
+        entry_date = _entry_date(e["date"])
+        if start_date and entry_date < start_date:
             continue
-        if end_date and e["date"] > end_date:
+        if end_date and entry_date > end_date:
             continue
         amount = e["debit"] if e["account_type"] in ("expense", "asset") else e["credit"]
         if amount >= min_amount:
@@ -76,10 +104,14 @@ def compare_periods(entries: list[dict], period_a_prefix: str, period_b_prefix: 
             or not 1 <= int(prefix[5:]) <= 12
         ):
             raise ValueError("Periods must use YYYY-MM format with a valid month.")
+        try:
+            date.fromisoformat(f"{prefix}-01")
+        except ValueError as exc:
+            raise ValueError("Periods must use YYYY-MM format with a valid calendar year.") from exc
     def _period_totals(prefix: str) -> dict:
         by_account = defaultdict(lambda: {"type": None, "net": 0.0})
         for e in entries:
-            key = e["date"].strftime("%Y-%m") if hasattr(e["date"], "strftime") else str(e["date"])[:7]
+            key = _entry_date(e["date"]).strftime("%Y-%m")
             if key != prefix:
                 continue
             acc = by_account[e["account_name"]]
