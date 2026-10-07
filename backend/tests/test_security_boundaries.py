@@ -90,6 +90,16 @@ def test_membership_email_is_bounded():
 from app.routers.accounting import LedgerLineIn
 
 
+def test_membership_email_validation_rejects_malformed_address():
+    with pytest.raises(ValidationError):
+        AddMembershipRequest(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            user_email="not-an-email",
+            role="accountant",
+        )
+
+
+
 def test_tax_engine_rejects_invalid_numeric_inputs():
     from app.services.tax_engine import calculate_gst, calculate_tds
     with pytest.raises(ValueError):
