@@ -98,6 +98,16 @@ def continue_with_tool_result(
     result back to Claude so it can write the final natural-language answer
     grounded in actual computed numbers, not invented ones.
     """
+    _validate_request(system_prompt, user_message, max_tokens)
+    if not isinstance(tools, list) or len(tools) > MAX_CLAUDE_TOOL_COUNT:
+        raise ValueError("Tool count exceeds the supported limit.")
+    if not isinstance(tool_use_id, str) or not tool_use_id:
+        raise ValueError("tool_use_id is required.")
+    if not isinstance(assistant_content, list):
+        raise ValueError("assistant_content must be a list.")
+    serialized_result = json.dumps(tool_result, default=str)
+    if len(serialized_result) > MAX_CLAUDE_INPUT_CHARS:
+        raise ValueError("Tool result exceeds the supported length limit.")
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
@@ -107,7 +117,7 @@ def continue_with_tool_result(
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": assistant_content},
             {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": tool_use_id, "content": json.dumps(tool_result, default=str)},
+                {"type": "tool_result", "tool_use_id": tool_use_id, "content": serialized_result},
             ]},
         ],
     )
