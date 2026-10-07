@@ -69,7 +69,7 @@ def test_scheduled_report_frequency_is_allowlisted_and_bounded():
     base = {
         "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
         "report_type": "dashboard_pdf",
-        "recipient_emails": ["user@example.test"],
+        "recipient_emails": ["user@example.com"],
     }
     ScheduledReportRequest(**base, frequency="daily")
     with pytest.raises(ValidationError):
