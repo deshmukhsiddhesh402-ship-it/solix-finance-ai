@@ -173,3 +173,46 @@ def test_razorpay_payment_binding_rejects_uncaptured_payment():
 
     with pytest.raises(ValueError, match="not captured"):
         validate_gateway_payment(order, payment, "order_123", "pay_123", "org_a", "pro")
+
+
+def test_copilot_service_rejects_malformed_financial_entries():
+    from app.services.copilot_engine import filter_transactions
+
+    base = {
+        "account_name": "Office Expense",
+        "account_type": "expense",
+        "debit": 100.0,
+        "credit": 0.0,
+        "date": "2026-10-01",
+    }
+
+    invalid_date = {**base, "date": "2026-99-99"}
+    with pytest.raises(ValueError, match="dates must use YYYY-MM-DD"):
+        filter_transactions([invalid_date])
+
+    invalid_number = {**base, "debit": float("nan")}
+    with pytest.raises(ValueError, match="finite"):
+        filter_transactions([invalid_number])
+
+    invalid_account = {**base, "account_type": "cash"}
+    with pytest.raises(ValueError, match="valid account_type"):
+        filter_transactions([invalid_account])
+
+
+def test_copilot_service_rejects_invalid_period_and_date_range():
+    from datetime import date
+    from app.services.copilot_engine import compare_periods, filter_transactions
+
+    entry = {
+        "account_name": "Office Expense",
+        "account_type": "expense",
+        "debit": 100.0,
+        "credit": 0.0,
+        "date": date(2026, 10, 1),
+    }
+
+    with pytest.raises(ValueError, match="valid calendar year"):
+        compare_periods([entry], "0000-01", "2026-10")
+
+    with pytest.raises(ValueError, match="start_date cannot be after end_date"):
+        filter_transactions([entry], start_date=date(2026, 11, 1), end_date=date(2026, 10, 1))
