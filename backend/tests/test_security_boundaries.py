@@ -371,3 +371,27 @@ def test_ocr_upload_rejects_short_or_invalid_signatures():
     assert not _has_expected_file_signature(b"", "jpg")
     assert not _has_expected_file_signature(b"RIFF", "webp")
     assert not _has_expected_file_signature(b"not-an-image", "webp")
+
+
+def test_ocr_session_store_evicts_expired_entries():
+    import app.routers.invoice_ocr as ocr
+
+    sid = "66666666-6666-4666-8666-666666666666"
+    ocr._EXTRACTED_INVOICES[sid] = {
+        "invoice": {},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": 100,
+    }
+    try:
+        ocr._purge_expired_sessions(now=100 + ocr.OCR_SESSION_TTL_SECONDS + 1)
+        assert sid not in ocr._EXTRACTED_INVOICES
+    finally:
+        ocr._EXTRACTED_INVOICES.pop(sid, None)
+
+
+def test_ocr_session_store_has_capacity_bound():
+    import app.routers.invoice_ocr as ocr
+
+    assert ocr.MAX_OCR_SESSIONS == 1000
+    assert ocr.OCR_SESSION_TTL_SECONDS == 30 * 60
