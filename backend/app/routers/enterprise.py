@@ -84,7 +84,7 @@ def require_permission(resource: str, action: str):
 # ---------------------------------------------------------------------------
 class AddMembershipRequest(BaseModel):
     org_id: str
-    user_email: str = Field(min_length=3, max_length=255)
+    user_email: EmailStr
     role: Literal["admin", "accountant", "auditor"]
 
 
@@ -102,7 +102,7 @@ def add_membership(
     target_email = req.user_email.strip().lower()
     target_user = db.query(User).filter(User.email == target_email).first()
     if not target_user:
-        raise HTTPException(404, detail=f"No user found with email {target_email}.")
+        raise HTTPException(404, detail="User not found.")
 
     existing = db.query(OrgMembership).filter(OrgMembership.user_id == target_user.id, OrgMembership.org_id == org_uuid).first()
     if existing:
