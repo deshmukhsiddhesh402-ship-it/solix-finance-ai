@@ -520,3 +520,22 @@ def test_embedding_service_limits_and_validation_are_explicit():
         embeddings.get_embeddings([], input_type="document")
     with pytest.raises(ValueError):
         embeddings.get_embeddings(["text"], input_type="invalid")
+
+
+def test_claude_request_limits_are_explicit():
+    import app.services.claude_service as claude
+
+    assert claude.MAX_CLAUDE_INPUT_CHARS == 50_000
+    assert claude.MAX_CLAUDE_SYSTEM_CHARS == 20_000
+    assert claude.MAX_CLAUDE_OUTPUT_TOKENS == 4_000
+    assert claude.MAX_CLAUDE_TOOL_COUNT == 32
+    assert claude.MAX_CLAUDE_IMAGE_BASE64_CHARS == 15_000_000
+
+    with pytest.raises(ValueError):
+        claude._validate_request("system", "user", 0)
+    with pytest.raises(ValueError):
+        claude._validate_request("system", "user", 4_001)
+    with pytest.raises(ValueError):
+        claude._validate_request("x" * (claude.MAX_CLAUDE_SYSTEM_CHARS + 1), "user", 1)
+    with pytest.raises(ValueError):
+        claude._validate_request("system", "x" * (claude.MAX_CLAUDE_INPUT_CHARS + 1), 1)
