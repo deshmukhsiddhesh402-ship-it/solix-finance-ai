@@ -57,6 +57,8 @@ def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
         data = json.loads(_strip_json_fences(raw))
     except json.JSONDecodeError as exc:
         raise HTTPException(502, detail="Could not parse the extracted invoice data. Try a clearer image.") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
     if data.get("vendor_gstin"):
         data["gstin_format_valid"] = is_valid_gstin_format(data["vendor_gstin"])
     return data
