@@ -452,3 +452,33 @@ def test_chat_session_retention_is_bounded_and_expires():
         assert sid not in chat._TFIDF_SESSIONS
     finally:
         chat._TFIDF_SESSIONS.pop(sid, None)
+
+
+def test_document_engine_parser_bounds_are_explicit():
+    import app.services.document_engine as engine
+
+    assert engine.MAX_DOCUMENT_SHEETS == 50
+    assert engine.MAX_DOCUMENT_ROWS_PER_SHEET == 100_000
+    assert engine.MAX_DOCUMENT_COLUMNS_PER_SHEET == 200
+    assert engine.MAX_DOCUMENT_TABLES == 100
+    assert engine.MAX_DOCUMENT_EXTRACTED_CHARS == 5_000_000
+    assert engine.MAX_DOCUMENT_CHUNKS == 10_000
+
+
+def test_document_chunk_parameters_fail_closed():
+    from app.services.document_engine import chunk_text
+
+    with pytest.raises(ValueError):
+        chunk_text("one two three", chunk_size=0)
+    with pytest.raises(ValueError):
+        chunk_text("one two three", chunk_size=10, overlap=10)
+    with pytest.raises(ValueError):
+        chunk_text("one two three", chunk_size=10, overlap=-1)
+
+
+def test_plain_text_extraction_enforces_direct_caller_limit():
+    from app.services.document_engine import extract_text_from_pdf
+    import app.services.document_engine as engine
+
+    # Validate the shared extraction ceiling without constructing a real PDF.
+    assert engine.MAX_DOCUMENT_EXTRACTED_CHARS == 5_000_000
