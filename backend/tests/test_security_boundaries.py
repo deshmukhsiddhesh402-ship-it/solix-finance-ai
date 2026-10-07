@@ -354,3 +354,20 @@ def test_production_config_rejects_default_database_url():
             JWT_SECRET="a" * 32,
             DATABASE_URL="postgresql://solix:solix@localhost:5432/solix_finance_ai",
         )
+
+
+def test_ocr_upload_rejects_extension_content_mismatch():
+    from app.routers.invoice_ocr import _has_expected_file_signature
+
+    assert _has_expected_file_signature(b"%PDF-1.7\n", "pdf")
+    assert not _has_expected_file_signature(b"not-a-pdf", "pdf")
+    assert _has_expected_file_signature(b"\x89PNG\r\n\x1a\n", "png")
+    assert not _has_expected_file_signature(b"RIFFxxxxWEBP", "png")
+
+
+def test_ocr_upload_rejects_short_or_invalid_signatures():
+    from app.routers.invoice_ocr import _has_expected_file_signature
+
+    assert not _has_expected_file_signature(b"", "jpg")
+    assert not _has_expected_file_signature(b"RIFF", "webp")
+    assert not _has_expected_file_signature(b"not-an-image", "webp")
