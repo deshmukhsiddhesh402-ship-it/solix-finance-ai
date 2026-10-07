@@ -414,3 +414,22 @@ def test_otp_tracking_has_capacity_bound_and_expiry_cleanup():
         assert key not in security._OTP_STORE
     finally:
         security._OTP_STORE.pop(key, None)
+
+
+def test_cleaned_excel_session_retention_is_bounded_and_expires():
+    import app.routers.excel_automation as excel
+    import time
+
+    assert excel.MAX_CLEANED_SESSIONS == 1000
+    assert excel.CLEANED_SESSION_TTL_SECONDS == 30 * 60
+    sid = "expired-session"
+    now = time.time()
+    excel._CLEANED_FILES[sid] = {
+        "df": None, "org_id": "org", "user_id": "user",
+        "created_at": now - excel.CLEANED_SESSION_TTL_SECONDS - 1,
+    }
+    try:
+        excel._purge_expired_cleaned_sessions(now)
+        assert sid not in excel._CLEANED_FILES
+    finally:
+        excel._CLEANED_FILES.pop(sid, None)
