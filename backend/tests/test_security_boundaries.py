@@ -554,6 +554,18 @@ def test_claude_tool_result_and_tool_count_bounds():
         )
 
 
+def test_billing_plan_order_payload_is_strictly_allowlisted():
+    from app.services.billing_engine import build_order_payload
+
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    payload = build_order_payload("pro", org_id)
+    assert payload["amount"] == 299900
+    assert payload["currency"] == "INR"
+    assert payload["notes"] == {"org_id": org_id, "plan": "pro"}
+    with pytest.raises(ValueError):
+        build_order_payload("enterprise\u0000", org_id)
+
+
 def test_billing_payment_inputs_are_bounded():
     from app.routers.billing import VerifyPaymentRequest
 
