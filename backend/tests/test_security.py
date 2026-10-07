@@ -216,3 +216,16 @@ def test_copilot_service_rejects_invalid_period_and_date_range():
 
     with pytest.raises(ValueError, match="start_date cannot be after end_date"):
         filter_transactions([entry], start_date=date(2026, 11, 1), end_date=date(2026, 10, 1))
+
+
+def test_invoice_ocr_rejects_non_object_provider_response(monkeypatch):
+    import app.routers.invoice_ocr as invoice_ocr
+
+    monkeypatch.setattr(invoice_ocr, "ask_claude_with_image", lambda *args, **kwargs: "[]")
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        invoice_ocr._extract_single_image(b"image", "image/png")
+
+    assert exc_info.value.status_code == 502
