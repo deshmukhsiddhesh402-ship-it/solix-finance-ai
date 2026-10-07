@@ -7,6 +7,8 @@ numbers. This two-step tool-use pattern is what prevents the classic
 "AI makes up a plausible-sounding number" failure mode.
 """
 import json
+import math
+import re
 import uuid
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
@@ -29,6 +31,9 @@ COPILOT_SYSTEM_PROMPT = (
     "tool — never invent figures. If the tool result includes a caveat or "
     "method note, mention it briefly so the user knows the limits of the answer."
 )
+
+ALLOWED_COPILOT_TOOLS = {"filter_transactions", "compare_periods", "predict_cash_flow", "gst_summary"}
+MAX_COPILOT_MONTHS_AHEAD = 24
 
 TOOLS = [
     {
@@ -96,15 +101,31 @@ def _load_entries_for_copilot(db: Session, org_id, months_back: int = 12):
 
 
 def _execute_tool(tool_name: str, tool_input: dict, entries: list[dict]) -> dict:
+    if tool_name not in ALLOWED_COPILOT_TOOLS or not isinstance(tool_input, dict):
+        raise ValueError("Unsupported copilot tool request.")
     if tool_name == "filter_transactions":
-        results = filter_transactions(entries, min_amount=tool_input["min_amount"], account_type=tool_input.get("account_type", "expense"))
+        min_amount = tool_input.get("min_amount")
+        if isinstance(min_amount, bool) or not isinstance(min_amount, (int, float)) or not math.isfinite(min_amount):
+            raise ValueError("min_amount must be a finite number.")
+        if min_amount < 0:
+            raise ValueError("min_amount cannot be negative.")
+        results = filter_transactions(entries, min_amount=min_amount, account_type=tool_input.get("account_type", "expense"))
         return {"count": len(results), "transactions": results[:20]}  # cap payload size sent back to Claude
     if tool_name == "compare_periods":
-        return compare_periods(entries, tool_input["period_a"], tool_input["period_b"])
+        period_a = tool_input.get("period_a")
+        period_b = tool_input.get("period_b")
+        if not isinstance(period_a, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period_a):
+            raise ValueError("period_a must use YYYY-MM format.")
+        if not isinstance(period_b, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period_b):
+            raise ValueError("period_b must use YYYY-MM format.")
+        return compare_periods(entries, period_a, period_b)
     if tool_name == "predict_cash_flow":
+        months_ahead = tool_input.get("months_ahead", 1)
+        if isinstance(months_ahead, bool) or not isinstance(months_ahead, int) or not 1 <= months_ahead <= MAX_COPILOT_MONTHS_AHEAD:
+            raise ValueError("months_ahead must be between 1 and 24.")
         trend = monthly_trend(entries)
         net_series = [m["revenue"] - m["expenses"] for m in trend]
-        return predict_cash_flow(net_series, months_ahead=tool_input.get("months_ahead", 1))
+        return predict_cash_flow(net_series, months_ahead=months_ahead)
     if tool_name == "gst_summary":
         return gst_summary_from_entries(entries)
     return {"error": f"Unknown tool: {tool_name}"}
