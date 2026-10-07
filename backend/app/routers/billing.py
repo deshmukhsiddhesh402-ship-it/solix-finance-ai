@@ -103,6 +103,26 @@ def verify_payment(
         raise HTTPException(400, detail="Payment details do not match the requested organization or plan.") from exc
 
     from app.models.billing import Subscription
+
+    # Payment IDs are globally unique at the gateway. Treat a previously
+    # recorded payment as idempotent only when its tenant/order/plan binding
+    # is identical; never let a payment be replayed across organizations.
+    existing_payment = (
+        db.query(Subscription)
+        .filter(Subscription.razorpay_payment_id == req.razorpay_payment_id)
+        .first()
+    )
+    if existing_payment:
+        if existing_payment.org_id != org_uuid:
+            raise HTTPException(409, detail="Payment has already been associated with another organization.")
+        if existing_payment.razorpay_order_id != req.razorpay_order_id or existing_payment.plan != req.plan:
+            raise HTTPException(409, detail="Payment has already been associated with a different order or plan.")
+        return {
+            "message": f"Subscription already activated: {existing_payment.plan}",
+            "current_period_end": existing_payment.current_period_end.isoformat()
+            if existing_payment.current_period_end else None,
+        }
+
     sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
     period_end = datetime.now(timezone.utc) + timedelta(days=30)
     if sub:
