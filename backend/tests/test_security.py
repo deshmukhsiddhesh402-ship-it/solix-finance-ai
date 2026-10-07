@@ -278,3 +278,36 @@ def test_billing_webhook_rejects_validly_signed_malformed_json(monkeypatch):
         asyncio.run(billing_router.razorpay_webhook(FakeRequest(), None))
 
     assert exc_info.value.status_code == 400
+
+
+def test_billing_webhook_rejects_signed_non_object_json(monkeypatch):
+    import hmac
+    import hashlib
+    import asyncio
+    import app.routers.billing as billing_router
+
+    secret = "webhook-test-secret"
+    body = b"[]"
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    class FakeHeaders:
+        def get(self, name, default=""):
+            return signature if name == "X-Razorpay-Signature" else default
+
+    class FakeRequest:
+        headers = FakeHeaders()
+
+        async def body(self):
+            return body
+
+        async def json(self):
+            return []
+
+    monkeypatch.setattr(billing_router.settings, "RAZORPAY_WEBHOOK_SECRET", secret)
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(billing_router.razorpay_webhook(FakeRequest(), None))
+
+    assert exc_info.value.status_code == 400
