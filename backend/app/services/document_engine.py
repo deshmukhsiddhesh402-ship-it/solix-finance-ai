@@ -13,7 +13,16 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     """Extract plain text from a PDF's pages."""
     from pypdf import PdfReader  # local import: optional dependency, only needed here
     reader = PdfReader(io.BytesIO(file_bytes))
-    pages = [page.extract_text() or "" for page in reader.pages]
+    if len(reader.pages) > 50:
+        raise ValueError("PDF exceeds the 50-page document extraction limit.")
+    pages = []
+    total_chars = 0
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        total_chars += len(page_text)
+        if total_chars > 5_000_000:
+            raise ValueError("Document text exceeds the supported extraction limit.")
+        pages.append(page_text)
     return "\n".join(pages)
 
 
