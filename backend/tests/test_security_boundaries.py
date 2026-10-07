@@ -433,3 +433,22 @@ def test_cleaned_excel_session_retention_is_bounded_and_expires():
         assert sid not in excel._CLEANED_FILES
     finally:
         excel._CLEANED_FILES.pop(sid, None)
+
+
+def test_chat_session_retention_is_bounded_and_expires():
+    import app.routers.chat as chat
+    import time
+
+    assert chat.MAX_CHAT_SESSIONS == 1000
+    assert chat.CHAT_SESSION_TTL_SECONDS == 30 * 60
+    sid = "expired-chat-session"
+    now = time.time()
+    chat._TFIDF_SESSIONS[sid] = {
+        "filename": "test.txt", "index": {}, "org_id": "org",
+        "user_id": "user", "created_at": now - chat.CHAT_SESSION_TTL_SECONDS - 1,
+    }
+    try:
+        chat._purge_expired_chat_sessions(now)
+        assert sid not in chat._TFIDF_SESSIONS
+    finally:
+        chat._TFIDF_SESSIONS.pop(sid, None)
