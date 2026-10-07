@@ -74,6 +74,8 @@ def test_scheduled_report_frequency_is_allowlisted_and_bounded():
     ScheduledReportRequest(**base, frequency="daily")
     with pytest.raises(ValidationError):
         ScheduledReportRequest(**base, frequency="hourly")
+    with pytest.raises(ValidationError):
+        ScheduledReportRequest(**{**base, "recipient_emails": ["not-an-email"]}, frequency="daily")
 
 
 def test_membership_email_is_bounded():
