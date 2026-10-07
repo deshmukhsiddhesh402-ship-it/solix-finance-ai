@@ -10,6 +10,8 @@ from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
+from app.models.enterprise import OrgMembership
+
 Base = declarative_base()
 
 
@@ -34,4 +36,3 @@ class User(Base):
 
 # Re-export the canonical enterprise membership mapping so auth and enterprise
 # authorization paths operate on one ORM class for the same table.
-from app.models.enterprise import OrgMembership
