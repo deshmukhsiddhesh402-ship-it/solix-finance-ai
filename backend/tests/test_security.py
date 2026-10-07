@@ -324,3 +324,10 @@ def test_rag_service_rejects_oversized_chunks_and_invalid_embeddings():
 
     with pytest.raises(ValueError, match="unexpected dimension"):
         semantic_retrieve(None, "document-id", [0.0] * 10)
+
+
+def test_auth_and_enterprise_share_one_org_membership_mapping():
+    from app.models.auth_user import OrgMembership as AuthOrgMembership
+    from app.models.enterprise import OrgMembership as EnterpriseOrgMembership
+
+    assert AuthOrgMembership is EnterpriseOrgMembership
