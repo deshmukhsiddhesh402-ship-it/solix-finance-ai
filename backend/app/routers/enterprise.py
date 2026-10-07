@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -237,7 +237,7 @@ class ScheduledReportRequest(BaseModel):
     org_id: str
     report_type: str = Field(min_length=1, max_length=30)
     frequency: Literal["daily", "weekly", "monthly"]
-    recipient_emails: list[str] = Field(min_length=1, max_length=50)
+    recipient_emails: list[EmailStr] = Field(min_length=1, max_length=50)
 
 
 @router.post("/scheduled-reports")
