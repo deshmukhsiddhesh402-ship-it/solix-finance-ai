@@ -151,10 +151,17 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
         raise HTTPException(413, detail="Webhook payload is too large.")
     signature = request.headers.get("X-Razorpay-Signature", "")
-    if not verify_webhook_signature(raw_body.decode("utf-8"), signature, settings.RAZORPAY_WEBHOOK_SECRET):
+    try:
+        payload_text = raw_body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(400, detail="Webhook payload is not valid UTF-8.") from exc
+    if not verify_webhook_signature(payload_text, signature, settings.RAZORPAY_WEBHOOK_SECRET):
         raise HTTPException(400, detail="Webhook signature verification failed.")
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
     event = payload.get("event", "")
     from app.models.billing import Subscription
 
