@@ -539,3 +539,14 @@ def test_claude_request_limits_are_explicit():
         claude._validate_request("x" * (claude.MAX_CLAUDE_SYSTEM_CHARS + 1), "user", 1)
     with pytest.raises(ValueError):
         claude._validate_request("system", "x" * (claude.MAX_CLAUDE_INPUT_CHARS + 1), 1)
+
+
+def test_claude_tool_result_and_tool_count_bounds():
+    import app.services.claude_service as claude
+
+    with pytest.raises(ValueError):
+        claude.ask_claude_with_tools("system", "user", [{}] * (claude.MAX_CLAUDE_TOOL_COUNT + 1), 1)
+    with pytest.raises(ValueError):
+        claude.continue_with_tool_result(
+            "system", "user", [], [], "", {"data": "x"}, 1
+        )
