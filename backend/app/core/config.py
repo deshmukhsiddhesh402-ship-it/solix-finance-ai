@@ -26,6 +26,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")
             if self.DATABASE_URL == "postgresql://solix:solix@localhost:5432/solix_finance_ai":
                 raise ValueError("Production requires an explicitly configured DATABASE_URL.")
+            if not self.ALLOWED_ORIGINS or any(origin.strip() == "*" for origin in self.ALLOWED_ORIGINS):
+                raise ValueError("Production requires explicit ALLOWED_ORIGINS.")
         if self.JWT_EXPIRE_MINUTES <= 0:
             raise ValueError("JWT_EXPIRE_MINUTES must be positive.")
         return self
