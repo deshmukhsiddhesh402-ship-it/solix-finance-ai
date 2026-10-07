@@ -64,6 +64,12 @@ def filter_transactions(
     (i.e. the "natural" side of that account type).
     """
     _validate_entries(entries)
+    if start_date is not None:
+        start_date = _entry_date(start_date)
+    if end_date is not None:
+        end_date = _entry_date(end_date)
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("start_date cannot be after end_date.")
     min_amount = _finite_number(min_amount, "min_amount")
     if min_amount < 0:
         raise ValueError("min_amount cannot be negative.")
@@ -175,7 +181,13 @@ def predict_cash_flow(monthly_net: list[float], months_ahead: int = 1) -> dict:
     slope = numerator / denominator if denominator else 0.0
     intercept = mean_y - slope * mean_x
 
-    predictions = [round(intercept + slope * (n - 1 + m), 2) for m in range(1, months_ahead + 1)]
+    if not math.isfinite(slope) or not math.isfinite(intercept):
+        raise ValueError("Copilot trend calculation exceeded finite numeric bounds.")
+
+    predictions = [intercept + slope * (n - 1 + m) for m in range(1, months_ahead + 1)]
+    if not all(math.isfinite(value) for value in predictions):
+        raise ValueError("Copilot forecast exceeded finite numeric bounds.")
+    predictions = [round(value, 2) for value in predictions]
 
     return {
         "historical_months": n,
