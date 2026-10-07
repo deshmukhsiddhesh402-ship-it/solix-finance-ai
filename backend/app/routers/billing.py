@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -53,9 +53,9 @@ def create_order(
 class VerifyPaymentRequest(BaseModel):
     org_id: str
     plan: str
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    razorpay_order_id: str = Field(min_length=1, max_length=100)
+    razorpay_payment_id: str = Field(min_length=1, max_length=100)
+    razorpay_signature: str = Field(min_length=64, max_length=128)
 
 
 @router.post("/verify-payment")
@@ -104,9 +104,12 @@ def verify_payment(
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    MAX_WEBHOOK_BODY_BYTES = 1_000_000
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(503, detail="Razorpay webhook secret is not configured.")
     raw_body = await request.body()
+    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
+        raise HTTPException(413, detail="Webhook payload is too large.")
     signature = request.headers.get("X-Razorpay-Signature", "")
     if not verify_webhook_signature(raw_body.decode("utf-8"), signature, settings.RAZORPAY_WEBHOOK_SECRET):
         raise HTTPException(400, detail="Webhook signature verification failed.")
