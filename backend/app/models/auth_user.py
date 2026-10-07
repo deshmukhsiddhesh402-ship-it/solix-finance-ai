@@ -32,11 +32,6 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-class OrgMembership(Base):
-    __tablename__ = "org_memberships"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    org_id = Column(UUID(as_uuid=True), nullable=False)
-    role = Column(String(20), nullable=False, default="accountant")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+# Re-export the canonical enterprise membership mapping so auth and enterprise
+# authorization paths operate on one ORM class for the same table.
+from app.models.enterprise import OrgMembership
