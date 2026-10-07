@@ -565,3 +565,18 @@ def test_copilot_tool_inputs_fail_closed():
         _execute_tool("compare_periods", {"period_a": "2026-13", "period_b": "2026-10"}, [])
     with pytest.raises(ValueError):
         _execute_tool("predict_cash_flow", {"months_ahead": 25}, [])
+
+
+def test_copilot_engine_bounds_are_fail_closed():
+    from app.services.copilot_engine import filter_transactions, predict_cash_flow
+
+    with pytest.raises(ValueError):
+        filter_transactions([{}] * 100_001)
+    with pytest.raises(ValueError):
+        filter_transactions([], min_amount=float("inf"))
+    with pytest.raises(ValueError):
+        filter_transactions([], account_type="admin")
+    with pytest.raises(ValueError):
+        predict_cash_flow([1.0, float("nan")])
+    with pytest.raises(ValueError):
+        predict_cash_flow([1.0, 2.0], months_ahead=25)
