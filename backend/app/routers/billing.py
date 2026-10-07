@@ -173,12 +173,20 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         entity = payment.get("entity") if isinstance(payment, dict) else None
         notes = entity.get("notes") if isinstance(entity, dict) else None
         org_id = notes.get("org_id") if isinstance(notes, dict) else None
+        gateway_order_id = entity.get("order_id") if isinstance(entity, dict) else None
         try:
             org_uuid = uuid.UUID(str(org_id))
         except (ValueError, AttributeError, TypeError):
             org_uuid = None
-        if org_uuid:
-            sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
+        if org_uuid and gateway_order_id:
+            sub = (
+                db.query(Subscription)
+                .filter(
+                    Subscription.org_id == org_uuid,
+                    Subscription.razorpay_order_id == str(gateway_order_id),
+                )
+                .first()
+            )
             if sub:
                 sub.status = "past_due"
                 db.commit()
