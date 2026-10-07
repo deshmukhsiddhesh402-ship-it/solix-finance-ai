@@ -506,3 +506,17 @@ def test_rag_limits_fail_closed_for_direct_callers():
         retrieve("cash", index, top_k=0)
     with pytest.raises(ValueError):
         retrieve("cash", index, top_k=MAX_RAG_TOP_K + 1)
+
+
+def test_embedding_service_limits_and_validation_are_explicit():
+    import app.services.embedding_service as embeddings
+
+    assert embeddings.MAX_EMBEDDING_BATCH == 128
+    assert embeddings.MAX_EMBEDDING_TEXT_CHARS == 4_000
+    assert embeddings.MAX_EMBEDDING_TEXTS_CHARS == 5_000_000
+    assert embeddings.EMBEDDING_DIMENSIONS == 1024
+
+    with pytest.raises(ValueError):
+        embeddings.get_embeddings([], input_type="document")
+    with pytest.raises(ValueError):
+        embeddings.get_embeddings(["text"], input_type="invalid")
