@@ -554,6 +554,17 @@ def test_claude_tool_result_and_tool_count_bounds():
         )
 
 
+def test_jwt_expiry_is_bounded():
+    from app.core.security import MAX_JWT_EXPIRE_MINUTES, create_access_token
+
+    with pytest.raises(ValueError):
+        create_access_token("user-1", MAX_JWT_EXPIRE_MINUTES + 1)
+    with pytest.raises(ValueError):
+        create_access_token("user-1", 0)
+    with pytest.raises(ValueError):
+        create_access_token("user-1", -1)
+
+
 def test_billing_plan_order_payload_is_strictly_allowlisted():
     from app.services.billing_engine import build_order_payload
 
