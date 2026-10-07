@@ -51,6 +51,9 @@ def ask_claude_with_image(
     Invoice/Receipt OCR module — Claude reads the document visually rather
     than relying on a separate OCR engine like Tesseract).
     """
+    _validate_request(system_prompt, user_text, max_tokens)
+    if not isinstance(image_base64, str) or not image_base64 or len(image_base64) > MAX_CLAUDE_IMAGE_BASE64_CHARS:
+        raise ValueError("Image payload exceeds the supported size limit.")
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
