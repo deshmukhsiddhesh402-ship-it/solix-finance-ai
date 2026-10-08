@@ -720,3 +720,11 @@ def test_accounting_engine_rejects_non_finite_and_negative_ratio_inputs():
         financial_ratios(float("inf"), 1, 0, 0, 1, 1, 1, 1)
     with pytest.raises(ValueError, match="negative"):
         financial_ratios(-1, 1, 0, 0, 1, 1, 1, 1)
+
+
+
+def test_financial_ratios_reject_inventory_above_current_assets():
+    from app.services.accounting_engine import financial_ratios
+
+    with pytest.raises(ValueError, match="Inventory cannot exceed current assets"):
+        financial_ratios(100, 50, 101, 0, 100, 10, 200, 300)
