@@ -786,3 +786,10 @@ def test_trial_balance_rejects_conflicting_account_types():
             LedgerLine("Cash", "asset", debit=100, credit=0),
             LedgerLine("Cash", "income", debit=0, credit=100),
         ])
+
+
+def test_trial_balance_rejects_non_string_account_name():
+    from app.services.accounting_engine import LedgerLine, build_trial_balance
+
+    with pytest.raises(ValueError, match="non-empty string"):
+        build_trial_balance([LedgerLine(123, "asset", debit=100, credit=0)])
