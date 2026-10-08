@@ -80,6 +80,16 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
+    else:
+        # Fail closed if a legacy user points at a tenant without a matching membership.
+        membership = (
+            db.query(OrgMembership)
+            .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
+            .first()
+        )
+        if membership is None:
+            raise HTTPException(403, detail="User tenant membership is not configured.")
+
     token = create_access_token(subject=str(user.id))
     return {
         "user_id": str(user.id),

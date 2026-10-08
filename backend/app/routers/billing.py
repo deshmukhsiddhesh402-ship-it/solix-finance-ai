@@ -2,14 +2,14 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.config import settings
 from app.services.billing_engine import (
     PLANS, build_order_payload, verify_webhook_signature, verify_payment_signature,
-    is_within_limit,
+    validate_gateway_payment, is_within_limit,
 )
 from app.routers.enterprise import require_permission
 
@@ -53,9 +53,9 @@ def create_order(
 class VerifyPaymentRequest(BaseModel):
     org_id: str
     plan: str
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    razorpay_order_id: str = Field(min_length=1, max_length=100)
+    razorpay_payment_id: str = Field(min_length=1, max_length=100)
+    razorpay_signature: str = Field(min_length=64, max_length=128)
 
 
 @router.post("/verify-payment")
@@ -82,7 +82,47 @@ def verify_payment(
     ):
         raise HTTPException(400, detail="Payment signature verification failed — this payment cannot be trusted.")
 
+    import razorpay
+    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    try:
+        gateway_order = client.order.fetch(req.razorpay_order_id)
+        gateway_payment = client.payment.fetch(req.razorpay_payment_id)
+    except Exception as exc:
+        raise HTTPException(502, detail="Payment could not be verified with the payment provider.") from exc
+
+    try:
+        validate_gateway_payment(
+            gateway_order,
+            gateway_payment,
+            req.razorpay_order_id,
+            req.razorpay_payment_id,
+            str(org_uuid),
+            req.plan,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail="Payment details do not match the requested organization or plan.") from exc
+
     from app.models.billing import Subscription
+
+    # Payment IDs are globally unique at the gateway. Treat a previously
+    # recorded payment as idempotent only when its tenant/order/plan binding
+    # is identical; never let a payment be replayed across organizations.
+    existing_payment = (
+        db.query(Subscription)
+        .filter(Subscription.razorpay_payment_id == req.razorpay_payment_id)
+        .first()
+    )
+    if existing_payment:
+        if existing_payment.org_id != org_uuid:
+            raise HTTPException(409, detail="Payment has already been associated with another organization.")
+        if existing_payment.razorpay_order_id != req.razorpay_order_id or existing_payment.plan != req.plan:
+            raise HTTPException(409, detail="Payment has already been associated with a different order or plan.")
+        return {
+            "message": f"Subscription already activated: {existing_payment.plan}",
+            "current_period_end": existing_payment.current_period_end.isoformat()
+            if existing_payment.current_period_end else None,
+        }
+
     sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
     period_end = datetime.now(timezone.utc) + timedelta(days=30)
     if sub:
@@ -104,25 +144,49 @@ def verify_payment(
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    MAX_WEBHOOK_BODY_BYTES = 1_000_000
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(503, detail="Razorpay webhook secret is not configured.")
     raw_body = await request.body()
+    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
+        raise HTTPException(413, detail="Webhook payload is too large.")
     signature = request.headers.get("X-Razorpay-Signature", "")
-    if not verify_webhook_signature(raw_body.decode("utf-8"), signature, settings.RAZORPAY_WEBHOOK_SECRET):
+    try:
+        payload_text = raw_body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(400, detail="Webhook payload is not valid UTF-8.") from exc
+    if not verify_webhook_signature(payload_text, signature, settings.RAZORPAY_WEBHOOK_SECRET):
         raise HTTPException(400, detail="Webhook signature verification failed.")
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(400, detail="Webhook payload must be a JSON object.")
     event = payload.get("event", "")
     from app.models.billing import Subscription
 
     if event == "payment.failed":
-        org_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("notes", {}).get("org_id")
+        event_payload = payload.get("payload")
+        payment = event_payload.get("payment") if isinstance(event_payload, dict) else None
+        entity = payment.get("entity") if isinstance(payment, dict) else None
+        notes = entity.get("notes") if isinstance(entity, dict) else None
+        org_id = notes.get("org_id") if isinstance(notes, dict) else None
+        gateway_order_id = entity.get("order_id") if isinstance(entity, dict) else None
         try:
             org_uuid = uuid.UUID(str(org_id))
         except (ValueError, AttributeError, TypeError):
             org_uuid = None
-        if org_uuid:
-            sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
+        if org_uuid and gateway_order_id:
+            sub = (
+                db.query(Subscription)
+                .filter(
+                    Subscription.org_id == org_uuid,
+                    Subscription.razorpay_order_id == str(gateway_order_id),
+                )
+                .first()
+            )
             if sub:
                 sub.status = "past_due"
                 db.commit()

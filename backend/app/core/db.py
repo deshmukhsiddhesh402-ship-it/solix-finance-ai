@@ -18,5 +18,10 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except BaseException:
+        # Ensure a failed request cannot return an invalid/aborted transaction
+        # to the pool when a caller did not explicitly roll back.
+        db.rollback()
+        raise
     finally:
         db.close()

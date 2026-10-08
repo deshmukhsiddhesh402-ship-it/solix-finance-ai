@@ -66,6 +66,12 @@ class JournalLine(Base):
     account_id = Column(UUID(as_uuid=True), ForeignKey("chart_of_accounts.id"))
     debit = Column(Numeric(18, 2), nullable=False, default=0)
     credit = Column(Numeric(18, 2), nullable=False, default=0)
+    gst_rate_pct = Column(Numeric(5, 2), nullable=True)
+    gst_type = Column(String(10), nullable=True)
+    gst_taxable_value = Column(Numeric(18, 2), nullable=True)
+    tds_section = Column(String(10), nullable=True)
+    tds_rate = Column(Numeric(5, 2), nullable=True)
+    tds_amount = Column(Numeric(18, 2), nullable=True)
 
     journal_entry = relationship("JournalEntry", back_populates="lines")
     account = relationship("ChartOfAccount")

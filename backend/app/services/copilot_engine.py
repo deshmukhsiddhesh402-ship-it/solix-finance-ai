@@ -6,7 +6,50 @@ the numbers, so answers are grounded in real arithmetic rather than the
 model inventing figures.
 """
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
+import math
+
+
+MAX_COPILOT_ENTRIES = 100_000
+MAX_COPILOT_MONTHS_AHEAD = 24
+
+
+def _validate_entries(entries: list[dict]) -> None:
+    if not isinstance(entries, list) or len(entries) > MAX_COPILOT_ENTRIES:
+        raise ValueError("Entry set exceeds the supported Copilot limit.")
+
+    valid_account_types = {"expense", "income", "asset", "liability", "equity"}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Each Copilot entry must be an object.")
+        if not isinstance(entry.get("account_name"), str) or not 1 <= len(entry["account_name"]) <= 255:
+            raise ValueError("Each Copilot entry must have a valid account_name.")
+        if entry.get("account_type") not in valid_account_types:
+            raise ValueError("Each Copilot entry must have a valid account_type.")
+        _entry_date(entry.get("date"))
+        _finite_number(entry.get("debit"), "debit")
+        _finite_number(entry.get("credit"), "credit")
+        if entry["debit"] < 0 or entry["credit"] < 0:
+            raise ValueError("Copilot debit and credit values cannot be negative.")
+
+
+def _entry_date(value) -> date:
+    if isinstance(value, datetime):
+        raise ValueError("Copilot dates must be calendar dates, not datetimes.")
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("Copilot dates must use YYYY-MM-DD.") from exc
+    raise ValueError("Copilot dates must use YYYY-MM-DD.")
+
+
+def _finite_number(value, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{field} must be a finite number.")
+    return float(value)
 
 
 # ---------------------------------------------------------------------------
@@ -20,13 +63,26 @@ def filter_transactions(
     Amount compared is debit for expense/asset, credit for income/liability
     (i.e. the "natural" side of that account type).
     """
+    _validate_entries(entries)
+    if start_date is not None:
+        start_date = _entry_date(start_date)
+    if end_date is not None:
+        end_date = _entry_date(end_date)
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("start_date cannot be after end_date.")
+    min_amount = _finite_number(min_amount, "min_amount")
+    if min_amount < 0:
+        raise ValueError("min_amount cannot be negative.")
+    if account_type is not None and account_type not in {"expense", "income", "asset", "liability", "equity"}:
+        raise ValueError("Invalid account_type.")
     results = []
     for e in entries:
         if account_type and e["account_type"] != account_type:
             continue
-        if start_date and e["date"] < start_date:
+        entry_date = _entry_date(e["date"])
+        if start_date and entry_date < start_date:
             continue
-        if end_date and e["date"] > end_date:
+        if end_date and entry_date > end_date:
             continue
         amount = e["debit"] if e["account_type"] in ("expense", "asset") else e["credit"]
         if amount >= min_amount:
@@ -43,10 +99,25 @@ def compare_periods(entries: list[dict], period_a_prefix: str, period_b_prefix: 
     accounts drove the change in revenue, expenses, and net profit.
     period_a is treated as the earlier/baseline period, period_b as current.
     """
+    _validate_entries(entries)
+    for prefix in (period_a_prefix, period_b_prefix):
+        if (
+            not isinstance(prefix, str)
+            or len(prefix) != 7
+            or prefix[4] != "-"
+            or not prefix[:4].isdigit()
+            or not prefix[5:].isdigit()
+            or not 1 <= int(prefix[5:]) <= 12
+        ):
+            raise ValueError("Periods must use YYYY-MM format with a valid month.")
+        try:
+            date.fromisoformat(f"{prefix}-01")
+        except ValueError as exc:
+            raise ValueError("Periods must use YYYY-MM format with a valid calendar year.") from exc
     def _period_totals(prefix: str) -> dict:
         by_account = defaultdict(lambda: {"type": None, "net": 0.0})
         for e in entries:
-            key = e["date"].strftime("%Y-%m") if hasattr(e["date"], "strftime") else str(e["date"])[:7]
+            key = _entry_date(e["date"]).strftime("%Y-%m")
             if key != prefix:
                 continue
             acc = by_account[e["account_name"]]
@@ -93,6 +164,11 @@ def predict_cash_flow(monthly_net: list[float], months_ahead: int = 1) -> dict:
     seasonality, one-off events, or trend changes. Say so to the user
     rather than presenting it as more certain than it is.
     """
+    if not isinstance(monthly_net, list) or len(monthly_net) > 120:
+        raise ValueError("Historical cash-flow series exceeds the supported limit.")
+    if isinstance(months_ahead, bool) or not isinstance(months_ahead, int) or not 1 <= months_ahead <= MAX_COPILOT_MONTHS_AHEAD:
+        raise ValueError("months_ahead must be between 1 and 24.")
+    monthly_net = [_finite_number(v, "monthly_net") for v in monthly_net]
     n = len(monthly_net)
     if n < 2:
         raise ValueError("Need at least 2 months of history to project a trend.")
@@ -105,7 +181,13 @@ def predict_cash_flow(monthly_net: list[float], months_ahead: int = 1) -> dict:
     slope = numerator / denominator if denominator else 0.0
     intercept = mean_y - slope * mean_x
 
-    predictions = [round(intercept + slope * (n - 1 + m), 2) for m in range(1, months_ahead + 1)]
+    if not math.isfinite(slope) or not math.isfinite(intercept):
+        raise ValueError("Copilot trend calculation exceeded finite numeric bounds.")
+
+    predictions = [intercept + slope * (n - 1 + m) for m in range(1, months_ahead + 1)]
+    if not all(math.isfinite(value) for value in predictions):
+        raise ValueError("Copilot forecast exceeded finite numeric bounds.")
+    predictions = [round(value, 2) for value in predictions]
 
     return {
         "historical_months": n,
@@ -124,6 +206,7 @@ def gst_summary_from_entries(entries: list[dict]) -> dict:
     complements the standalone GST calculator (tax_engine.py) which works
     from manually-entered invoice values instead of posted books.
     """
+    _validate_entries(entries)
     gst_accounts = defaultdict(float)
     for e in entries:
         if e["account_type"] == "liability" and "gst" in (e["account_name"] or "").lower():

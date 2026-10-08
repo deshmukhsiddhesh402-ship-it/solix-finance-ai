@@ -8,7 +8,9 @@ Fine for a single-user demo; production should use Redis or object storage
 """
 import io
 import uuid
+import zipfile
 import pandas as pd
+import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -19,17 +21,82 @@ from app.services.excel_automation_engine import (
 )
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_ROWS = 100_000
+MAX_COLUMNS = 200
+MAX_EXCEL_ZIP_ENTRIES = 200
+MAX_EXCEL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_CLEANED_SESSIONS = 1000
+CLEANED_SESSION_TTL_SECONDS = 30 * 60
 
 _CLEANED_FILES: dict[str, dict] = {}
+
+def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
+    current = time.time() if now is None else now
+    expired = [
+        sid for sid, session in _CLEANED_FILES.items()
+        if current - session.get("created_at", current) >= CLEANED_SESSION_TTL_SECONDS
+    ]
+    for sid in expired:
+        _CLEANED_FILES.pop(sid, None)
+
+def _store_cleaned_session(session_id: str, session: dict) -> None:
+    _purge_expired_cleaned_sessions()
+    if len(_CLEANED_FILES) >= MAX_CLEANED_SESSIONS:
+        oldest = min(_CLEANED_FILES, key=lambda sid: _CLEANED_FILES[sid].get("created_at", 0))
+        _CLEANED_FILES.pop(oldest, None)
+    _CLEANED_FILES[session_id] = session
+
+def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
+    try:
+        session_uuid = uuid.UUID(str(session_id))
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+    _purge_expired_cleaned_sessions()
+    session = _CLEANED_FILES.get(str(session_uuid))
+    if session is None:
+        raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
+    if session["org_id"] != str(org_uuid):
+        raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
+    if session["user_id"] != str(user_uuid):
+        raise HTTPException(403, detail="Cleaned file session does not belong to this user.")
+    return session
+
+
+def _validate_excel_archive(file_bytes: bytes) -> None:
+    """Reject ZIP-based spreadsheets with excessive archive expansion/entries."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_EXCEL_ZIP_ENTRIES:
+                raise HTTPException(413, detail="Spreadsheet contains too many archive entries.")
+            total_uncompressed = sum(max(0, info.file_size) for info in infos)
+            if total_uncompressed > MAX_EXCEL_UNCOMPRESSED_BYTES:
+                raise HTTPException(413, detail="Spreadsheet expands beyond the supported size limit.")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, detail="Invalid XLSX/XLSM archive.") from exc
+
+
+def _validate_dataframe_shape(df: pd.DataFrame) -> pd.DataFrame:
+    if len(df.index) > MAX_ROWS:
+        raise HTTPException(413, detail=f"Spreadsheet exceeds the {MAX_ROWS:,}-row limit.")
+    if len(df.columns) > MAX_COLUMNS:
+        raise HTTPException(413, detail=f"Spreadsheet exceeds the {MAX_COLUMNS}-column limit.")
+    return df
 
 
 def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
     lower = filename.lower()
     if lower.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(file_bytes))
-    if lower.endswith((".xlsx", ".xlsm")):
-        return pd.read_excel(io.BytesIO(file_bytes))
-    raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
+        df = pd.read_csv(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
+    elif lower.endswith((".xlsx", ".xlsm")):
+        _validate_excel_archive(file_bytes)
+        df = pd.read_excel(io.BytesIO(file_bytes))
+    else:
+        raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
+    return _validate_dataframe_shape(df)
 
 
 @router.post("/auto-clean")
@@ -43,8 +110,15 @@ async def auto_clean(
     """Run the full pipeline: clean -> dedupe -> detect errors -> (optional) categorize.
     Returns a JSON summary + preview rows, plus a session_id to download the cleaned file.
     """
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     file_bytes = await file.read()
-    df = _read_upload_to_df(file.filename, file_bytes)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
+    df = _read_upload_to_df(file.filename or "", file_bytes)
 
     cleaned, clean_report = clean_dataframe(df)
 
@@ -61,7 +135,7 @@ async def auto_clean(
             raise HTTPException(422, detail=str(e))
 
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": cleaned, "org_id": org_id, "user_id": user_id}
+    _store_cleaned_session(session_id, {"df": cleaned, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
 
     preview = cleaned.head(10).fillna("").to_dict(orient="records")
 
@@ -78,11 +152,7 @@ async def auto_clean(
 
 @router.get("/download/{session_id}")
 def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("reports", "view"))):
-    session = _CLEANED_FILES.get(session_id)
-    if session is None:
-        raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
-    if session["org_id"] != org_id:
-        raise HTTPException(403, detail="Cleaned file session does not belong to this organization.")
+    session = _get_cleaned_session(session_id, org_id, _user)
     df = session["df"]
     if df is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
@@ -107,19 +177,30 @@ class MergeRequest(BaseModel):
 def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id: str = Depends(require_permission("reports", "create"))):
     """Merge previously-cleaned sessions (by concatenation) into one dataset."""
     dfs = []
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     for sid in req.session_ids:
-        session = _CLEANED_FILES.get(sid)
+        try:
+            session_uuid = uuid.UUID(str(sid))
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise HTTPException(400, detail="Invalid cleaned-file session identifier.") from exc
+        session = _CLEANED_FILES.get(str(session_uuid))
         if session is None:
             raise HTTPException(404, detail=f"Session {sid} not found.")
-        if session["org_id"] != org_id:
+        if session["org_id"] != str(org_uuid):
             raise HTTPException(403, detail=f"Session {sid} does not belong to this organization.")
+        if session["user_id"] != str(user_uuid):
+            raise HTTPException(403, detail=f"Session {sid} does not belong to this user.")
         dfs.append(session["df"])
     if not dfs:
         raise HTTPException(422, detail="No valid sessions provided.")
 
     merged = pd.concat(dfs, ignore_index=True, sort=False)
     session_id = str(uuid.uuid4())
-    _CLEANED_FILES[session_id] = {"df": merged, "org_id": org_id, "user_id": user_id}
+    _store_cleaned_session(session_id, {"df": merged, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     return {
         "session_id": session_id,
         "row_count": len(merged),

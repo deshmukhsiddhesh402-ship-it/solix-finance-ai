@@ -1,8 +1,9 @@
 """
 Module 2: Accounting — API layer over accounting_engine.py
 """
+import math
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
@@ -22,9 +23,26 @@ class LedgerLineIn(BaseModel):
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
     debit: float = Field(default=0.0, ge=0)
     credit: float = Field(default=0.0, ge=0)
+    gst_rate_pct: float | None = Field(default=None, ge=0, le=100)
+    gst_type: Literal["IGST", "CGST", "SGST", "NONE"] | None = None
+    gst_taxable_value: float | None = Field(default=None, ge=0)
+    tds_section: str | None = Field(default=None, min_length=3, max_length=10)
+    tds_rate: float | None = Field(default=None, ge=0, le=100)
+    tds_amount: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def require_one_positive_side(self):
+        numeric_values = {
+            "debit": self.debit,
+            "credit": self.credit,
+            "gst_rate_pct": self.gst_rate_pct,
+            "gst_taxable_value": self.gst_taxable_value,
+            "tds_rate": self.tds_rate,
+            "tds_amount": self.tds_amount,
+        }
+        for field_name, value in numeric_values.items():
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{field_name} must be finite.")
         if (self.debit > 0) == (self.credit > 0):
             raise ValueError("Each journal line must have a positive amount on exactly one side.")
         return self
@@ -34,7 +52,8 @@ class LedgerLineIn(BaseModel):
 
 @router.post("/journal-entries")
 def create_journal_entry(
-    entry_date: str, narration: str, lines: list[LedgerLineIn],
+    entry_date: str = Query(...), narration: str = Query(..., min_length=1, max_length=2000),
+    lines: list[LedgerLineIn] = Body(..., min_length=2, max_length=500),
     org_id: str = Query(...), db=Depends(get_db),
     _user: str = Depends(require_permission("journal_entry", "create")),
 ):
@@ -45,7 +64,6 @@ def create_journal_entry(
     Uses a simple get-or-create on chart_of_accounts by (org_id, name) so
     you don't have to pre-provision accounts before posting entries.
     """
-    from datetime import date as date_type
     from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
 
     try:
@@ -54,6 +72,12 @@ def create_journal_entry(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
+    from datetime import date as date_type
+    try:
+        parsed_entry_date = date_type.fromisoformat(entry_date)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, detail="entry_date must be a valid ISO date (YYYY-MM-DD).") from exc
+
     lines_dec = [LedgerLine(**l.dict()) for l in lines]
     if len(lines_dec) < 2:
         raise HTTPException(422, detail="A journal entry requires at least two lines.")
@@ -61,7 +85,7 @@ def create_journal_entry(
     if not tb_check["is_balanced"]:
         raise HTTPException(422, detail="Journal entry does not balance (total debits != total credits).")
 
-    entry = JournalEntry(org_id=org_uuid, entry_date=date_type.fromisoformat(entry_date), narration=narration, created_by=user_uuid)
+    entry = JournalEntry(org_id=org_uuid, entry_date=parsed_entry_date, narration=narration, created_by=user_uuid)
     db.add(entry)
     db.flush()
 
@@ -80,7 +104,11 @@ def create_journal_entry(
             )
             db.add(account)
             db.flush()
-        db.add(JournalLine(journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit))
+        db.add(JournalLine(
+            journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit,
+            gst_rate_pct=line.gst_rate_pct, gst_type=line.gst_type, gst_taxable_value=line.gst_taxable_value,
+            tds_section=line.tds_section, tds_rate=line.tds_rate, tds_amount=line.tds_amount,
+        ))
 
     from app.models.enterprise import AuditLog
     db.add(AuditLog(
@@ -127,14 +155,21 @@ def balance_sheet(req: TrialBalanceRequest):
 
 
 class RatiosRequest(BaseModel):
-    current_assets: float
-    current_liabilities: float
-    inventory: float
-    total_debt: float
-    total_equity: float
+    current_assets: float = Field(ge=0)
+    current_liabilities: float = Field(ge=0)
+    inventory: float = Field(ge=0)
+    total_debt: float = Field(ge=0)
+    total_equity: float = Field(ge=0)
     net_profit: float
-    revenue: float
-    total_assets: float
+    revenue: float = Field(ge=0)
+    total_assets: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        for name, value in self.__dict__.items():
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite.")
+        return self
 
 
 @router.post("/ratios")
@@ -143,9 +178,17 @@ def ratios(req: RatiosRequest):
 
 
 class StraightLineRequest(BaseModel):
-    cost: float
-    salvage: float
-    useful_life_years: int
+    cost: float = Field(ge=0)
+    salvage: float = Field(ge=0)
+    useful_life_years: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_inputs(self):
+        if not all(math.isfinite(v) for v in (self.cost, self.salvage)):
+            raise ValueError("cost and salvage must be finite.")
+        if self.salvage > self.cost:
+            raise ValueError("salvage cannot exceed cost.")
+        return self
 
 
 @router.post("/depreciation/straight-line")
@@ -155,9 +198,15 @@ def depreciation_straight_line(req: StraightLineRequest):
 
 
 class WdvRequest(BaseModel):
-    cost: float
-    rate_pct: float
-    years: int
+    cost: float = Field(ge=0)
+    rate_pct: float = Field(gt=0, le=100)
+    years: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        if not all(math.isfinite(v) for v in (self.cost, self.rate_pct)):
+            raise ValueError("cost and rate_pct must be finite.")
+        return self
 
 
 @router.post("/depreciation/wdv")
@@ -167,8 +216,14 @@ def depreciation_wdv(req: WdvRequest):
 
 class InventoryTxnIn(BaseModel):
     txn_type: Literal["purchase", "sale"]
-    quantity: float
-    unit_cost: float = 0.0
+    quantity: float = Field(gt=0)
+    unit_cost: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def require_finite_values(self):
+        if not all(math.isfinite(v) for v in (self.quantity, self.unit_cost)):
+            raise ValueError("quantity and unit_cost must be finite.")
+        return self
 
 
 class InventoryValuationRequest(BaseModel):

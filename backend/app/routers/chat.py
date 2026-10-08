@@ -1,5 +1,6 @@
 """Module 7: AI Chat — tenant-scoped document upload + RAG."""
 import uuid
+import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -12,12 +13,40 @@ from app.core.db import get_db
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_CHAT_SESSIONS = 1000
+CHAT_SESSION_TTL_SECONDS = 30 * 60
 
 # session_id -> {filename, index, org_id}
 _TFIDF_SESSIONS: dict[str, dict] = {}
 # session_id -> {filename, org_id, user_id}
 _SEMANTIC_SESSIONS: dict[str, dict] = {}
 
+def _purge_expired_chat_sessions(now: float | None = None) -> None:
+    current = time.time() if now is None else now
+    for store in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS):
+        expired = [
+            sid for sid, session in store.items()
+            if current - session.get("created_at", current) >= CHAT_SESSION_TTL_SECONDS
+        ]
+        for sid in expired:
+            store.pop(sid, None)
+
+def _store_chat_session(store: dict[str, dict], session_id: str, session: dict) -> None:
+    _purge_expired_chat_sessions()
+    total = len(_TFIDF_SESSIONS) + len(_SEMANTIC_SESSIONS)
+    if total >= MAX_CHAT_SESSIONS:
+        all_sessions = [
+            (sid, data, target)
+            for target in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS)
+            for sid, data in target.items()
+        ]
+        if all_sessions:
+            oldest_sid, _, oldest_store = min(
+                all_sessions, key=lambda item: item[1].get("created_at", 0)
+            )
+            oldest_store.pop(oldest_sid, None)
+    store[session_id] = session
 
 def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
     return session_org_id == org_id
@@ -37,6 +66,8 @@ async def upload_document(
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
     file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.")
     try:
         text = extract_text(file.filename, file_bytes)
     except ValueError as e:
@@ -58,16 +89,16 @@ async def upload_document(
             db.add(DocumentChunk(document_id=doc_row.id, chunk_text=chunk_text_, embedding=vector))
         db.commit()
         session_id = str(doc_row.id)
-        _SEMANTIC_SESSIONS[session_id] = {
-            "filename": file.filename, "org_id": str(org_uuid), "user_id": str(user_uuid),
-        }
+        _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
+            "filename": file.filename, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time(),
+        })
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
     session_id = str(uuid.uuid4())
-    _TFIDF_SESSIONS[session_id] = {
+    _store_chat_session(_TFIDF_SESSIONS, session_id, {
         "filename": file.filename, "index": build_index(chunks), "org_id": str(org_uuid),
-        "user_id": str(user_uuid),
-    }
+        "user_id": str(user_uuid), "created_at": time.time(),
+    })
     return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
 
 
@@ -82,31 +113,39 @@ def ask_question(
     req: AskRequest,
     org_id: str = Query(...),
     db: Session = Depends(get_db),
-    _user: str = Depends(require_permission("chat", "view")),
+    user_id: str = Depends(require_permission("chat", "view")),
 ):
+    try:
+        session_uuid = uuid.UUID(str(req.session_id))
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid session, organization, or user identifier.") from exc
+
+    _purge_expired_chat_sessions()
     filename = None
     matches: list[dict] = []
 
-    if req.session_id in _SEMANTIC_SESSIONS:
-        session = _SEMANTIC_SESSIONS[req.session_id]
-        if not _authorized_session_org(session["org_id"], org_id):
+    if str(session_uuid) in _SEMANTIC_SESSIONS:
+        session = _SEMANTIC_SESSIONS[str(session_uuid)]
+        if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
+        if session["user_id"] != str(user_uuid):
+            raise HTTPException(403, detail="Document session does not belong to this user.")
         from app.models.document import Document
-        try:
-            doc_uuid = uuid.UUID(req.session_id)
-            org_uuid = uuid.UUID(org_id)
-        except (ValueError, AttributeError, TypeError) as exc:
-            raise HTTPException(400, detail="Invalid session or organization identifier.") from exc
+        doc_uuid = session_uuid
         doc = db.query(Document).filter(Document.id == doc_uuid, Document.org_id == org_uuid).first()
         if not doc:
             raise HTTPException(404, detail="Document session not found.")
         filename = session["filename"]
         query_embedding = get_query_embedding(req.question)
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
-    elif req.session_id in _TFIDF_SESSIONS:
-        session = _TFIDF_SESSIONS[req.session_id]
-        if not _authorized_session_org(session["org_id"], org_id):
+    elif str(session_uuid) in _TFIDF_SESSIONS:
+        session = _TFIDF_SESSIONS[str(session_uuid)]
+        if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
+        if session["user_id"] != str(user_uuid):
+            raise HTTPException(403, detail="Document session does not belong to this user.")
         filename = session["filename"]
         matches = retrieve(req.question, session["index"], top_k=req.top_k)
     else:

@@ -60,7 +60,18 @@ CREATE TABLE journal_lines (
     account_id      UUID REFERENCES chart_of_accounts(id),
     debit           NUMERIC(18,2) NOT NULL DEFAULT 0,
     credit          NUMERIC(18,2) NOT NULL DEFAULT 0,
-    CHECK (debit >= 0 AND credit >= 0)
+    gst_rate_pct    NUMERIC(5,2),
+    gst_type        VARCHAR(10),
+    gst_taxable_value NUMERIC(18,2),
+    tds_section     VARCHAR(10),
+    tds_rate        NUMERIC(5,2),
+    tds_amount      NUMERIC(18,2),
+    CHECK (debit >= 0 AND credit >= 0),
+    CHECK (gst_rate_pct IS NULL OR (gst_rate_pct >= 0 AND gst_rate_pct <= 100)),
+    CHECK (gst_type IS NULL OR gst_type IN ('IGST', 'CGST', 'SGST', 'NONE')),
+    CHECK (gst_taxable_value IS NULL OR gst_taxable_value >= 0),
+    CHECK (tds_rate IS NULL OR (tds_rate >= 0 AND tds_rate <= 100)),
+    CHECK (tds_amount IS NULL OR tds_amount >= 0)
 );
 
 CREATE TABLE fixed_assets (
@@ -171,6 +182,8 @@ CREATE TABLE chat_messages (
 
 -- Indexes
 CREATE INDEX idx_journal_lines_account ON journal_lines(account_id);
+CREATE INDEX idx_journal_lines_gst_tag ON journal_lines(gst_type, gst_rate_pct);
+CREATE INDEX idx_journal_lines_tds_tag ON journal_lines(tds_section, tds_rate);
 CREATE INDEX idx_journal_entries_org_date ON journal_entries(org_id, entry_date);
 CREATE INDEX idx_bank_statements_org ON bank_statements(org_id, txn_date);
 CREATE INDEX idx_doc_chunks_embedding ON document_chunks USING ivfflat (embedding vector_cosine_ops);

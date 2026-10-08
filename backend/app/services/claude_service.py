@@ -10,13 +10,30 @@ in exactly one place instead of scattering client calls across routers.
 """
 import anthropic
 import json
+
 from app.core.config import settings
+
+MAX_CLAUDE_INPUT_CHARS = 50_000
+MAX_CLAUDE_SYSTEM_CHARS = 20_000
+MAX_CLAUDE_OUTPUT_TOKENS = 4_000
+MAX_CLAUDE_TOOL_COUNT = 32
+MAX_CLAUDE_IMAGE_BASE64_CHARS = 15_000_000
+
+
+def _validate_request(system_prompt: str, user_message: str, max_tokens: int) -> None:
+    if not isinstance(system_prompt, str) or len(system_prompt) > MAX_CLAUDE_SYSTEM_CHARS:
+        raise ValueError("System prompt exceeds the supported length limit.")
+    if not isinstance(user_message, str) or len(user_message) > MAX_CLAUDE_INPUT_CHARS:
+        raise ValueError("User input exceeds the supported length limit.")
+    if max_tokens < 1 or max_tokens > MAX_CLAUDE_OUTPUT_TOKENS:
+        raise ValueError("max_tokens must be between 1 and 4000.")
 
 _client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 def ask_claude(system_prompt: str, user_message: str, max_tokens: int = 1500) -> str:
     """Send a single-turn request to Claude and return the text response."""
+    _validate_request(system_prompt, user_message, max_tokens)
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
@@ -34,6 +51,9 @@ def ask_claude_with_image(
     Invoice/Receipt OCR module — Claude reads the document visually rather
     than relying on a separate OCR engine like Tesseract).
     """
+    _validate_request(system_prompt, user_text, max_tokens)
+    if not isinstance(image_base64, str) or not image_base64 or len(image_base64) > MAX_CLAUDE_IMAGE_BASE64_CHARS:
+        raise ValueError("Image payload exceeds the supported size limit.")
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
@@ -58,6 +78,9 @@ def ask_claude_with_tools(
     stop_reason and content blocks (see app.routers.copilot for the full
     two-step orchestration: ask -> execute tool -> ask again with result).
     """
+    _validate_request(system_prompt, user_message, max_tokens)
+    if not isinstance(tools, list) or len(tools) > MAX_CLAUDE_TOOL_COUNT:
+        raise ValueError("Tool count exceeds the supported limit.")
     return _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
@@ -75,6 +98,16 @@ def continue_with_tool_result(
     result back to Claude so it can write the final natural-language answer
     grounded in actual computed numbers, not invented ones.
     """
+    _validate_request(system_prompt, user_message, max_tokens)
+    if not isinstance(tools, list) or len(tools) > MAX_CLAUDE_TOOL_COUNT:
+        raise ValueError("Tool count exceeds the supported limit.")
+    if not isinstance(tool_use_id, str) or not tool_use_id:
+        raise ValueError("tool_use_id is required.")
+    if not isinstance(assistant_content, list):
+        raise ValueError("assistant_content must be a list.")
+    serialized_result = json.dumps(tool_result, default=str)
+    if len(serialized_result) > MAX_CLAUDE_INPUT_CHARS:
+        raise ValueError("Tool result exceeds the supported length limit.")
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
@@ -84,7 +117,7 @@ def continue_with_tool_result(
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": assistant_content},
             {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": tool_use_id, "content": json.dumps(tool_result, default=str)},
+                {"type": "tool_result", "tool_use_id": tool_use_id, "content": serialized_result},
             ]},
         ],
     )

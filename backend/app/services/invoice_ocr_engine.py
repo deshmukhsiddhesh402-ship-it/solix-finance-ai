@@ -16,6 +16,7 @@ Excel or accounting journal entries.
 import io
 import re
 import base64
+import math
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -56,20 +57,27 @@ def extract_state_code(gstin: str) -> str | None:
 # ---------------------------------------------------------------------------
 # PDF -> image rasterization (for scanned/image-based invoice PDFs)
 # ---------------------------------------------------------------------------
-def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200) -> list[bytes]:
+def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -> list[bytes]:
     """Rasterize each PDF page to a PNG image (as bytes) using PyMuPDF.
     Needed because scanned invoice PDFs have no extractable text layer —
     Claude's vision has to look at the page as a picture.
     """
     import fitz  # PyMuPDF — local import: only needed on this path
+    if dpi <= 0:
+        raise ValueError("DPI must be positive.")
+    if max_pages <= 0:
+        raise ValueError("max_pages must be positive.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
-    for page in doc:
-        pix = page.get_pixmap(matrix=matrix)
-        images.append(pix.tobytes("png"))
-    return images
+    try:
+        for page in list(doc)[:max_pages]:
+            pix = page.get_pixmap(matrix=matrix)
+            images.append(pix.tobytes("png"))
+        return images
+    finally:
+        doc.close()
 
 
 def encode_image_base64(image_bytes: bytes) -> str:
@@ -122,6 +130,18 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     sgst = round(float(invoice.get("sgst_amount") or 0), 2)
     igst = round(float(invoice.get("igst_amount") or 0), 2)
     total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+
+    values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
+    if not all(math.isfinite(v) for v in values.values()):
+        raise ValueError("Invoice amounts must be finite numeric values.")
+    if any(v < 0 for v in values.values()):
+        raise ValueError("Invoice monetary values cannot be negative.")
+    expected_total = round(taxable + cgst + sgst + igst, 2)
+    if abs(expected_total - total) > 0.01:
+        raise ValueError(
+            f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
+            "Review the extracted fields before posting."
+        )
 
     vendor = invoice.get("vendor_name") or "Unknown Vendor"
 
