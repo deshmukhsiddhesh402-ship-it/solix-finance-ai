@@ -811,3 +811,10 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+def test_gstr3b_rejects_invalid_line_type():
+    from app.services.tax_engine import gstr3b_summary
+
+    with pytest.raises(ValueError, match="GstInvoiceLine"):
+        gstr3b_summary([{"taxable_value": 1000, "gst_rate_pct": 18, "is_interstate": False}])
