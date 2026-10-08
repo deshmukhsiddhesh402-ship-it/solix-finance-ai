@@ -110,6 +110,9 @@ def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0
     """Slab-wise income tax under the new regime, with standard deduction,
     Section 87A rebate (nil tax up to ₹12L taxable income), and 4% cess.
     """
+    _require_finite_non_negative(gross_salary, "gross_salary")
+    _require_finite_non_negative(other_income, "other_income")
+
     taxable_income = max(0.0, gross_salary - STANDARD_DEDUCTION_NEW_REGIME) + other_income
 
     tax = 0.0

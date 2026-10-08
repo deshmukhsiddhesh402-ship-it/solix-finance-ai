@@ -765,3 +765,14 @@ def test_trial_balance_rejects_invalid_direct_line_type():
 
     with pytest.raises(ValueError, match="LedgerLine"):
         build_trial_balance([{"account_name": "Cash", "account_type": "asset", "debit": 1, "credit": 0}])
+
+
+def test_income_tax_engine_rejects_invalid_direct_inputs():
+    from app.services.tax_engine import calculate_income_tax_new_regime
+
+    with pytest.raises(ValueError, match="gross_salary"):
+        calculate_income_tax_new_regime(-1, 0)
+    with pytest.raises(ValueError, match="gross_salary"):
+        calculate_income_tax_new_regime(float("nan"), 0)
+    with pytest.raises(ValueError, match="other_income"):
+        calculate_income_tax_new_regime(500000, float("inf"))
