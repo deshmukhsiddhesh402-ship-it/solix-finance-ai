@@ -26,6 +26,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
 app.include_router(excel_ai.router, prefix="/api/excel-ai", tags=["AI Excel Assistant"])
 app.include_router(accounting.router, prefix="/api/accounting", tags=["Accounting"])
 app.include_router(tax.router, prefix="/api/tax", tags=["Indian Tax"])
