@@ -156,8 +156,8 @@ def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[
         raise ValueError("cost and rate_pct must be finite.")
     if cost < 0 or rate_pct <= 0 or rate_pct > 100:
         raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
-    if years < 1:
-        raise ValueError("years must be at least 1.")
+    if isinstance(years, bool) or not isinstance(years, int) or years < 1:
+        raise ValueError("years must be a positive integer.")
     schedule = []
     book_value = cost
     for year in range(1, years + 1):
