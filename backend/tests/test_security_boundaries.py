@@ -776,3 +776,13 @@ def test_income_tax_engine_rejects_invalid_direct_inputs():
         calculate_income_tax_new_regime(float("nan"), 0)
     with pytest.raises(ValueError, match="other_income"):
         calculate_income_tax_new_regime(500000, float("inf"))
+
+
+def test_trial_balance_rejects_conflicting_account_types():
+    from app.services.accounting_engine import LedgerLine, build_trial_balance
+
+    with pytest.raises(ValueError, match="multiple account types"):
+        build_trial_balance([
+            LedgerLine("Cash", "asset", debit=100, credit=0),
+            LedgerLine("Cash", "income", debit=0, credit=100),
+        ])
