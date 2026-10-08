@@ -802,3 +802,12 @@ def test_wdv_rejects_non_integer_years():
         wdv_depreciation_schedule(10000, 10, 1.5)
     with pytest.raises(ValueError, match="positive integer"):
         wdv_depreciation_schedule(10000, 10, True)
+
+
+def test_tds_rejects_invalid_section_and_pan_flag_types():
+    from app.services.tax_engine import calculate_tds
+
+    with pytest.raises(ValueError, match="non-empty string"):
+        calculate_tds(1000, "   ")
+    with pytest.raises(ValueError, match="boolean"):
+        calculate_tds(1000, "194C", "yes")
