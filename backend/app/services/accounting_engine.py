@@ -5,6 +5,7 @@ from CLI scripts, notebooks, or the API router.
 """
 from dataclasses import dataclass
 from typing import Literal
+import math
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +25,14 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     """
     totals: dict[str, dict] = {}
     for line in lines:
+        if not line.account_name or not line.account_name.strip():
+            raise ValueError("Account name must be non-empty.")
+        if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
+            raise ValueError("Invalid account type.")
+        if not math.isfinite(line.debit) or not math.isfinite(line.credit):
+            raise ValueError("Debit and credit amounts must be finite.")
+        if line.debit < 0 or line.credit < 0:
+            raise ValueError("Debit and credit amounts cannot be negative.")
         acc = totals.setdefault(
             line.account_name, {"type": line.account_type, "debit": 0.0, "credit": 0.0}
         )
@@ -85,6 +94,11 @@ def financial_ratios(
     total_debt: float, total_equity: float, net_profit: float, revenue: float,
     total_assets: float,
 ) -> dict:
+    values = (current_assets, current_liabilities, inventory, total_debt, total_equity, net_profit, revenue, total_assets)
+    if not all(math.isfinite(v) for v in values):
+        raise ValueError("Financial ratio inputs must be finite.")
+    if any(v < 0 for v in (current_assets, current_liabilities, inventory, total_debt, total_equity, revenue, total_assets)):
+        raise ValueError("Financial ratio balance inputs cannot be negative.")
     return {
         "current_ratio": round(current_assets / current_liabilities, 2) if current_liabilities else None,
         "quick_ratio": round((current_assets - inventory) / current_liabilities, 2) if current_liabilities else None,
