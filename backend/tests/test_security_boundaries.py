@@ -758,3 +758,14 @@ def test_financial_statements_reject_invalid_direct_rows():
         build_balance_sheet([], float("inf"))
     with pytest.raises(ValueError, match="negative"):
         build_balance_sheet([{"type": "asset", "debit": -1, "credit": 0}], 0)
+
+
+def test_income_tax_engine_rejects_invalid_direct_inputs():
+    from app.services.tax_engine import calculate_income_tax_new_regime
+
+    with pytest.raises(ValueError, match="gross_salary"):
+        calculate_income_tax_new_regime(-1, 0)
+    with pytest.raises(ValueError, match="gross_salary"):
+        calculate_income_tax_new_regime(float("nan"), 0)
+    with pytest.raises(ValueError, match="other_income"):
+        calculate_income_tax_new_regime(500000, float("inf"))
