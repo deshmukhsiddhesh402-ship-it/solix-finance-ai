@@ -27,8 +27,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     for line in lines:
         if not isinstance(line, LedgerLine):
             raise ValueError("Trial balance lines must be LedgerLine objects.")
-        if not line.account_name or not line.account_name.strip():
-            raise ValueError("Account name must be non-empty.")
+        if not isinstance(line.account_name, str) or not line.account_name.strip():
+            raise ValueError("Account name must be a non-empty string.")
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
         if not math.isfinite(line.debit) or not math.isfinite(line.credit):
