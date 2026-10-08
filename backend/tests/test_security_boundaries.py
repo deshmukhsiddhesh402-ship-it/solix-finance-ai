@@ -744,3 +744,17 @@ def test_financial_ratios_reject_inventory_above_current_assets():
 
     with pytest.raises(ValueError, match="Inventory cannot exceed current assets"):
         financial_ratios(100, 50, 101, 0, 100, 10, 200, 300)
+
+
+
+def test_financial_statements_reject_invalid_direct_rows():
+    from app.services.accounting_engine import build_profit_and_loss, build_balance_sheet
+
+    with pytest.raises(ValueError, match="finite"):
+        build_profit_and_loss([{"type": "income", "debit": float("nan"), "credit": 100}])
+    with pytest.raises(ValueError, match="invalid account type"):
+        build_profit_and_loss([{"type": "unknown", "debit": 0, "credit": 100}])
+    with pytest.raises(ValueError, match="finite"):
+        build_balance_sheet([], float("inf"))
+    with pytest.raises(ValueError, match="negative"):
+        build_balance_sheet([{"type": "asset", "debit": -1, "credit": 0}], 0)
