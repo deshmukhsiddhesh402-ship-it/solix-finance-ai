@@ -2,7 +2,10 @@
 Solix Finance AI — FastAPI backend entrypoint.
 Run: uvicorn app.main:app --reload --port 8000
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
+
+from app.core.db import SessionLocal
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import excel_ai, accounting, tax, banking, analysis, chat, excel_automation, learning, auth, invoice_ocr, dashboard, copilot, enterprise, billing
@@ -40,6 +43,20 @@ app.include_router(billing.router, prefix="/api/billing", tags=["Subscription Bi
 
 
 @app.get("/api/health", tags=["System"])
+
 def health_check():
     """Simple liveness check used by Docker/Railway health probes."""
     return {"status": "ok", "service": "solix-finance-ai-backend"}
+
+
+@app.get("/api/ready", tags=["System"])
+def readiness_check():
+    """Readiness probe: verify the backend can reach its configured database."""
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ready", "service": "solix-finance-ai-backend", "database": "ok"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database is not ready.") from exc
+    finally:
+        db.close()
