@@ -699,3 +699,24 @@ def test_inventory_valuation_preserves_valid_fifo_result():
     assert result["closing_quantity"] == 3
     assert result["closing_inventory_value"] == 360
     assert result["cogs"] == 1240
+
+
+
+def test_accounting_engine_rejects_non_finite_and_negative_ledger_values():
+    from app.services.accounting_engine import LedgerLine, build_trial_balance
+
+    with pytest.raises(ValueError, match="finite"):
+        build_trial_balance([LedgerLine("Cash", "asset", float("nan"), 0)])
+    with pytest.raises(ValueError, match="negative"):
+        build_trial_balance([LedgerLine("Cash", "asset", -1, 0)])
+    with pytest.raises(ValueError, match="non-empty"):
+        build_trial_balance([LedgerLine(" ", "asset", 1, 0)])
+
+
+def test_accounting_engine_rejects_non_finite_and_negative_ratio_inputs():
+    from app.services.accounting_engine import financial_ratios
+
+    with pytest.raises(ValueError, match="finite"):
+        financial_ratios(float("inf"), 1, 0, 0, 1, 1, 1, 1)
+    with pytest.raises(ValueError, match="negative"):
+        financial_ratios(-1, 1, 0, 0, 1, 1, 1, 1)
