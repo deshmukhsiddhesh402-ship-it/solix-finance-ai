@@ -786,3 +786,10 @@ def test_trial_balance_rejects_conflicting_account_types():
             LedgerLine("Cash", "asset", debit=100, credit=0),
             LedgerLine("Cash", "income", debit=0, credit=100),
         ])
+
+
+def test_gst_rejects_non_boolean_interstate_flag():
+    from app.services.tax_engine import calculate_gst
+
+    with pytest.raises(ValueError, match="is_interstate"):
+        calculate_gst(1000, 18, "false")
