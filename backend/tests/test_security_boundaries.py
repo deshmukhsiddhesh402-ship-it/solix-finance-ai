@@ -758,3 +758,10 @@ def test_financial_statements_reject_invalid_direct_rows():
         build_balance_sheet([], float("inf"))
     with pytest.raises(ValueError, match="negative"):
         build_balance_sheet([{"type": "asset", "debit": -1, "credit": 0}], 0)
+
+
+def test_trial_balance_rejects_invalid_direct_line_type():
+    from app.services.accounting_engine import build_trial_balance
+
+    with pytest.raises(ValueError, match="LedgerLine"):
+        build_trial_balance([{"account_name": "Cash", "account_type": "asset", "debit": 1, "credit": 0}])
