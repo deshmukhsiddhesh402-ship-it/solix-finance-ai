@@ -793,3 +793,12 @@ def test_gst_rejects_non_boolean_interstate_flag():
 
     with pytest.raises(ValueError, match="is_interstate"):
         calculate_gst(1000, 18, "false")
+
+
+def test_tds_rejects_invalid_section_and_pan_flag_types():
+    from app.services.tax_engine import calculate_tds
+
+    with pytest.raises(ValueError, match="non-empty string"):
+        calculate_tds(1000, "   ")
+    with pytest.raises(ValueError, match="boolean"):
+        calculate_tds(1000, "194C", "yes")
