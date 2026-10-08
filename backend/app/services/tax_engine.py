@@ -80,6 +80,10 @@ def calculate_tds(amount_paid: float, section: str, has_pan: bool = True) -> dic
     If the deductee has no PAN, TDS is charged at 20% flat per Sec 206AA.
     """
     _require_finite_non_negative(amount_paid, "amount_paid")
+    if not isinstance(section, str) or not section.strip():
+        raise ValueError("section must be a non-empty string.")
+    if not isinstance(has_pan, bool):
+        raise ValueError("has_pan must be a boolean.")
     rate = TDS_SECTION_RATES.get(section)
     if rate is None:
         raise ValueError(f"Section {section} requires slab-based calculation, not flat rate.")
