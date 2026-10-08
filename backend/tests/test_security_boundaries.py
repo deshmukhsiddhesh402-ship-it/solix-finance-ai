@@ -736,3 +736,22 @@ def test_depreciation_engine_rejects_invalid_direct_inputs():
         wdv_depreciation_schedule(1000, 101, 1)
     with pytest.raises(ValueError, match="finite"):
         wdv_depreciation_schedule(1000, float("inf"), 1)
+
+
+
+def test_financial_statements_reject_invalid_direct_rows():
+    from app.services.accounting_engine import build_profit_and_loss, build_balance_sheet
+
+    invalid_rows = [{"type": "income", "debit": float("nan"), "credit": 100}]
+    with pytest.raises(ValueError, match="finite"):
+        build_profit_and_loss(invalid_rows)
+
+    invalid_type = [{"type": "unknown", "debit": 0, "credit": 100}]
+    with pytest.raises(ValueError, match="invalid account type"):
+        build_profit_and_loss(invalid_type)
+
+    with pytest.raises(ValueError, match="finite"):
+        build_balance_sheet([], float("inf"))
+
+    with pytest.raises(ValueError, match="negative"):
+        build_balance_sheet([{"type": "asset", "debit": -1, "credit": 0}], 0)
