@@ -2,6 +2,7 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import List
+from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
@@ -26,8 +27,16 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")
             if self.DATABASE_URL == "postgresql://solix:solix@localhost:5432/solix_finance_ai":
                 raise ValueError("Production requires an explicitly configured DATABASE_URL.")
-            if not self.ALLOWED_ORIGINS or any(origin.strip() == "*" for origin in self.ALLOWED_ORIGINS):
+            if not self.ALLOWED_ORIGINS or any(not origin.strip() or origin.strip() == "*" for origin in self.ALLOWED_ORIGINS):
                 raise ValueError("Production requires explicit ALLOWED_ORIGINS.")
+            for origin in self.ALLOWED_ORIGINS:
+                parsed = urlparse(origin.strip())
+                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
+                if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+                    raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
+        if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
+            raise ValueError("JWT_ALGORITHM must be one of HS256, HS384, or HS512.")
         if self.JWT_EXPIRE_MINUTES <= 0:
             raise ValueError("JWT_EXPIRE_MINUTES must be positive.")
         return self

@@ -392,3 +392,8 @@ def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(mo
 
     assert result == {"status": "ok"}
     assert db.commit_called is False
+
+
+def test_rejects_unsafe_jwt_algorithm():
+    with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
+        Settings(JWT_ALGORITHM="none")
