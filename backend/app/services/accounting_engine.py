@@ -63,8 +63,25 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     }
 
 
+def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
+    """Validate rows before financial statements consume them directly."""
+    valid_types = {"asset", "liability", "equity", "income", "expense"}
+    for row in trial_balance_rows:
+        if not isinstance(row, dict):
+            raise ValueError("Trial balance rows must be objects.")
+        if not isinstance(row.get("type"), str) or row["type"] not in valid_types:
+            raise ValueError("Trial balance row has an invalid account type.")
+        for field in ("debit", "credit"):
+            value = row.get(field)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                raise ValueError("Trial balance amounts must be finite numbers.")
+            if value < 0:
+                raise ValueError("Trial balance amounts cannot be negative.")
+
+
 def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
     """Derive P&L from trial balance income/expense accounts."""
+    _validate_trial_balance_rows(trial_balance_rows)
     income = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "income")
     expense = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "expense")
     net_profit = income - expense
@@ -74,6 +91,9 @@ def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
 
 def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
     """Derive Balance Sheet from trial balance asset/liability/equity accounts."""
+    _validate_trial_balance_rows(trial_balance_rows)
+    if not isinstance(net_profit, (int, float)) or isinstance(net_profit, bool) or not math.isfinite(net_profit):
+        raise ValueError("Net profit must be a finite number.")
     assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
     liabilities = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability")
     equity = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity")
