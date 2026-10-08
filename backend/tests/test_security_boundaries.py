@@ -793,3 +793,12 @@ def test_gst_rejects_non_boolean_interstate_flag():
 
     with pytest.raises(ValueError, match="is_interstate"):
         calculate_gst(1000, 18, "false")
+
+
+def test_wdv_rejects_non_integer_years():
+    from app.services.accounting_engine import wdv_depreciation_schedule
+
+    with pytest.raises(ValueError, match="positive integer"):
+        wdv_depreciation_schedule(10000, 10, 1.5)
+    with pytest.raises(ValueError, match="positive integer"):
+        wdv_depreciation_schedule(10000, 10, True)
