@@ -38,6 +38,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
         acc = totals.setdefault(
             line.account_name, {"type": line.account_type, "debit": 0.0, "credit": 0.0}
         )
+        if acc["type"] != line.account_type:
+            raise ValueError("Account cannot have multiple account types.")
         acc["debit"] += line.debit
         acc["credit"] += line.credit
 
