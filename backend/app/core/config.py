@@ -35,6 +35,8 @@ class Settings(BaseSettings):
                     raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
                 if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
+        if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
+            raise ValueError("JWT_ALGORITHM must be one of HS256, HS384, or HS512.")
         if self.JWT_EXPIRE_MINUTES <= 0:
             raise ValueError("JWT_EXPIRE_MINUTES must be positive.")
         return self
