@@ -28,6 +28,8 @@ def calculate_gst(taxable_value: float, gst_rate_pct: float, is_interstate: bool
     """Split GST into IGST (interstate) or CGST+SGST (intrastate)."""
     _require_finite_non_negative(taxable_value, "taxable_value")
     _require_rate(gst_rate_pct, "gst_rate_pct")
+    if not isinstance(is_interstate, bool):
+        raise ValueError("is_interstate must be a boolean.")
     total_tax = round(taxable_value * (gst_rate_pct / 100), 2)
     if is_interstate:
         return {"taxable_value": taxable_value, "igst": total_tax, "cgst": 0.0,
