@@ -736,3 +736,11 @@ def test_depreciation_engine_rejects_invalid_direct_inputs():
         wdv_depreciation_schedule(1000, 101, 1)
     with pytest.raises(ValueError, match="finite"):
         wdv_depreciation_schedule(1000, float("inf"), 1)
+
+
+
+def test_financial_ratios_reject_inventory_above_current_assets():
+    from app.services.accounting_engine import financial_ratios
+
+    with pytest.raises(ValueError, match="Inventory cannot exceed current assets"):
+        financial_ratios(100, 50, 101, 0, 100, 10, 200, 300)
