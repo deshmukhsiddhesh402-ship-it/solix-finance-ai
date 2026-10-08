@@ -776,3 +776,12 @@ def test_income_tax_engine_rejects_invalid_direct_inputs():
         calculate_income_tax_new_regime(float("nan"), 0)
     with pytest.raises(ValueError, match="other_income"):
         calculate_income_tax_new_regime(500000, float("inf"))
+
+
+def test_tds_rejects_invalid_direct_input_types():
+    from app.services.tax_engine import calculate_tds
+
+    with pytest.raises(ValueError, match="section"):
+        calculate_tds(1000, "", True)
+    with pytest.raises(ValueError, match="has_pan"):
+        calculate_tds(1000, "194J", "yes")
