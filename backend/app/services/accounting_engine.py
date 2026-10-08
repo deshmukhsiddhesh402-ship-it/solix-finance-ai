@@ -124,15 +124,33 @@ class InventoryTxn:
 
 
 def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO", "WAVG"]) -> dict:
-    """Return closing inventory value and COGS for a sequence of transactions."""
+    """Return closing inventory value and COGS for a sequence of transactions.
+
+    Inventory cannot be sold below zero. Direct engine callers are validated
+    here as well as at the API boundary so financial calculations fail closed.
+    """
+    if method not in {"FIFO", "LIFO", "WAVG"}:
+        raise ValueError("Unsupported inventory valuation method.")
+
     lots = []  # list of [qty, unit_cost] — order matters for FIFO/LIFO
     cogs = 0.0
+
+    for txn in txns:
+        if txn.txn_type not in {"purchase", "sale"}:
+            raise ValueError("Inventory transaction type must be purchase or sale.")
+        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
+            raise ValueError("Inventory quantity and unit cost must be finite.")
+        if txn.quantity <= 0 or txn.unit_cost < 0:
+            raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
 
     for txn in txns:
         if txn.txn_type == "purchase":
             lots.append([txn.quantity, txn.unit_cost])
         else:  # sale
             qty_to_sell = txn.quantity
+            available_qty = sum(l[0] for l in lots)
+            if qty_to_sell > available_qty:
+                raise ValueError("Sale quantity exceeds available inventory.")
             if method == "WAVG":
                 total_qty = sum(l[0] for l in lots)
                 total_val = sum(l[0] * l[1] for l in lots)
