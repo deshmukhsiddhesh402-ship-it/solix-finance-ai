@@ -720,3 +720,19 @@ def test_accounting_engine_rejects_non_finite_and_negative_ratio_inputs():
         financial_ratios(float("inf"), 1, 0, 0, 1, 1, 1, 1)
     with pytest.raises(ValueError, match="negative"):
         financial_ratios(-1, 1, 0, 0, 1, 1, 1, 1)
+
+
+
+def test_depreciation_engine_rejects_invalid_direct_inputs():
+    from app.services.accounting_engine import straight_line_depreciation, wdv_depreciation_schedule
+
+    with pytest.raises(ValueError, match="finite"):
+        straight_line_depreciation(float("nan"), 0, 5)
+    with pytest.raises(ValueError, match="cannot exceed"):
+        straight_line_depreciation(100, 101, 5)
+    with pytest.raises(ValueError, match="at least 1"):
+        straight_line_depreciation(100, 0, 0)
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        wdv_depreciation_schedule(1000, 101, 1)
+    with pytest.raises(ValueError, match="finite"):
+        wdv_depreciation_schedule(1000, float("inf"), 1)

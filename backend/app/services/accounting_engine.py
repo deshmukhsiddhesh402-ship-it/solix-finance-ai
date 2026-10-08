@@ -113,11 +113,25 @@ def financial_ratios(
 # Depreciation
 # ---------------------------------------------------------------------------
 def straight_line_depreciation(cost: float, salvage: float, useful_life_years: int) -> float:
+    if not all(math.isfinite(v) for v in (cost, salvage)):
+        raise ValueError("cost and salvage must be finite.")
+    if cost < 0 or salvage < 0:
+        raise ValueError("cost and salvage cannot be negative.")
+    if salvage > cost:
+        raise ValueError("salvage cannot exceed cost.")
+    if useful_life_years < 1:
+        raise ValueError("useful_life_years must be at least 1.")
     return round((cost - salvage) / useful_life_years, 2)
 
 
 def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[dict]:
     """Written Down Value (reducing balance) method — common under Indian Companies Act."""
+    if not all(math.isfinite(v) for v in (cost, rate_pct)):
+        raise ValueError("cost and rate_pct must be finite.")
+    if cost < 0 or rate_pct <= 0 or rate_pct > 100:
+        raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
+    if years < 1:
+        raise ValueError("years must be at least 1.")
     schedule = []
     book_value = cost
     for year in range(1, years + 1):
