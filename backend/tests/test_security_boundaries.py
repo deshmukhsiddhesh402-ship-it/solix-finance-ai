@@ -802,3 +802,10 @@ def test_wdv_rejects_non_integer_years():
         wdv_depreciation_schedule(10000, 10, 1.5)
     with pytest.raises(ValueError, match="positive integer"):
         wdv_depreciation_schedule(10000, 10, True)
+
+
+def test_gstr3b_rejects_invalid_line_type():
+    from app.services.tax_engine import gstr3b_summary
+
+    with pytest.raises(ValueError, match="GstInvoiceLine"):
+        gstr3b_summary([{"taxable_value": 1000, "gst_rate_pct": 18, "is_interstate": False}])
