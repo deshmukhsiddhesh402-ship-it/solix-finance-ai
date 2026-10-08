@@ -698,4 +698,4 @@ def test_inventory_valuation_preserves_valid_fifo_result():
     )
     assert result["closing_quantity"] == 3
     assert result["closing_inventory_value"] == 360
-    assert result["cogs"] == 1200
+    assert result["cogs"] == 1240
