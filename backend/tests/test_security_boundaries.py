@@ -786,3 +786,12 @@ def test_trial_balance_rejects_conflicting_account_types():
             LedgerLine("Cash", "asset", debit=100, credit=0),
             LedgerLine("Cash", "income", debit=0, credit=100),
         ])
+
+
+def test_tds_rejects_invalid_direct_input_types():
+    from app.services.tax_engine import calculate_tds
+
+    with pytest.raises(ValueError, match="section"):
+        calculate_tds(1000, "", True)
+    with pytest.raises(ValueError, match="has_pan"):
+        calculate_tds(1000, "194J", "yes")
