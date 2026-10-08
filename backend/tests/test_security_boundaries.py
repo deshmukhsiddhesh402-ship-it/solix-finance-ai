@@ -657,3 +657,45 @@ def test_copilot_engine_bounds_are_fail_closed():
         predict_cash_flow([1.0, float("nan")])
     with pytest.raises(ValueError):
         predict_cash_flow([1.0, 2.0], months_ahead=25)
+
+
+
+def test_inventory_valuation_rejects_overselling():
+    from app.services.accounting_engine import InventoryTxn, inventory_valuation
+
+    txns = [InventoryTxn("purchase", 10, 100)]
+    for method in ("FIFO", "LIFO", "WAVG"):
+        with pytest.raises(ValueError, match="exceeds available inventory"):
+            inventory_valuation(txns + [InventoryTxn("sale", 11, 0)], method)
+
+
+def test_inventory_valuation_rejects_non_finite_direct_inputs():
+    from app.services.accounting_engine import InventoryTxn, inventory_valuation
+
+    with pytest.raises(ValueError, match="finite"):
+        inventory_valuation([InventoryTxn("purchase", float("nan"), 100)], "FIFO")
+    with pytest.raises(ValueError, match="finite"):
+        inventory_valuation([InventoryTxn("purchase", 1, float("inf"))], "FIFO")
+
+
+def test_inventory_valuation_rejects_invalid_method_and_amounts():
+    from app.services.accounting_engine import InventoryTxn, inventory_valuation
+
+    with pytest.raises(ValueError, match="Unsupported"):
+        inventory_valuation([InventoryTxn("purchase", 1, 100)], "BAD")
+    with pytest.raises(ValueError, match="positive"):
+        inventory_valuation([InventoryTxn("purchase", 0, 100)], "FIFO")
+    with pytest.raises(ValueError, match="non-negative"):
+        inventory_valuation([InventoryTxn("purchase", 1, -1)], "FIFO")
+
+
+def test_inventory_valuation_preserves_valid_fifo_result():
+    from app.services.accounting_engine import InventoryTxn, inventory_valuation
+
+    result = inventory_valuation(
+        [InventoryTxn("purchase", 10, 100), InventoryTxn("purchase", 5, 120), InventoryTxn("sale", 12, 0)],
+        "FIFO",
+    )
+    assert result["closing_quantity"] == 3
+    assert result["closing_inventory_value"] == 360
+    assert result["cogs"] == 1200
