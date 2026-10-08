@@ -99,6 +99,8 @@ def financial_ratios(
         raise ValueError("Financial ratio inputs must be finite.")
     if any(v < 0 for v in (current_assets, current_liabilities, inventory, total_debt, total_equity, revenue, total_assets)):
         raise ValueError("Financial ratio balance inputs cannot be negative.")
+    if inventory > current_assets:
+        raise ValueError("Inventory cannot exceed current assets.")
     return {
         "current_ratio": round(current_assets / current_liabilities, 2) if current_liabilities else None,
         "quick_ratio": round((current_assets - inventory) / current_liabilities, 2) if current_liabilities else None,
