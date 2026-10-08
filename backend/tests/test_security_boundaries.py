@@ -793,3 +793,10 @@ def test_gst_rejects_non_boolean_interstate_flag():
 
     with pytest.raises(ValueError, match="is_interstate"):
         calculate_gst(1000, 18, "false")
+
+
+def test_gstr3b_rejects_invalid_line_type():
+    from app.services.tax_engine import gstr3b_summary
+
+    with pytest.raises(ValueError, match="GstInvoiceLine"):
+        gstr3b_summary([{"taxable_value": 1000, "gst_rate_pct": 18, "is_interstate": False}])
