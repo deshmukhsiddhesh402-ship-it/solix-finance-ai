@@ -776,3 +776,10 @@ def test_income_tax_engine_rejects_invalid_direct_inputs():
         calculate_income_tax_new_regime(float("nan"), 0)
     with pytest.raises(ValueError, match="other_income"):
         calculate_income_tax_new_regime(500000, float("inf"))
+
+
+def test_gst_rejects_non_boolean_interstate_flag():
+    from app.services.tax_engine import calculate_gst
+
+    with pytest.raises(ValueError, match="is_interstate"):
+        calculate_gst(1000, 18, "false")
