@@ -198,7 +198,7 @@ def depreciation_straight_line(req: StraightLineRequest):
 
 
 class WdvRequest(BaseModel):
-    cost: float = Field(ge=0)
+    cost: float = Field(ge=0, strict=True)
     rate_pct: float = Field(gt=0, le=100, strict=True)
     years: int = Field(ge=1)
 
