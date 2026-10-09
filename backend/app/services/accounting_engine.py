@@ -20,7 +20,7 @@ class LedgerLine:
 
 
 def _validate_ledger_amount(value: object, label: str) -> None:
-    """Reject bools, non-numbers, non-finite values, and float-overflow inputs."""
+    """Reject bools, non-numeric values, and values that overflow float checks."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{label} must be a finite number.")
     try:
@@ -32,7 +32,9 @@ def _validate_ledger_amount(value: object, label: str) -> None:
 
 
 def build_trial_balance(lines: list[LedgerLine]) -> dict:
-    """Aggregate ledger lines and indicate whether debit/credit balances match."""
+    """Aggregate ledger lines by account and return a trial balance.
+    Raises ValueError if total debits != total credits (books don't balance).
+    """
     totals: dict[str, dict] = {}
     for line in lines:
         if not isinstance(line, LedgerLine):
@@ -111,7 +113,7 @@ def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> di
     assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
     liabilities = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability")
     equity = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity")
-    equity += net_profit
+    equity += net_profit  # roll current-year profit into equity
     return {
         "total_assets": round(assets, 2),
         "total_liabilities": round(liabilities, 2),
@@ -184,22 +186,25 @@ def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[
 class InventoryTxn:
     txn_type: Literal["purchase", "sale"]
     quantity: float
-    unit_cost: float = 0.0
+    unit_cost: float = 0.0  # only relevant for purchases
 
 
 def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO", "WAVG"]) -> dict:
-    """Return closing inventory value and COGS for a sequence of transactions."""
+    """Return closing inventory value and COGS for a sequence of transactions.
+
+    Inventory cannot be sold below zero. Direct engine callers are validated
+    here as well as at the API boundary so financial calculations fail closed.
+    """
     if method not in {"FIFO", "LIFO", "WAVG"}:
         raise ValueError("Unsupported inventory valuation method.")
 
-    lots = []
+    lots = []  # list of [qty, unit_cost] — order matters for FIFO/LIFO
     cogs = 0.0
+
     for txn in txns:
-        if not isinstance(txn, InventoryTxn):
-            raise ValueError("Inventory transactions must be InventoryTxn objects.")
         if txn.txn_type not in {"purchase", "sale"}:
             raise ValueError("Inventory transaction type must be purchase or sale.")
-        if not all(math.isfinite(value) for value in (txn.quantity, txn.unit_cost)):
+        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
             raise ValueError("Inventory quantity and unit cost must be finite.")
         if txn.quantity <= 0 or txn.unit_cost < 0:
             raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
@@ -207,7 +212,7 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
     for txn in txns:
         if txn.txn_type == "purchase":
             lots.append([txn.quantity, txn.unit_cost])
-        else:
+        else:  # sale
             qty_to_sell = txn.quantity
             available_qty = sum(l[0] for l in lots)
             if qty_to_sell > available_qty:
@@ -217,6 +222,7 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
                 total_val = sum(l[0] * l[1] for l in lots)
                 avg_cost = total_val / total_qty if total_qty else 0
                 cogs += qty_to_sell * avg_cost
+                # reduce proportionally across all lots
                 remaining_qty = total_qty - qty_to_sell
                 lots = [[remaining_qty, avg_cost]] if remaining_qty > 0 else []
             else:
