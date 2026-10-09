@@ -64,3 +64,14 @@ def test_integer_and_decimal_inputs_remain_supported():
     )
     assert ratios.current_assets == 10.0
     assert ratios.net_profit == -1.5
+
+
+@pytest.mark.parametrize("model,values,field", [
+    (StraightLineRequest, {"cost": 100, "salvage": 10, "useful_life_years": 5}, "useful_life_years"),
+    (WdvRequest, {"cost": 100, "rate_pct": 20, "years": 5}, "years"),
+])
+def test_depreciation_models_reject_boolean_periods(model, values, field):
+    invalid = dict(values)
+    invalid[field] = True
+    with pytest.raises(ValidationError):
+        model(**invalid)
