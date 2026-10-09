@@ -9,6 +9,8 @@ import pytest
 
 from app.services.accounting_engine import (
     InventoryTxn,
+    build_balance_sheet,
+    build_profit_and_loss,
     financial_ratios,
     inventory_valuation,
     straight_line_depreciation,
@@ -80,3 +82,18 @@ def test_valid_direct_engine_calculations_remain_supported():
     )
     assert result["closing_quantity"] == 8
     assert result["closing_inventory_value"] == 96.0
+
+
+@pytest.mark.parametrize("field", ["debit", "credit"])
+@pytest.mark.parametrize("bad_value", [True, 10**10000], ids=["bool", "huge-int"])
+def test_financial_statement_rows_reject_boolean_and_overflowing_amounts(field, bad_value):
+    row = {"account": "Sales", "type": "income", "debit": 0, "credit": 100}
+    row[field] = bad_value
+    with pytest.raises(ValueError):
+        build_profit_and_loss([row])
+
+
+@pytest.mark.parametrize("bad_value", [True, 10**10000], ids=["bool", "huge-int"])
+def test_balance_sheet_rejects_boolean_and_overflowing_net_profit(bad_value):
+    with pytest.raises(ValueError):
+        build_balance_sheet([], bad_value)
