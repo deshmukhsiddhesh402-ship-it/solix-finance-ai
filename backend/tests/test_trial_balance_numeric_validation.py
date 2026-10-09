@@ -34,3 +34,19 @@ def test_trial_balance_preserves_valid_balanced_entries():
     assert result["is_balanced"] is True
     assert result["total_debit"] == 1000.0
     assert result["total_credit"] == 1000.0
+
+
+def test_trial_balance_rejects_finite_entries_whose_aggregate_overflows():
+    with pytest.raises(ValueError):
+        build_trial_balance([
+            LedgerLine("Cash", "asset", debit=1e308, credit=0),
+            LedgerLine("Cash", "asset", debit=1e308, credit=0),
+        ])
+
+
+def test_trial_balance_rejects_overflowing_total_across_accounts():
+    with pytest.raises(ValueError):
+        build_trial_balance([
+            LedgerLine("Cash", "asset", debit=1e308, credit=0),
+            LedgerLine("Equipment", "asset", debit=1e308, credit=0),
+        ])
