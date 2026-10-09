@@ -59,6 +59,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Account cannot have multiple account types.")
         acc["debit"] += line.debit
         acc["credit"] += line.credit
+        _validate_finite_numeric(acc["debit"], "Aggregated debit amount")
+        _validate_finite_numeric(acc["credit"], "Aggregated credit amount")
 
     rows = []
     total_debit, total_credit = 0.0, 0.0
@@ -74,6 +76,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
         })
         total_debit += debit_balance
         total_credit += credit_balance
+        _validate_finite_numeric(total_debit, "Total debit amount")
+        _validate_finite_numeric(total_credit, "Total credit amount")
 
     is_balanced = round(total_debit - total_credit, 2) == 0.0
     return {
