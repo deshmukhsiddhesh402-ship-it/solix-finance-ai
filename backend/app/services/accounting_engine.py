@@ -94,8 +94,10 @@ def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
             raise ValueError("Trial balance row has an invalid account type.")
         for field in ("debit", "credit"):
             value = row.get(field)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
-                raise ValueError("Trial balance amounts must be finite numbers.")
+            try:
+                _validate_finite_numeric(value, "Trial balance amount")
+            except ValueError as exc:
+                raise ValueError("Trial balance amounts must be finite numbers.") from exc
             if value < 0:
                 raise ValueError("Trial balance amounts cannot be negative.")
 
@@ -113,8 +115,10 @@ def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
 def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
     """Derive Balance Sheet from trial balance asset/liability/equity accounts."""
     _validate_trial_balance_rows(trial_balance_rows)
-    if not isinstance(net_profit, (int, float)) or isinstance(net_profit, bool) or not math.isfinite(net_profit):
-        raise ValueError("Net profit must be a finite number.")
+    try:
+        _validate_finite_numeric(net_profit, "Net profit")
+    except ValueError as exc:
+        raise ValueError("Net profit must be a finite number.") from exc
     assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
     liabilities = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability")
     equity = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity")
