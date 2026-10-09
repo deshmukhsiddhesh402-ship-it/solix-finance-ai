@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# CI workflows invoke pytest from different working directories.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pytest
 
 from app.services.tax_engine import (
