@@ -180,7 +180,7 @@ def ratios(req: RatiosRequest):
 class StraightLineRequest(BaseModel):
     cost: float = Field(ge=0, strict=True)
     salvage: float = Field(ge=0, strict=True)
-    useful_life_years: int = Field(ge=1)
+    useful_life_years: int = Field(ge=1, strict=True)
 
     @model_validator(mode="after")
     def validate_inputs(self):
@@ -200,7 +200,7 @@ def depreciation_straight_line(req: StraightLineRequest):
 class WdvRequest(BaseModel):
     cost: float = Field(ge=0, strict=True)
     rate_pct: float = Field(gt=0, le=100, strict=True)
-    years: int = Field(ge=1)
+    years: int = Field(ge=1, strict=True)
 
     @model_validator(mode="after")
     def require_finite_values(self):
