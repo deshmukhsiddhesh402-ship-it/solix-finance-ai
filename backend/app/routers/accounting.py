@@ -155,14 +155,14 @@ def balance_sheet(req: TrialBalanceRequest):
 
 
 class RatiosRequest(BaseModel):
-    current_assets: float = Field(ge=0)
-    current_liabilities: float = Field(ge=0)
-    inventory: float = Field(ge=0)
-    total_debt: float = Field(ge=0)
-    total_equity: float = Field(ge=0)
-    net_profit: float
-    revenue: float = Field(ge=0)
-    total_assets: float = Field(ge=0)
+    current_assets: float = Field(ge=0, strict=True)
+    current_liabilities: float = Field(ge=0, strict=True)
+    inventory: float = Field(ge=0, strict=True)
+    total_debt: float = Field(ge=0, strict=True)
+    total_equity: float = Field(ge=0, strict=True)
+    net_profit: float = Field(strict=True)
+    revenue: float = Field(ge=0, strict=True)
+    total_assets: float = Field(ge=0, strict=True)
 
     @model_validator(mode="after")
     def require_finite_values(self):
@@ -178,8 +178,8 @@ def ratios(req: RatiosRequest):
 
 
 class StraightLineRequest(BaseModel):
-    cost: float = Field(ge=0)
-    salvage: float = Field(ge=0)
+    cost: float = Field(ge=0, strict=True)
+    salvage: float = Field(ge=0, strict=True)
     useful_life_years: int = Field(ge=1)
 
     @model_validator(mode="after")
@@ -198,8 +198,8 @@ def depreciation_straight_line(req: StraightLineRequest):
 
 
 class WdvRequest(BaseModel):
-    cost: float = Field(ge=0)
-    rate_pct: float = Field(gt=0, le=100)
+    cost: float = Field(ge=0, strict=True)
+    rate_pct: float = Field(gt=0, le=100, strict=True)
     years: int = Field(ge=1)
 
     @model_validator(mode="after")
@@ -216,8 +216,8 @@ def depreciation_wdv(req: WdvRequest):
 
 class InventoryTxnIn(BaseModel):
     txn_type: Literal["purchase", "sale"]
-    quantity: float = Field(gt=0)
-    unit_cost: float = Field(ge=0)
+    quantity: float = Field(gt=0, strict=True)
+    unit_cost: float = Field(ge=0, strict=True)
 
     @model_validator(mode="after")
     def require_finite_values(self):
