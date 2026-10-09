@@ -19,8 +19,8 @@ class LedgerLine:
     credit: float = 0.0
 
 
-def _validate_ledger_amount(value: object, label: str) -> None:
-    """Reject bools, non-numeric values, and values that overflow float checks."""
+def _validate_finite_numeric(value: object, label: str) -> None:
+    """Reject booleans, non-numeric values, and values that overflow float checks."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{label} must be a finite number.")
     try:
@@ -29,6 +29,11 @@ def _validate_ledger_amount(value: object, label: str) -> None:
         valid = False
     if not valid:
         raise ValueError(f"{label} must be a finite number.")
+
+
+def _validate_ledger_amount(value: object, label: str) -> None:
+    """Compatibility wrapper for ledger amount validation."""
+    _validate_finite_numeric(value, label)
 
 
 def build_trial_balance(lines: list[LedgerLine]) -> dict:
@@ -130,9 +135,18 @@ def financial_ratios(
     total_debt: float, total_equity: float, net_profit: float, revenue: float,
     total_assets: float,
 ) -> dict:
-    values = (current_assets, current_liabilities, inventory, total_debt, total_equity, net_profit, revenue, total_assets)
-    if not all(math.isfinite(v) for v in values):
-        raise ValueError("Financial ratio inputs must be finite.")
+    values = {
+        "current_assets": current_assets,
+        "current_liabilities": current_liabilities,
+        "inventory": inventory,
+        "total_debt": total_debt,
+        "total_equity": total_equity,
+        "net_profit": net_profit,
+        "revenue": revenue,
+        "total_assets": total_assets,
+    }
+    for name, value in values.items():
+        _validate_finite_numeric(value, f"Financial ratio {name}")
     if any(v < 0 for v in (current_assets, current_liabilities, inventory, total_debt, total_equity, revenue, total_assets)):
         raise ValueError("Financial ratio balance inputs cannot be negative.")
     if inventory > current_assets:
@@ -151,8 +165,10 @@ def financial_ratios(
 # Depreciation
 # ---------------------------------------------------------------------------
 def straight_line_depreciation(cost: float, salvage: float, useful_life_years: int) -> float:
-    if not all(math.isfinite(v) for v in (cost, salvage)):
-        raise ValueError("cost and salvage must be finite.")
+    _validate_finite_numeric(cost, "Depreciation cost")
+    _validate_finite_numeric(salvage, "Depreciation salvage")
+    if isinstance(useful_life_years, bool) or not isinstance(useful_life_years, int):
+        raise ValueError("useful_life_years must be a positive integer.")
     if cost < 0 or salvage < 0:
         raise ValueError("cost and salvage cannot be negative.")
     if salvage > cost:
@@ -164,8 +180,8 @@ def straight_line_depreciation(cost: float, salvage: float, useful_life_years: i
 
 def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[dict]:
     """Written Down Value (reducing balance) method — common under Indian Companies Act."""
-    if not all(math.isfinite(v) for v in (cost, rate_pct)):
-        raise ValueError("cost and rate_pct must be finite.")
+    _validate_finite_numeric(cost, "WDV cost")
+    _validate_finite_numeric(rate_pct, "WDV rate")
     if cost < 0 or rate_pct <= 0 or rate_pct > 100:
         raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
     if isinstance(years, bool) or not isinstance(years, int) or years < 1:
@@ -204,8 +220,8 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
     for txn in txns:
         if txn.txn_type not in {"purchase", "sale"}:
             raise ValueError("Inventory transaction type must be purchase or sale.")
-        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
-            raise ValueError("Inventory quantity and unit cost must be finite.")
+        _validate_finite_numeric(txn.quantity, "Inventory quantity")
+        _validate_finite_numeric(txn.unit_cost, "Inventory unit cost")
         if txn.quantity <= 0 or txn.unit_cost < 0:
             raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
 
