@@ -1,4 +1,10 @@
 """Regression tests for strict numeric inputs across accounting request models."""
+import sys
+from pathlib import Path
+
+# The CI workflows invoke pytest from different working directories.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pytest
 from pydantic import ValidationError
 
