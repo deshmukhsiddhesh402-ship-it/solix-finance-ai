@@ -9,10 +9,7 @@ from app.services.tax_engine import (
 )
 
 
-@pytest.mark.parametrize(
-    "value",
-    [True, False, "100", None, float("nan"), float("inf"), -1],
-)
+@pytest.mark.parametrize("value", [True, False, "100", None, float("nan"), float("inf"), -1])
 def test_gst_rejects_invalid_taxable_values(value):
     with pytest.raises(ValueError):
         calculate_gst(value, 18, True)
@@ -30,7 +27,7 @@ def test_gst_requires_boolean_interstate_flag(value):
         calculate_gst(100, 18, value)
 
 
-@pytest.mark.parametrize("section", ["", " ", None, 194C, [], {}])
+@pytest.mark.parametrize("section", ["", " ", None, 194, [], {}])
 def test_tds_rejects_invalid_section_types(section):
     with pytest.raises(ValueError):
         calculate_tds(1000, section)
