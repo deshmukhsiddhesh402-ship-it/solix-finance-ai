@@ -10,13 +10,29 @@ from dataclasses import dataclass
 import math
 
 
+def _require_number(value: object, label: str) -> None:
+    """Reject bools and non-numeric values before Python treats bool as int."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a number.")
+
+
 def _require_finite_non_negative(value: float, label: str) -> None:
-    if not math.isfinite(value) or value < 0:
+    _require_number(value, label)
+    try:
+        valid = math.isfinite(value) and value >= 0
+    except (OverflowError, TypeError):
+        valid = False
+    if not valid:
         raise ValueError(f"{label} must be a finite, non-negative number.")
 
 
 def _require_rate(value: float, label: str) -> None:
-    if not math.isfinite(value) or value < 0 or value > 100:
+    _require_number(value, label)
+    try:
+        valid = math.isfinite(value) and 0 <= value <= 100
+    except (OverflowError, TypeError):
+        valid = False
+    if not valid:
         raise ValueError(f"{label} must be a finite percentage between 0 and 100.")
 
 
