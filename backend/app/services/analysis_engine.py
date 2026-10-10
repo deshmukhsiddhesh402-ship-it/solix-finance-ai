@@ -173,6 +173,7 @@ def scenario_analysis(scenarios: list[Scenario]) -> dict:
         raise ValueError("scenarios must be a list of Scenario objects.")
 
     rows = []
+    raw_profits = []
     weighted_profit = 0.0
     total_prob = 0.0
     for index, scenario in enumerate(scenarios):
@@ -193,6 +194,7 @@ def scenario_analysis(scenarios: list[Scenario]) -> dict:
         profit = scenario.revenue - scenario.cost
         if not math.isfinite(profit):
             raise ValueError(f"scenarios[{index}] profit is not finite.")
+        raw_profits.append(profit)
         rows.append({
             "name": scenario.name, "revenue": scenario.revenue, "cost": scenario.cost,
             "profit": round(profit, 2), "probability_pct": scenario.probability_pct,
@@ -202,8 +204,8 @@ def scenario_analysis(scenarios: list[Scenario]) -> dict:
         raise ValueError("Total scenario probability must be finite.")
     if total_prob > 0:
         weighted_profit = sum(
-            row["profit"] * (row["probability_pct"] / total_prob)
-            for row in rows
+            profit * (row["probability_pct"] / total_prob)
+            for profit, row in zip(raw_profits, rows)
         )
         if not math.isfinite(weighted_profit):
             raise ValueError("Expected scenario profit is not finite.")
