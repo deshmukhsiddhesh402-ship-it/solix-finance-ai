@@ -397,3 +397,35 @@ def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(mo
 def test_rejects_unsafe_jwt_algorithm():
     with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
         Settings(JWT_ALGORITHM="none")
+
+def test_development_otp_disclosure_is_disabled_by_default():
+    settings = Settings(ENV="development")
+    assert settings.DEV_OTP_ENABLED is False
+
+
+def test_production_rejects_development_otp_disclosure():
+    with pytest.raises(ValidationError, match="DEV_OTP_ENABLED"):
+        Settings(
+            ENV="production",
+            DEV_OTP_ENABLED=True,
+            JWT_SECRET="a" * 40,
+            DATABASE_URL="postgresql://user:password@db:5432/solix",
+            ALLOWED_ORIGINS=["https://solix.example.com"],
+        )
+
+
+def test_otp_request_only_returns_dev_otp_when_explicitly_enabled(monkeypatch):
+    import app.routers.auth as auth_router
+    from app.core.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "ENV", "development")
+    monkeypatch.setattr(app_settings, "DEV_OTP_ENABLED", False)
+    monkeypatch.setattr(auth_router, "generate_otp", lambda email: "123456")
+    monkeypatch.setattr(auth_router, "send_otp_via_email_or_sms", lambda email, otp: None)
+
+    response = auth_router.request_otp(auth_router.OtpRequestBody(email="otp-guard@example.com"))
+    assert "dev_otp" not in response
+
+    monkeypatch.setattr(app_settings, "DEV_OTP_ENABLED", True)
+    response = auth_router.request_otp(auth_router.OtpRequestBody(email="otp-guard-enabled@example.com"))
+    assert response["dev_otp"] == "123456"
