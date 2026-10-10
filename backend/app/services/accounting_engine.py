@@ -196,7 +196,7 @@ def straight_line_depreciation(cost: float, salvage: float, useful_life_years: i
     if salvage_decimal > cost_decimal:
         raise ValueError("salvage cannot exceed cost.")
     if isinstance(useful_life_years, bool) or not isinstance(useful_life_years, int) or useful_life_years < 1:
-        raise ValueError("useful_life_years must be a positive integer.")
+        raise ValueError("useful_life_years must be at least 1 and must be a positive integer.")
     annual_depreciation = (cost_decimal - salvage_decimal) / Decimal(useful_life_years)
     return float(_quantize_money(annual_depreciation))
 
