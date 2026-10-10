@@ -451,3 +451,15 @@ def test_otp_delivery_is_skipped_only_for_explicit_local_development(monkeypatch
     monkeypatch.setattr(app_settings, "ENV", "production")
     with pytest.raises(RuntimeError, match="delivery provider is not configured"):
         send_otp_via_email_or_sms("production@example.com", "123456")
+
+
+def test_settings_require_explicit_environment_when_env_file_is_absent(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValidationError, match="ENV"):
+        Settings()
+
+
+def test_settings_reject_unknown_environment():
+    with pytest.raises(ValidationError, match="ENV must be one of"):
+        Settings(ENV="production-ish")
