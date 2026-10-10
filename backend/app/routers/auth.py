@@ -31,7 +31,7 @@ def request_otp(req: OtpRequestBody):
         raise HTTPException(503, detail="OTP delivery is not configured.") from exc
 
     response = {"message": "If the address is eligible, an OTP will be sent."}
-    if settings.ENV.strip().lower() in {"development", "dev"}:
+    if settings.ENV.strip().lower() in {"development", "dev"} and settings.DEV_OTP_ENABLED:
         response["dev_otp"] = otp
     return response
 
@@ -68,32 +68,26 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
         db.flush()
         db.add(OrgMembership(user_id=user.id, org_id=organization.id, role="admin"))
         db.commit()
-        db.refresh(user)
-    elif user.org_id is None:
-        # Repair legacy users created before tenant assignment was enforced.
-        organization = Organization(name="Personal Workspace")
-        db.add(organization)
-        db.flush()
-        user.org_id = organization.id
-        user.role = "owner"
-        db.add(OrgMembership(user_id=user.id, org_id=organization.id, role="admin"))
-        db.commit()
-        db.refresh(user)
-
     else:
-        # Fail closed if a legacy user points at a tenant without a matching membership.
-        membership = (
-            db.query(OrgMembership)
-            .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
-            .first()
-        )
-        if membership is None:
-            raise HTTPException(403, detail="User tenant membership is not configured.")
+        membership = db.query(OrgMembership).filter(
+            OrgMembership.user_id == user.id,
+            OrgMembership.org_id == user.org_id,
+            OrgMembership.status == "ACTIVE",
+        ).first()
+        if not membership:
+            raise HTTPException(403, detail="Active organization membership required")
+        user.role = membership.role
+        db.commit()
 
-    token = create_access_token(subject=str(user.id))
+    token = create_access_token(str(user.id), org_id=str(user.org_id), role=user.role)
     return {
-        "user_id": str(user.id),
-        "org_id": str(user.org_id) if user.org_id else None,
-        "full_name": user.full_name,
         "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.full_name,
+            "org_id": str(user.org_id),
+            "role": user.role,
+        },
     }
