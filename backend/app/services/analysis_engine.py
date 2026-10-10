@@ -169,17 +169,44 @@ class Scenario:
 
 
 def scenario_analysis(scenarios: list[Scenario]) -> dict:
+    if not isinstance(scenarios, list):
+        raise ValueError("scenarios must be a list of Scenario objects.")
+
     rows = []
     weighted_profit = 0.0
-    total_prob = sum(s.probability_pct for s in scenarios)
-    for s in scenarios:
-        profit = s.revenue - s.cost
+    total_prob = 0.0
+    for index, scenario in enumerate(scenarios):
+        if not isinstance(scenario, Scenario):
+            raise ValueError(f"scenarios[{index}] must be a Scenario object.")
+        if not isinstance(scenario.name, str) or not scenario.name.strip():
+            raise ValueError(f"scenarios[{index}].name must be a non-empty string.")
+        for value, label in (
+            (scenario.revenue, f"scenarios[{index}].revenue"),
+            (scenario.cost, f"scenarios[{index}].cost"),
+            (scenario.probability_pct, f"scenarios[{index}].probability_pct"),
+        ):
+            _require_finite_number(value, label)
+        if scenario.probability_pct < 0 or scenario.probability_pct > 100:
+            raise ValueError(f"scenarios[{index}].probability_pct must be between 0 and 100.")
+
+        total_prob += scenario.probability_pct
+        profit = scenario.revenue - scenario.cost
+        if not math.isfinite(profit):
+            raise ValueError(f"scenarios[{index}] profit is not finite.")
         rows.append({
-            "name": s.name, "revenue": s.revenue, "cost": s.cost,
-            "profit": round(profit, 2), "probability_pct": s.probability_pct,
+            "name": scenario.name, "revenue": scenario.revenue, "cost": scenario.cost,
+            "profit": round(profit, 2), "probability_pct": scenario.probability_pct,
         })
-        if total_prob > 0:
-            weighted_profit += profit * (s.probability_pct / total_prob)
+
+    if not math.isfinite(total_prob):
+        raise ValueError("Total scenario probability must be finite.")
+    if total_prob > 0:
+        weighted_profit = sum(
+            row["profit"] * (row["probability_pct"] / total_prob)
+            for row in rows
+        )
+        if not math.isfinite(weighted_profit):
+            raise ValueError("Expected scenario profit is not finite.")
 
     return {
         "scenarios": rows,
