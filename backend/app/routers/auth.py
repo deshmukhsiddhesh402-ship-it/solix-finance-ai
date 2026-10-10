@@ -68,26 +68,32 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
         db.flush()
         db.add(OrgMembership(user_id=user.id, org_id=organization.id, role="admin"))
         db.commit()
-    else:
-        membership = db.query(OrgMembership).filter(
-            OrgMembership.user_id == user.id,
-            OrgMembership.org_id == user.org_id,
-            OrgMembership.status == "ACTIVE",
-        ).first()
-        if not membership:
-            raise HTTPException(403, detail="Active organization membership required")
-        user.role = membership.role
+        db.refresh(user)
+    elif user.org_id is None:
+        # Repair legacy users created before tenant assignment was enforced.
+        organization = Organization(name="Personal Workspace")
+        db.add(organization)
+        db.flush()
+        user.org_id = organization.id
+        user.role = "owner"
+        db.add(OrgMembership(user_id=user.id, org_id=organization.id, role="admin"))
         db.commit()
+        db.refresh(user)
 
-    token = create_access_token(str(user.id), org_id=str(user.org_id), role=user.role)
+    else:
+        # Fail closed if a legacy user points at a tenant without a matching membership.
+        membership = (
+            db.query(OrgMembership)
+            .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
+            .first()
+        )
+        if membership is None:
+            raise HTTPException(403, detail="User tenant membership is not configured.")
+
+    token = create_access_token(subject=str(user.id))
     return {
+        "user_id": str(user.id),
+        "org_id": str(user.org_id) if user.org_id else None,
+        "full_name": user.full_name,
         "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": str(user.id),
-            "email": user.email,
-            "name": user.full_name,
-            "org_id": str(user.org_id),
-            "role": user.role,
-        },
     }
