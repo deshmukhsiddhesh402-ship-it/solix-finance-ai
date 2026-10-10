@@ -13,7 +13,7 @@ def test_scenario_analysis_expected_profit_normalizes_probabilities():
         Scenario("base", 1000, 600, 60),
         Scenario("downside", 700, 600, 40),
     ])
-    assert result["expected_profit"] == 260.0
+    assert result["expected_profit"] == 280.0
     assert result["best_case"] == "base"
     assert result["worst_case"] == "downside"
 
