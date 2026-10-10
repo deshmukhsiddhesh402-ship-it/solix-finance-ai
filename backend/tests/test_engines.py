@@ -3,6 +3,7 @@ Run with: pytest backend/tests -v
 These test the pure calculation engines directly (no API/DB needed).
 """
 import sys, os
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.services.accounting_engine import (
@@ -96,3 +97,54 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+
+@pytest.mark.parametrize("rate,flows", [
+    (float("nan"), [-100, 150]),
+    (float("inf"), [-100, 150]),
+    (10, [-100, float("nan")]),
+    (10, [-100, float("inf")]),
+    (True, [-100, 150]),
+    (10, [-100, True]),
+])
+def test_npv_rejects_invalid_numeric_inputs(rate, flows):
+    with pytest.raises(ValueError, match="finite number"):
+        npv(rate, flows)
+
+
+def test_npv_rejects_rate_at_or_below_negative_100_percent():
+    with pytest.raises(ValueError, match="greater than -100"):
+        npv(-100, [-100, 150])
+
+
+def test_irr_rejects_invalid_bounds_and_iteration_count():
+    with pytest.raises(ValueError, match="bounds"):
+        irr([-100, 150], low=-100)
+    with pytest.raises(ValueError, match="positive integer"):
+        irr([-100, 150], max_iter=True)
+
+
+@pytest.mark.parametrize("beginning,ending,years", [
+    (0, 100, 1),
+    (100, 0, 1),
+    (100, -1, 1),
+    (100, 200, float("inf")),
+    (True, 200, 1),
+])
+def test_cagr_rejects_invalid_inputs(beginning, ending, years):
+    with pytest.raises(ValueError):
+        cagr(beginning, ending, years)
+
+
+def test_break_even_rejects_negative_costs_and_non_finite_values():
+    with pytest.raises(ValueError):
+        break_even(-1, 100, 60)
+    with pytest.raises(ValueError, match="finite number"):
+        break_even(100, float("nan"), 60)
+
+
+def test_dcf_rejects_empty_or_non_finite_cash_flows():
+    with pytest.raises(ValueError, match="non-empty list"):
+        dcf_valuation([], discount_rate_pct=10, terminal_growth_rate_pct=3)
+    with pytest.raises(ValueError, match="finite number"):
+        dcf_valuation([100, float("inf")], discount_rate_pct=10, terminal_growth_rate_pct=3)
