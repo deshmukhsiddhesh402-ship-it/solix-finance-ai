@@ -5,9 +5,12 @@ These test the pure calculation engines directly (no API/DB needed).
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from decimal import Decimal
+import pytest
+
 from app.services.accounting_engine import (
-    LedgerLine, build_trial_balance, straight_line_depreciation,
-    wdv_depreciation_schedule, InventoryTxn, inventory_valuation,
+    LedgerLine, build_trial_balance, build_profit_and_loss, build_balance_sheet,
+    straight_line_depreciation, wdv_depreciation_schedule, InventoryTxn, inventory_valuation,
 )
 from app.services.tax_engine import (
     calculate_gst, calculate_tds, calculate_income_tax_new_regime,
@@ -96,3 +99,38 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+
+
+def test_trial_balance_uses_decimal_half_up_rounding_for_currency():
+    lines = [
+        LedgerLine("Office Expense", "expense", debit=2.675),
+        LedgerLine("Accounts Payable", "liability", credit=2.675),
+    ]
+    result = build_trial_balance(lines)
+    assert result["rows"][0]["debit"] == 2.68
+    assert result["rows"][1]["credit"] == 2.68
+    assert result["total_debit"] == 2.68
+    assert result["total_credit"] == 2.68
+    assert result["is_balanced"] is True
+
+
+def test_financial_statements_sum_currency_with_decimal_arithmetic():
+    rows = [
+        {"account": "Sales A", "type": "income", "debit": Decimal("0"), "credit": Decimal("0.10")},
+        {"account": "Sales B", "type": "income", "debit": Decimal("0"), "credit": Decimal("0.20")},
+        {"account": "Office Expense", "type": "expense", "debit": Decimal("0.10"), "credit": Decimal("0")},
+        {"account": "Cash", "type": "asset", "debit": Decimal("0.20"), "credit": Decimal("0")},
+        {"account": "Capital", "type": "equity", "debit": Decimal("0"), "credit": Decimal("0.20")},
+    ]
+    pnl = build_profit_and_loss(rows)
+    assert pnl == {"total_income": 0.30, "total_expense": 0.10, "net_profit": 0.20}
+    balance_sheet = build_balance_sheet(rows, Decimal("0"))
+    assert balance_sheet["total_assets"] == 0.20
+    assert balance_sheet["total_equity"] == 0.20
+    assert balance_sheet["balances"] is True
+
+
+def test_trial_balance_rejects_non_finite_decimal_amounts():
+    with pytest.raises(ValueError, match="finite"):
+        build_trial_balance([LedgerLine("Cash", "asset", debit=Decimal("NaN"))])
