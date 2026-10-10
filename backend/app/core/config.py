@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
-    ENV: str = "development"
+    # Require an explicit environment so an unset deployment cannot silently run as development.
+    ENV: str
     # Returning a development OTP is opt-in; never enable this in a deployed environment.
     DEV_OTP_ENABLED: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
@@ -24,7 +25,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_production_secrets(self):
-        if self.ENV.strip().lower() in {"prod", "production"}:
+        environment = self.ENV.strip().lower()
+        if environment not in {"dev", "development", "test", "staging", "prod", "production"}:
+            raise ValueError("ENV must be one of dev, development, test, staging, prod, or production.")
+        if environment in {"prod", "production"}:
             if self.DEV_OTP_ENABLED:
                 raise ValueError("DEV_OTP_ENABLED must be false in production.")
             if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:

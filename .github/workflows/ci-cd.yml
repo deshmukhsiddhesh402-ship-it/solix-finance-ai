@@ -86,6 +86,7 @@ jobs:
       - name: Run pytest
         working-directory: ./backend
         env:
+          ENV: test
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
         run: pytest tests/ -v --tb=short
