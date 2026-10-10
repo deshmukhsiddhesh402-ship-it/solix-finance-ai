@@ -65,6 +65,34 @@ def test_fifo_inventory_valuation():
     assert result["closing_quantity"] == 8
 
 
+
+def test_inventory_valuation_uses_decimal_half_up_currency_rounding():
+    fifo = inventory_valuation(
+        [InventoryTxn("purchase", 1, 2.675), InventoryTxn("sale", 1, 0)],
+        "FIFO",
+    )
+    assert fifo["cogs"] == 2.68
+    assert fifo["closing_inventory_value"] == 0.0
+
+    weighted_average = inventory_valuation(
+        [
+            InventoryTxn("purchase", 1, 1.005),
+            InventoryTxn("purchase", 1, 1.015),
+            InventoryTxn("sale", 1, 0),
+        ],
+        "WAVG",
+    )
+    assert weighted_average["cogs"] == 1.01
+    assert weighted_average["closing_inventory_value"] == 1.01
+
+
+def test_inventory_valuation_rejects_boolean_and_string_numeric_inputs():
+    with pytest.raises(ValueError, match="finite number"):
+        inventory_valuation([InventoryTxn("purchase", True, 100)], "FIFO")
+    with pytest.raises(ValueError, match="finite number"):
+        inventory_valuation([InventoryTxn("purchase", "1", 100)], "FIFO")
+
+
 def test_gst_intrastate_split():
     result = calculate_gst(taxable_value=10000, gst_rate_pct=18, is_interstate=False)
     assert result["cgst"] == 900.0
