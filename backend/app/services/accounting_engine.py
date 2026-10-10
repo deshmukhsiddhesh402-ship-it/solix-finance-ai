@@ -4,8 +4,35 @@ Kept framework-free so they're independently unit-testable and reusable
 from CLI scripts, notebooks, or the API router.
 """
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Literal
 import math
+
+
+_CENT = Decimal("0.01")
+
+
+def _as_decimal(value, label: str) -> Decimal:
+    """Convert numeric inputs without importing binary float representation noise."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise ValueError(f"{label} must be a finite number.")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{label} must be a finite number.") from None
+    if not amount.is_finite():
+        raise ValueError(f"{label} must be a finite number.")
+    return amount
+
+
+def _quantize_money(value: Decimal) -> Decimal:
+    """Round currency to paise using an explicit half-up accounting rule."""
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def _money_float(value: Decimal) -> float:
+    """Keep the existing JSON/API numeric output shape while calculating in Decimal."""
+    return float(_quantize_money(value))
 
 
 # ---------------------------------------------------------------------------
@@ -20,9 +47,7 @@ class LedgerLine:
 
 
 def build_trial_balance(lines: list[LedgerLine]) -> dict:
-    """Aggregate ledger lines by account and return a trial balance.
-    Raises ValueError if total debits != total credits (books don't balance).
-    """
+    """Aggregate ledger lines using decimal-safe currency arithmetic."""
     totals: dict[str, dict] = {}
     for line in lines:
         if not isinstance(line, LedgerLine):
@@ -31,41 +56,42 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Account name must be non-empty.")
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
-        if not math.isfinite(line.debit) or not math.isfinite(line.credit):
-            raise ValueError("Debit and credit amounts must be finite.")
-        if line.debit < 0 or line.credit < 0:
+        debit = _as_decimal(line.debit, "Debit amount")
+        credit = _as_decimal(line.credit, "Credit amount")
+        if debit < 0 or credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
         acc = totals.setdefault(
-            line.account_name, {"type": line.account_type, "debit": 0.0, "credit": 0.0}
+            line.account_name,
+            {"type": line.account_type, "debit": Decimal("0"), "credit": Decimal("0")},
         )
         if acc["type"] != line.account_type:
             raise ValueError("Account cannot have multiple account types.")
-        acc["debit"] += line.debit
-        acc["credit"] += line.credit
+        acc["debit"] += debit
+        acc["credit"] += credit
 
     rows = []
-    total_debit, total_credit = 0.0, 0.0
+    total_debit, total_credit = Decimal("0"), Decimal("0")
     for name, acc in totals.items():
         net = acc["debit"] - acc["credit"]
-        debit_balance = net if net > 0 else 0.0
-        credit_balance = -net if net < 0 else 0.0
+        debit_balance = _quantize_money(net if net > 0 else Decimal("0"))
+        credit_balance = _quantize_money(-net if net < 0 else Decimal("0"))
         rows.append({
             "account": name,
             "type": acc["type"],
-            "debit": round(debit_balance, 2),
-            "credit": round(credit_balance, 2),
+            "debit": float(debit_balance),
+            "credit": float(credit_balance),
         })
         total_debit += debit_balance
         total_credit += credit_balance
 
-    is_balanced = round(total_debit - total_credit, 2) == 0.0
+    total_debit = _quantize_money(total_debit)
+    total_credit = _quantize_money(total_credit)
     return {
         "rows": rows,
-        "total_debit": round(total_debit, 2),
-        "total_credit": round(total_credit, 2),
-        "is_balanced": is_balanced,
+        "total_debit": float(total_debit),
+        "total_credit": float(total_credit),
+        "is_balanced": total_debit == total_credit,
     }
-
 
 def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
     """Validate rows before financial statements consume them directly."""
@@ -77,38 +103,61 @@ def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
             raise ValueError("Trial balance row has an invalid account type.")
         for field in ("debit", "credit"):
             value = row.get(field)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
                 raise ValueError("Trial balance amounts must be finite numbers.")
-            if value < 0:
+            amount = _as_decimal(value, "Trial balance amount")
+            if amount < 0:
                 raise ValueError("Trial balance amounts cannot be negative.")
 
-
 def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
-    """Derive P&L from trial balance income/expense accounts."""
+    """Derive P&L using decimal-safe totals and paise rounding."""
     _validate_trial_balance_rows(trial_balance_rows)
-    income = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "income")
-    expense = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "expense")
+    income = sum(
+        (_as_decimal(r["credit"], "Credit amount") - _as_decimal(r["debit"], "Debit amount")
+         for r in trial_balance_rows if r["type"] == "income"),
+        Decimal("0"),
+    )
+    expense = sum(
+        (_as_decimal(r["debit"], "Debit amount") - _as_decimal(r["credit"], "Credit amount")
+         for r in trial_balance_rows if r["type"] == "expense"),
+        Decimal("0"),
+    )
     net_profit = income - expense
-    return {"total_income": round(income, 2), "total_expense": round(expense, 2),
-            "net_profit": round(net_profit, 2)}
-
-
-def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
-    """Derive Balance Sheet from trial balance asset/liability/equity accounts."""
-    _validate_trial_balance_rows(trial_balance_rows)
-    if not isinstance(net_profit, (int, float)) or isinstance(net_profit, bool) or not math.isfinite(net_profit):
-        raise ValueError("Net profit must be a finite number.")
-    assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
-    liabilities = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability")
-    equity = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity")
-    equity += net_profit  # roll current-year profit into equity
     return {
-        "total_assets": round(assets, 2),
-        "total_liabilities": round(liabilities, 2),
-        "total_equity": round(equity, 2),
-        "balances": round(assets - (liabilities + equity), 2) == 0.0,
+        "total_income": _money_float(income),
+        "total_expense": _money_float(expense),
+        "net_profit": _money_float(net_profit),
     }
 
+def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
+    """Derive Balance Sheet with decimal-safe aggregation."""
+    _validate_trial_balance_rows(trial_balance_rows)
+    net_profit_decimal = _as_decimal(net_profit, "Net profit")
+    assets = sum(
+        (_as_decimal(r["debit"], "Debit amount") - _as_decimal(r["credit"], "Credit amount")
+         for r in trial_balance_rows if r["type"] == "asset"),
+        Decimal("0"),
+    )
+    liabilities = sum(
+        (_as_decimal(r["credit"], "Credit amount") - _as_decimal(r["debit"], "Debit amount")
+         for r in trial_balance_rows if r["type"] == "liability"),
+        Decimal("0"),
+    )
+    equity = sum(
+        (_as_decimal(r["credit"], "Credit amount") - _as_decimal(r["debit"], "Debit amount")
+         for r in trial_balance_rows if r["type"] == "equity"),
+        Decimal("0"),
+    )
+    equity += net_profit_decimal
+    assets = _quantize_money(assets)
+    liabilities = _quantize_money(liabilities)
+    equity = _quantize_money(equity)
+    return {
+        "total_assets": float(assets),
+        "total_liabilities": float(liabilities),
+        "total_equity": float(equity),
+        "balances": assets == _quantize_money(liabilities + equity),
+    }
 
 # ---------------------------------------------------------------------------
 # Financial Ratios
