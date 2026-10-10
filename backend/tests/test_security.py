@@ -463,3 +463,66 @@ def test_settings_require_explicit_environment_when_env_file_is_absent(monkeypat
 def test_settings_reject_unknown_environment():
     with pytest.raises(ValidationError, match="ENV must be one of"):
         Settings(ENV="production-ish")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"JWT_SECRET": "short-secret", "DATABASE_URL": "postgresql://user:pass@db:5432/solix"},
+        {"JWT_SECRET": "x" * 32},
+        {
+            "JWT_SECRET": "x" * 32,
+            "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+            "ALLOWED_ORIGINS": ["https://app.example.com/path"],
+        },
+        {
+            "JWT_SECRET": "x" * 32,
+            "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+            "ALLOWED_ORIGINS": ["https://user:pass@app.example.com"],
+        },
+        {
+            "JWT_SECRET": "x" * 32,
+            "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+            "ALLOWED_ORIGINS": ["https://app.example.com", "https://APP.example.com/"],
+        },
+    ],
+)
+def test_staging_rejects_unsafe_deployment_configuration(overrides):
+    values = {
+        "ENV": "staging",
+        "JWT_SECRET": "a" * 40,
+        "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+        "ALLOWED_ORIGINS": ["https://app.example.com"],
+    }
+    values.update(overrides)
+    with pytest.raises(ValidationError):
+        Settings(**values)
+
+
+def test_staging_accepts_explicit_safe_deployment_configuration():
+    settings = Settings(
+        ENV="staging",
+        JWT_SECRET="s" * 40,
+        DATABASE_URL="postgresql://solix:strong-password@db.internal:5432/solix",
+        ALLOWED_ORIGINS=["https://app.solix.example", "https://admin.solix.example"],
+        DEV_OTP_ENABLED=False,
+    )
+    assert settings.ENV == "staging"
+    assert settings.DEV_OTP_ENABLED is False
+
+
+def test_staging_rejects_development_otp():
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="staging",
+            DEV_OTP_ENABLED=True,
+            JWT_SECRET="s" * 40,
+            DATABASE_URL="postgresql://solix:strong-password@db.internal:5432/solix",
+            ALLOWED_ORIGINS=["https://app.solix.example"],
+        )
+
+
+@pytest.mark.parametrize("minutes", [0, -1, 60 * 24 * 7 + 1])
+def test_jwt_expiry_must_be_positive_and_no_more_than_seven_days(minutes):
+    with pytest.raises(ValidationError):
+        Settings(ENV="test", JWT_EXPIRE_MINUTES=minutes)
