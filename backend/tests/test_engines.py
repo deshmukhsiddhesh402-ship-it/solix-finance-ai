@@ -40,6 +40,19 @@ def test_wdv_schedule_decreases():
     assert schedule[0]["closing_wdv"] > schedule[1]["closing_wdv"] > schedule[2]["closing_wdv"]
 
 
+def test_depreciation_uses_decimal_half_up_currency_rounding():
+    # 100.05 / 2 = 50.025; monetary output must round half-up to ₹50.03.
+    assert straight_line_depreciation(cost=100.05, salvage=0, useful_life_years=2) == 50.03
+    # ₹0.05 × 10% = ₹0.005; WDV depreciation rounds half-up to ₹0.01.
+    schedule = wdv_depreciation_schedule(cost=0.05, rate_pct=10, years=1)
+    assert schedule == [{"year": 1, "depreciation": 0.01, "closing_wdv": 0.04}]
+
+
+def test_straight_line_depreciation_rejects_boolean_useful_life():
+    with pytest.raises(ValueError, match="positive integer"):
+        straight_line_depreciation(cost=100, salvage=0, useful_life_years=True)
+
+
 def test_fifo_inventory_valuation():
     txns = [
         InventoryTxn("purchase", 10, 100),

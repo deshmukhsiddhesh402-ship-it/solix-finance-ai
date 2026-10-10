@@ -188,31 +188,33 @@ def financial_ratios(
 # Depreciation
 # ---------------------------------------------------------------------------
 def straight_line_depreciation(cost: float, salvage: float, useful_life_years: int) -> float:
-    if not all(math.isfinite(v) for v in (cost, salvage)):
-        raise ValueError("cost and salvage must be finite.")
-    if cost < 0 or salvage < 0:
+    """Calculate annual straight-line depreciation with explicit paise rounding."""
+    cost_decimal = _as_decimal(cost, "cost")
+    salvage_decimal = _as_decimal(salvage, "salvage")
+    if cost_decimal < 0 or salvage_decimal < 0:
         raise ValueError("cost and salvage cannot be negative.")
-    if salvage > cost:
+    if salvage_decimal > cost_decimal:
         raise ValueError("salvage cannot exceed cost.")
-    if useful_life_years < 1:
-        raise ValueError("useful_life_years must be at least 1.")
-    return round((cost - salvage) / useful_life_years, 2)
+    if isinstance(useful_life_years, bool) or not isinstance(useful_life_years, int) or useful_life_years < 1:
+        raise ValueError("useful_life_years must be at least 1 and must be a positive integer.")
+    annual_depreciation = (cost_decimal - salvage_decimal) / Decimal(useful_life_years)
+    return float(_quantize_money(annual_depreciation))
 
 
 def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[dict]:
-    """Written Down Value (reducing balance) method — common under Indian Companies Act."""
-    if not all(math.isfinite(v) for v in (cost, rate_pct)):
-        raise ValueError("cost and rate_pct must be finite.")
-    if cost < 0 or rate_pct <= 0 or rate_pct > 100:
+    """Calculate reducing-balance depreciation with decimal-safe paise rounding."""
+    cost_decimal = _as_decimal(cost, "cost")
+    rate_decimal = _as_decimal(rate_pct, "rate_pct")
+    if cost_decimal < 0 or rate_decimal <= 0 or rate_decimal > 100:
         raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
     if isinstance(years, bool) or not isinstance(years, int) or years < 1:
         raise ValueError("years must be a positive integer.")
     schedule = []
-    book_value = cost
+    book_value = _quantize_money(cost_decimal)
     for year in range(1, years + 1):
-        dep = round(book_value * (rate_pct / 100), 2)
-        book_value = round(book_value - dep, 2)
-        schedule.append({"year": year, "depreciation": dep, "closing_wdv": book_value})
+        dep = _quantize_money(book_value * rate_decimal / Decimal("100"))
+        book_value = _quantize_money(book_value - dep)
+        schedule.append({"year": year, "depreciation": float(dep), "closing_wdv": float(book_value)})
     return schedule
 
 
