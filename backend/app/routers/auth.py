@@ -31,7 +31,7 @@ def request_otp(req: OtpRequestBody):
         raise HTTPException(503, detail="OTP delivery is not configured.") from exc
 
     response = {"message": "If the address is eligible, an OTP will be sent."}
-    if settings.ENV.strip().lower() in {"development", "dev"}:
+    if settings.ENV.strip().lower() in {"development", "dev"} and settings.DEV_OTP_ENABLED:
         response["dev_otp"] = otp
     return response
 
