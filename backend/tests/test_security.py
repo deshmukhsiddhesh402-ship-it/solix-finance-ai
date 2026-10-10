@@ -469,7 +469,7 @@ def test_settings_reject_unknown_environment():
     "overrides",
     [
         {"JWT_SECRET": "short-secret", "DATABASE_URL": "postgresql://user:pass@db:5432/solix"},
-        {"JWT_SECRET": "x" * 32},
+        {"JWT_SECRET": "change-me-in-production"},
         {
             "JWT_SECRET": "x" * 32,
             "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
