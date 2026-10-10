@@ -7,7 +7,27 @@ always confirm current rates before filing, and expose these as
 configurable inputs in the UI rather than hardcoding them permanently.
 """
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import math
+
+
+_CENT = Decimal("0.01")
+
+
+def _as_decimal(value, label: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise ValueError(f"{label} must be a finite number.")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{label} must be a finite number.") from None
+    if not amount.is_finite():
+        raise ValueError(f"{label} must be a finite number.")
+    return amount
+
+
+def _round_currency(value: Decimal) -> Decimal:
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 def _require_finite_non_negative(value: float, label: str) -> None:
@@ -25,19 +45,36 @@ def _require_rate(value: float, label: str) -> None:
 # GST
 # ---------------------------------------------------------------------------
 def calculate_gst(taxable_value: float, gst_rate_pct: float, is_interstate: bool) -> dict:
-    """Split GST into IGST (interstate) or CGST+SGST (intrastate)."""
+    """Split GST into IGST or equal CGST+SGST using decimal-safe paise rounding."""
     _require_finite_non_negative(taxable_value, "taxable_value")
     _require_rate(gst_rate_pct, "gst_rate_pct")
     if not isinstance(is_interstate, bool):
         raise ValueError("is_interstate must be a boolean.")
-    total_tax = round(taxable_value * (gst_rate_pct / 100), 2)
+    taxable = _as_decimal(taxable_value, "taxable_value")
+    rate = _as_decimal(gst_rate_pct, "gst_rate_pct")
     if is_interstate:
-        return {"taxable_value": taxable_value, "igst": total_tax, "cgst": 0.0,
-                "sgst": 0.0, "total_tax": total_tax, "invoice_total": round(taxable_value + total_tax, 2)}
-    half = round(total_tax / 2, 2)
-    return {"taxable_value": taxable_value, "igst": 0.0, "cgst": half, "sgst": half,
-            "total_tax": half * 2, "invoice_total": round(taxable_value + half * 2, 2)}
-
+        total_tax = _round_currency(taxable * rate / Decimal("100"))
+        invoice_total = _round_currency(taxable + total_tax)
+        return {
+            "taxable_value": float(taxable),
+            "igst": float(total_tax),
+            "cgst": 0.0,
+            "sgst": 0.0,
+            "total_tax": float(total_tax),
+            "invoice_total": float(invoice_total),
+        }
+    half_rate = rate / Decimal("2")
+    half_tax = _round_currency(taxable * half_rate / Decimal("100"))
+    total_tax = half_tax * 2
+    invoice_total = _round_currency(taxable + total_tax)
+    return {
+        "taxable_value": float(taxable),
+        "igst": 0.0,
+        "cgst": float(half_tax),
+        "sgst": float(half_tax),
+        "total_tax": float(total_tax),
+        "invoice_total": float(invoice_total),
+    }
 
 @dataclass
 class GstInvoiceLine:
@@ -47,18 +84,22 @@ class GstInvoiceLine:
 
 
 def gstr3b_summary(lines: list[GstInvoiceLine], input_tax_credit: float = 0.0) -> dict:
-    """Aggregate outward supplies into a GSTR-3B-style summary with ITC set-off."""
+    """Aggregate GST using decimal-safe totals and ITC set-off."""
     _require_finite_non_negative(input_tax_credit, "input_tax_credit")
-    total_taxable = sum(l.taxable_value for l in lines)
-    total_tax = sum(calculate_gst(l.taxable_value, l.gst_rate_pct, l.is_interstate)["total_tax"] for l in lines)
-    net_payable = max(0.0, round(total_tax - input_tax_credit, 2))
+    taxable_total = Decimal("0")
+    tax_total = Decimal("0")
+    for line in lines:
+        result = calculate_gst(line.taxable_value, line.gst_rate_pct, line.is_interstate)
+        taxable_total += _as_decimal(result["taxable_value"], "taxable_value")
+        tax_total += _as_decimal(result["total_tax"], "total_tax")
+    itc = _as_decimal(input_tax_credit, "input_tax_credit")
+    net_payable = max(Decimal("0"), _round_currency(tax_total - itc))
     return {
-        "total_taxable_value": round(total_taxable, 2),
-        "total_output_tax": round(total_tax, 2),
-        "input_tax_credit_claimed": round(input_tax_credit, 2),
-        "net_gst_payable": net_payable,
+        "total_taxable_value": float(_round_currency(taxable_total)),
+        "total_output_tax": float(_round_currency(tax_total)),
+        "input_tax_credit_claimed": float(_round_currency(itc)),
+        "net_gst_payable": float(net_payable),
     }
-
 
 # ---------------------------------------------------------------------------
 # TDS
@@ -76,9 +117,7 @@ TDS_SECTION_RATES = {
 
 
 def calculate_tds(amount_paid: float, section: str, has_pan: bool = True) -> dict:
-    """Calculate TDS for a payment under a given section.
-    If the deductee has no PAN, TDS is charged at 20% flat per Sec 206AA.
-    """
+    """Calculate TDS with decimal-safe tax and net-payment rounding."""
     _require_finite_non_negative(amount_paid, "amount_paid")
     if not isinstance(section, str) or not section.strip():
         raise ValueError("section must be a non-empty string.")
@@ -87,13 +126,17 @@ def calculate_tds(amount_paid: float, section: str, has_pan: bool = True) -> dic
     rate = TDS_SECTION_RATES.get(section)
     if rate is None:
         raise ValueError(f"Section {section} requires slab-based calculation, not flat rate.")
-    effective_rate = 20.0 if not has_pan else rate
-    tds_amount = round(amount_paid * (effective_rate / 100), 2)
+    amount = _as_decimal(amount_paid, "amount_paid")
+    effective_rate = Decimal("20") if not has_pan else _as_decimal(rate, "TDS rate")
+    tds_amount = _round_currency(amount * effective_rate / Decimal("100"))
+    net_payment = _round_currency(amount - tds_amount)
     return {
-        "section": section, "amount_paid": amount_paid, "rate_applied_pct": effective_rate,
-        "tds_amount": tds_amount, "net_payment": round(amount_paid - tds_amount, 2),
+        "section": section,
+        "amount_paid": float(amount),
+        "rate_applied_pct": float(effective_rate),
+        "tds_amount": float(tds_amount),
+        "net_payment": float(net_payment),
     }
-
 
 # ---------------------------------------------------------------------------
 # Income Tax (Individuals) — New Regime, FY 2025-26 slabs
