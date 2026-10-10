@@ -13,7 +13,8 @@ from app.services.accounting_engine import (
     straight_line_depreciation, wdv_depreciation_schedule, InventoryTxn, inventory_valuation,
 )
 from app.services.tax_engine import (
-    calculate_gst, calculate_tds, calculate_income_tax_new_regime,
+    GstInvoiceLine, calculate_gst, calculate_tds, gstr3b_summary,
+    calculate_income_tax_new_regime,
 )
 from app.services.analysis_engine import npv, irr, cagr, break_even, dcf_valuation
 
@@ -134,3 +135,38 @@ def test_financial_statements_sum_currency_with_decimal_arithmetic():
 def test_trial_balance_rejects_non_finite_decimal_amounts():
     with pytest.raises(ValueError, match="finite"):
         build_trial_balance([LedgerLine("Cash", "asset", debit=Decimal("NaN"))])
+
+
+
+def test_gst_uses_decimal_half_up_rounding_and_reconciles_invoice_total():
+    interstate = calculate_gst(2.675, 18, True)
+    assert interstate["igst"] == 0.48
+    assert interstate["invoice_total"] == 3.16
+
+    intrastate = calculate_gst(2.675, 18, False)
+    assert intrastate["cgst"] == 0.24
+    assert intrastate["sgst"] == 0.24
+    assert intrastate["total_tax"] == intrastate["cgst"] + intrastate["sgst"]
+    assert intrastate["invoice_total"] == 3.16
+
+
+def test_tds_uses_decimal_half_up_rounding_for_tax_and_net_payment():
+    result = calculate_tds(2.675, "194J")
+    assert result["tds_amount"] == 0.27
+    assert result["net_payment"] == 2.41
+
+
+def test_gstr3b_summary_aggregates_tax_and_input_credit_safely():
+    summary = gstr3b_summary(
+        [
+            GstInvoiceLine(taxable_value=2.675, gst_rate_pct=18, is_interstate=True),
+            GstInvoiceLine(taxable_value=2.675, gst_rate_pct=18, is_interstate=True),
+        ],
+        input_tax_credit=0.20,
+    )
+    assert summary == {
+        "total_taxable_value": 5.35,
+        "total_output_tax": 0.96,
+        "input_tax_credit_claimed": 0.20,
+        "net_gst_payable": 0.76,
+    }
