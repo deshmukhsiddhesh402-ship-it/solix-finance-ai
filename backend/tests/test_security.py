@@ -470,10 +470,21 @@ def test_settings_reject_unknown_environment():
     [
         {"JWT_SECRET": "short-secret", "DATABASE_URL": "postgresql://user:pass@db:5432/solix"},
         {"JWT_SECRET": "change-me-in-production"},
+        {"DATABASE_URL": "postgresql://solix:solix@localhost:5432/solix_finance_ai"},
         {
             "JWT_SECRET": "x" * 32,
             "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
             "ALLOWED_ORIGINS": ["https://app.example.com/path"],
+        },
+        {
+            "JWT_SECRET": "x" * 32,
+            "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+            "ALLOWED_ORIGINS": ["http://localhost:3000"],
+        },
+        {
+            "JWT_SECRET": "x" * 32,
+            "DATABASE_URL": "postgresql://user:pass@db:5432/solix",
+            "ALLOWED_ORIGINS": ["*"],
         },
         {
             "JWT_SECRET": "x" * 32,
