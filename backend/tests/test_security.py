@@ -429,3 +429,25 @@ def test_otp_request_only_returns_dev_otp_when_explicitly_enabled(monkeypatch):
     monkeypatch.setattr(app_settings, "DEV_OTP_ENABLED", True)
     response = auth_router.request_otp(auth_router.OtpRequestBody(email="otp-guard-enabled@example.com"))
     assert response["dev_otp"] == "123456"
+
+def test_otp_delivery_fails_closed_when_development_disclosure_is_disabled(monkeypatch):
+    from app.core.config import settings as app_settings
+    from app.core.security import send_otp_via_email_or_sms
+
+    monkeypatch.setattr(app_settings, "ENV", "development")
+    monkeypatch.setattr(app_settings, "DEV_OTP_ENABLED", False)
+    with pytest.raises(RuntimeError, match="delivery provider is not configured"):
+        send_otp_via_email_or_sms("no-delivery@example.com", "123456")
+
+
+def test_otp_delivery_is_skipped_only_for_explicit_local_development(monkeypatch):
+    from app.core.config import settings as app_settings
+    from app.core.security import send_otp_via_email_or_sms
+
+    monkeypatch.setattr(app_settings, "ENV", "development")
+    monkeypatch.setattr(app_settings, "DEV_OTP_ENABLED", True)
+    assert send_otp_via_email_or_sms("local-dev@example.com", "123456") is None
+
+    monkeypatch.setattr(app_settings, "ENV", "production")
+    with pytest.raises(RuntimeError, match="delivery provider is not configured"):
+        send_otp_via_email_or_sms("production@example.com", "123456")
