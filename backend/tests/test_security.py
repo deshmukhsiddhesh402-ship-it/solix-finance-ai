@@ -1,4 +1,5 @@
 """Regression tests for authentication hardening and router importability."""
+from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
@@ -391,6 +392,81 @@ def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(mo
     result = asyncio.run(billing_router.razorpay_webhook(FakeRequest(), db))
 
     assert result == {"status": "ok"}
+    assert db.commit_called is False
+
+
+
+
+@pytest.mark.parametrize("failed_payment_id", ["pay-failed-attempt", "pay-captured"])
+def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_order(monkeypatch, failed_payment_id):
+    """A different failed payment attempt must not downgrade an already paid subscription."""
+    import hmac
+    import hashlib
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    import app.routers.billing as billing_router
+
+    secret = "webhook-test-secret"
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": failed_payment_id,
+                    "order_id": "order-same",
+                    "notes": {"org_id": org_id},
+                }
+            }
+        },
+    }
+    body = json.dumps(payload).encode()
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    subscription = SimpleNamespace(
+        org_id=UUID(org_id),
+        status="active",
+        razorpay_order_id="order-same",
+        razorpay_payment_id="pay-captured",
+    )
+
+    class FakeHeaders:
+        def get(self, name, default=""):
+            return signature if name == "X-Razorpay-Signature" else default
+
+    class FakeRequest:
+        headers = FakeHeaders()
+
+        async def body(self):
+            return body
+
+        async def json(self):
+            return payload
+
+    class FakeQuery:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return subscription
+
+    class FakeDB:
+        def __init__(self):
+            self.commit_called = False
+
+        def query(self, model):
+            return FakeQuery()
+
+        def commit(self):
+            self.commit_called = True
+
+    db = FakeDB()
+    monkeypatch.setattr(billing_router.settings, "RAZORPAY_WEBHOOK_SECRET", secret)
+
+    result = asyncio.run(billing_router.razorpay_webhook(FakeRequest(), db))
+
+    assert result == {"status": "ok"}
+    assert subscription.status == "active"
     assert db.commit_called is False
 
 

@@ -188,8 +188,15 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
                 .first()
             )
             if sub:
-                sub.status = "past_due"
-                db.commit()
+                # A recorded payment ID means the subscription has a
+                # verified successful payment. A failure webhook must never
+                # downgrade it, even if a delayed/contradictory event carries
+                # that same ID. Only pending subscriptions without a recorded
+                # successful payment can be marked past_due.
+                recorded_payment_id = getattr(sub, "razorpay_payment_id", None)
+                if not recorded_payment_id:
+                    sub.status = "past_due"
+                    db.commit()
     return {"status": "ok"}
 
 
