@@ -811,3 +811,101 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+@pytest.mark.parametrize("stored_email", ["Siddhesh@Example.com", "siddhesh@example.com"])
+def test_add_membership_finds_case_variant_legacy_email(monkeypatch, stored_email):
+    from types import SimpleNamespace
+    from uuid import UUID, uuid4
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+    from app.routers.enterprise import add_membership
+
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    user = SimpleNamespace(id=uuid4(), email=stored_email)
+    created = []
+    captured_filters = []
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+            self.limit_count = None
+
+        def filter(self, *args, **kwargs):
+            captured_filters.extend(args)
+            return self
+
+        def limit(self, count):
+            self.limit_count = count
+            return self
+
+        def all(self):
+            if self.model is User:
+                return [user][:self.limit_count]
+            return []
+
+        def first(self):
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+        def add(self, row):
+            created.append(row)
+
+        def commit(self):
+            pass
+
+    req = AddMembershipRequest(org_id=org_id, user_email="siddhesh@example.com", role="accountant")
+    result = add_membership(req, org_id=org_id, db=FakeDB(), _acting_user=str(uuid4()))
+
+    assert result["message"]
+    email_predicates = [
+        str(predicate).lower()
+        for predicate in captured_filters
+        if "email" in str(predicate).lower()
+    ]
+    assert any("lower" in predicate and "email" in predicate for predicate in email_predicates), (
+        "membership lookup must compare normalized email in SQL, not rely on exact-case equality"
+    )
+    assert len(created) == 1
+    assert isinstance(created[0], OrgMembership)
+    assert created[0].user_id == user.id
+    assert created[0].org_id == UUID(org_id)
+
+
+def test_add_membership_rejects_duplicate_case_variant_legacy_emails():
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from fastapi import HTTPException
+    from app.models.auth_user import User
+    from app.routers.enterprise import add_membership
+
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    users = [
+        SimpleNamespace(id=uuid4(), email="Siddhesh@Example.com"),
+        SimpleNamespace(id=uuid4(), email="siddhesh@example.com"),
+    ]
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def limit(self, count):
+            return self
+
+        def all(self):
+            return users if self.model is User else []
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    req = AddMembershipRequest(org_id=org_id, user_email="siddhesh@example.com", role="accountant")
+    with pytest.raises(HTTPException) as exc:
+        add_membership(req, org_id=org_id, db=FakeDB(), _acting_user=str(uuid4()))
+    assert exc.value.status_code == 409

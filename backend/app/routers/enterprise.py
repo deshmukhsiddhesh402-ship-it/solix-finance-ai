@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -100,7 +101,18 @@ def add_membership(
     from app.models.auth_user import User
 
     target_email = req.user_email.strip().lower()
-    target_user = db.query(User).filter(User.email == target_email).first()
+    # Match the normalized identity even when a legacy row was stored with
+    # mixed capitalization. Bound the result and fail closed if legacy data
+    # contains multiple rows for the same case-insensitive email identity.
+    matching_users = (
+        db.query(User)
+        .filter(func.lower(User.email) == target_email)
+        .limit(2)
+        .all()
+    )
+    if len(matching_users) > 1:
+        raise HTTPException(409, detail="Multiple accounts match this email identity. Resolve the duplicate accounts first.")
+    target_user = matching_users[0] if matching_users else None
     if not target_user:
         raise HTTPException(404, detail="User not found.")
 
