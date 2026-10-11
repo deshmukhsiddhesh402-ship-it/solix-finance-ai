@@ -112,3 +112,20 @@ def test_financial_ratios_rejects_invalid_input_types_and_non_finite_values(bad_
             revenue=100,
             total_assets=150,
         )
+
+
+def test_financial_ratios_preserves_valid_calculation_results():
+    result = financial_ratios(
+        current_assets=120,
+        current_liabilities=60,
+        inventory=30,
+        total_debt=50,
+        total_equity=100,
+        net_profit=10,
+        revenue=200,
+        total_assets=300,
+    )
+    assert result["current_ratio"] == 2.0
+    assert result["quick_ratio"] == 1.5
+    assert result["debt_to_equity"] == 0.5
+    assert result["net_profit_margin_pct"] == 5.0
