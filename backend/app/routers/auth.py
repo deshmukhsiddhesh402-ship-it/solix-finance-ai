@@ -1,6 +1,7 @@
 """Email OTP login endpoints consumed by the frontend's NextAuth provider."""
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -56,7 +57,12 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
 
     from app.models.auth_user import Organization, OrgMembership, User
 
-    user = db.query(User).filter(User.email == email).first()
+    # Match legacy records case-insensitively after OTP identity normalization.
+    # If historical case-sensitive uniqueness allowed duplicates, fail closed.
+    matching_users = db.query(User).filter(func.lower(User.email) == email).limit(2).all()
+    if len(matching_users) > 1:
+        raise HTTPException(409, detail="Multiple accounts match this email identity. Contact support.")
+    user = matching_users[0] if matching_users else None
 
     if not user:
         organization = Organization(name="Personal Workspace")

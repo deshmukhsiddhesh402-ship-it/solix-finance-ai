@@ -79,6 +79,15 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
         def filter(self, *args, **kwargs):
             return self
 
+        def limit(self, count):
+            self.limit_count = count
+            return self
+
+        def all(self):
+            if self.model is User:
+                return [user][:getattr(self, "limit_count", 1)]
+            return []
+
         def first(self):
             if self.model is User:
                 return user
