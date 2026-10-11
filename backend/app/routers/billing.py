@@ -188,15 +188,13 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
                 .first()
             )
             if sub:
-                # A delayed failure for another payment attempt on this order
-                # must not downgrade a subscription whose successful payment
-                # has already been recorded. When a payment ID is recorded,
-                # only that exact payment may change its status.
+                # A recorded payment ID means the subscription has a
+                # verified successful payment. A failure webhook must never
+                # downgrade it, even if a delayed/contradictory event carries
+                # that same ID. Only pending subscriptions without a recorded
+                # successful payment can be marked past_due.
                 recorded_payment_id = getattr(sub, "razorpay_payment_id", None)
-                failed_payment_id = entity.get("id") if isinstance(entity, dict) else None
-                if not recorded_payment_id or (
-                    failed_payment_id and str(recorded_payment_id) == str(failed_payment_id)
-                ):
+                if not recorded_payment_id:
                     sub.status = "past_due"
                     db.commit()
     return {"status": "ok"}

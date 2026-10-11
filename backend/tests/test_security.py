@@ -397,7 +397,8 @@ def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(mo
 
 
 
-def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_order(monkeypatch):
+@pytest.mark.parametrize("failed_payment_id", ["pay-failed-attempt", "pay-captured"])
+def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_order(monkeypatch, failed_payment_id):
     """A different failed payment attempt must not downgrade an already paid subscription."""
     import hmac
     import hashlib
@@ -413,7 +414,7 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
         "payload": {
             "payment": {
                 "entity": {
-                    "id": "pay-failed-attempt",
+                    "id": failed_payment_id,
                     "order_id": "order-same",
                     "notes": {"org_id": org_id},
                 }
