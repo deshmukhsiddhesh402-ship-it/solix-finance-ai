@@ -101,6 +101,7 @@ def test_otp_verification_finds_legacy_mixed_case_account(monkeypatch):
         def filter(self, *criteria):
             if self.model is User:
                 captured["lookup_email"] = criteria[0].right.value
+                captured["lookup_predicate"] = str(criteria[0]).lower()
             return self
 
         def limit(self, count):
@@ -126,6 +127,9 @@ def test_otp_verification_finds_legacy_mixed_case_account(monkeypatch):
     )
 
     assert captured["lookup_email"] == "siddhesh@example.com"
+    assert "lower" in captured["lookup_predicate"] and "email" in captured["lookup_predicate"], (
+        "legacy mixed-case account lookup must use a case-insensitive SQL predicate"
+    )
     assert response["user_id"] == str(user_id)
     assert response["access_token"] == "test-token"
 
