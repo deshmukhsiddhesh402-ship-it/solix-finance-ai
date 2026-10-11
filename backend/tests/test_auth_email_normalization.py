@@ -1,5 +1,12 @@
 """Regression tests for consistent email identity in OTP authentication."""
+from pathlib import Path
+import sys
 from uuid import uuid4
+
+# Ensure the backend package is importable even if pytest is invoked from the repo root.
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 import app.routers.auth as auth_router
 from app.models.auth_user import OrgMembership, User
