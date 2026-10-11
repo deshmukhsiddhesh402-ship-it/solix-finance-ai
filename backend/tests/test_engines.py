@@ -103,15 +103,6 @@ def test_dcf_enterprise_value_positive():
 def test_financial_ratios_rejects_invalid_input_types_and_non_finite_values(bad_value):
     with pytest.raises(ValueError, match="finite numbers"):
         financial_ratios(
-            current_assets=100,
-            current_liabilities=50,
-            inventory=10,
-            total_debt=20,
-            total_equity=40,
-            net_profit=5,
-            revenue=100,
-            total_assets=150,
-        ) if bad_value is None else financial_ratios(
             current_assets=bad_value,
             current_liabilities=50,
             inventory=10,
