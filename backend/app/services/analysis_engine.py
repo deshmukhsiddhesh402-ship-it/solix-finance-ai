@@ -93,7 +93,10 @@ def cagr(beginning_value: float, ending_value: float, years: float) -> float:
         _require_finite_number(value, label)
     if beginning_value <= 0 or ending_value <= 0 or years <= 0:
         raise ValueError("beginning_value, ending_value, and years must be positive")
-    rate = (ending_value / beginning_value) ** (1 / years) - 1
+    try:
+        rate = (ending_value / beginning_value) ** (1 / years) - 1
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError("CAGR result is not finite for the supplied inputs.") from exc
     if not math.isfinite(rate):
         raise ValueError("CAGR result is not finite for the supplied inputs.")
     return round(rate * 100, 2)
