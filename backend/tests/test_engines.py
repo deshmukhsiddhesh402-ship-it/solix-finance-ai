@@ -3,11 +3,12 @@ Run with: pytest backend/tests -v
 These test the pure calculation engines directly (no API/DB needed).
 """
 import sys, os
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.services.accounting_engine import (
     LedgerLine, build_trial_balance, straight_line_depreciation,
-    wdv_depreciation_schedule, InventoryTxn, inventory_valuation,
+    wdv_depreciation_schedule, InventoryTxn, inventory_valuation, financial_ratios,
 )
 from app.services.tax_engine import (
     calculate_gst, calculate_tds, calculate_income_tax_new_regime,
@@ -96,3 +97,27 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+
+@pytest.mark.parametrize("bad_value", [True, "100", None, float("nan"), float("inf")])
+def test_financial_ratios_rejects_invalid_input_types_and_non_finite_values(bad_value):
+    with pytest.raises(ValueError, match="finite numbers"):
+        financial_ratios(
+            current_assets=100,
+            current_liabilities=50,
+            inventory=10,
+            total_debt=20,
+            total_equity=40,
+            net_profit=5,
+            revenue=100,
+            total_assets=150,
+        ) if bad_value is None else financial_ratios(
+            current_assets=bad_value,
+            current_liabilities=50,
+            inventory=10,
+            total_debt=20,
+            total_equity=40,
+            net_profit=5,
+            revenue=100,
+            total_assets=150,
+        )
