@@ -97,9 +97,10 @@ def cagr(beginning_value: float, ending_value: float, years: float) -> float:
         rate = (ending_value / beginning_value) ** (1 / years) - 1
     except (OverflowError, ZeroDivisionError) as exc:
         raise ValueError("CAGR result is not finite for the supplied inputs.") from exc
-    if not math.isfinite(rate):
+    result_pct = rate * 100
+    if not math.isfinite(result_pct):
         raise ValueError("CAGR result is not finite for the supplied inputs.")
-    return round(rate * 100, 2)
+    return round(result_pct, 2)
 
 
 # ---------------------------------------------------------------------------
