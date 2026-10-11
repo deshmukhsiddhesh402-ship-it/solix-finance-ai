@@ -161,3 +161,8 @@ def test_dcf_converts_arithmetic_overflow_to_value_error():
 def test_cagr_converts_arithmetic_overflow_to_value_error():
     with pytest.raises(ValueError, match="CAGR result is not finite"):
         cagr(1e-308, 1e308, 1e-308)
+
+
+def test_cagr_rejects_non_finite_percentage_after_scaling():
+    with pytest.raises(ValueError, match="CAGR result is not finite"):
+        cagr(1, 1e306, 1)
