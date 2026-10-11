@@ -31,7 +31,10 @@ def npv(rate_pct: float, cash_flows: list[float]) -> float:
     if rate_pct <= -100:
         raise ValueError("rate_pct must be greater than -100.")
     r = rate_pct / 100
-    total = sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
+    try:
+        total = sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError("NPV result is not finite for the supplied inputs.") from exc
     if not math.isfinite(total):
         raise ValueError("NPV result is not finite for the supplied inputs.")
     return round(total, 2)
@@ -56,7 +59,10 @@ def irr(cash_flows: list[float], low: float = -99.0, high: float = 1000.0, tol: 
 
     def npv_at(rate_pct: float) -> float:
         r = rate_pct / 100
-        return sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
+        try:
+            return sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
+        except (OverflowError, ZeroDivisionError) as exc:
+            raise ValueError("IRR is not finite for the supplied inputs and bounds.") from exc
 
     f_low, f_high = npv_at(low), npv_at(high)
     if not math.isfinite(f_low) or not math.isfinite(f_high):
@@ -138,14 +144,16 @@ def dcf_valuation(
     if r <= g:
         raise ValueError("Discount rate must exceed terminal growth rate")
 
-    pv_cash_flows = [cf / ((1 + r) ** (t + 1)) for t, cf in enumerate(projected_cash_flows)]
-    sum_pv_cash_flows = sum(pv_cash_flows)
+    try:
+        pv_cash_flows = [cf / ((1 + r) ** (t + 1)) for t, cf in enumerate(projected_cash_flows)]
+        sum_pv_cash_flows = sum(pv_cash_flows)
 
-    last_cf = projected_cash_flows[-1]
-    terminal_value = (last_cf * (1 + g)) / (r - g)
-    pv_terminal_value = terminal_value / ((1 + r) ** len(projected_cash_flows))
-
-    enterprise_value = sum_pv_cash_flows + pv_terminal_value
+        last_cf = projected_cash_flows[-1]
+        terminal_value = (last_cf * (1 + g)) / (r - g)
+        pv_terminal_value = terminal_value / ((1 + r) ** len(projected_cash_flows))
+        enterprise_value = sum_pv_cash_flows + pv_terminal_value
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError("DCF result is not finite for the supplied inputs.") from exc
     values = (sum_pv_cash_flows, terminal_value, pv_terminal_value, enterprise_value)
     if not all(math.isfinite(value) for value in values):
         raise ValueError("DCF result is not finite for the supplied inputs.")
