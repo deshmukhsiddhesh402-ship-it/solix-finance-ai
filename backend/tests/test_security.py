@@ -1,5 +1,5 @@
 """Regression tests for authentication hardening and router importability."""
-from uuid import uuid4
+from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
@@ -423,7 +423,7 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
     body = json.dumps(payload).encode()
     signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     subscription = SimpleNamespace(
-        org_id=uuid4(),
+        org_id=UUID(org_id),
         status="active",
         razorpay_order_id="order-same",
         razorpay_payment_id="pay-captured",
