@@ -119,8 +119,8 @@ def financial_ratios(
     total_assets: float,
 ) -> dict:
     values = (current_assets, current_liabilities, inventory, total_debt, total_equity, net_profit, revenue, total_assets)
-    if not all(math.isfinite(v) for v in values):
-        raise ValueError("Financial ratio inputs must be finite.")
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+        raise ValueError("Financial ratio inputs must be finite numbers.")
     if any(v < 0 for v in (current_assets, current_liabilities, inventory, total_debt, total_equity, revenue, total_assets)):
         raise ValueError("Financial ratio balance inputs cannot be negative.")
     if inventory > current_assets:
