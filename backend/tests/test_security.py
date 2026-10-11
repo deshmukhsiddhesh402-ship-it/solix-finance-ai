@@ -1,4 +1,5 @@
 """Regression tests for authentication hardening and router importability."""
+from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
