@@ -824,6 +824,7 @@ def test_add_membership_finds_case_variant_legacy_email(monkeypatch, stored_emai
     org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
     user = SimpleNamespace(id=uuid4(), email=stored_email)
     created = []
+    captured_filters = []
 
     class FakeQuery:
         def __init__(self, model):
@@ -831,6 +832,7 @@ def test_add_membership_finds_case_variant_legacy_email(monkeypatch, stored_emai
             self.limit_count = None
 
         def filter(self, *args, **kwargs):
+            captured_filters.extend(args)
             return self
 
         def limit(self, count):
@@ -859,6 +861,14 @@ def test_add_membership_finds_case_variant_legacy_email(monkeypatch, stored_emai
     result = add_membership(req, org_id=org_id, db=FakeDB(), _acting_user=str(uuid4()))
 
     assert result["message"]
+    email_predicates = [
+        str(predicate).lower()
+        for predicate in captured_filters
+        if "email" in str(predicate).lower()
+    ]
+    assert any("lower" in predicate and "email" in predicate for predicate in email_predicates), (
+        "membership lookup must compare normalized email in SQL, not rely on exact-case equality"
+    )
     assert len(created) == 1
     assert isinstance(created[0], OrgMembership)
     assert created[0].user_id == user.id
