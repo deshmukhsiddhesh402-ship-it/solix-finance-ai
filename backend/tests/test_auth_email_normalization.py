@@ -7,8 +7,6 @@ from app.models.auth_user import OrgMembership, User
 
 def test_otp_request_normalizes_email_for_generation_and_delivery(monkeypatch):
     calls = {}
-    monkeypatch.setattr(auth_router, "generate_otp", lambda email: calls.setdefault("generated_for", email) or "123456")
-    # setdefault returns the email; make the mocked generator return a stable OTP instead.
     monkeypatch.setattr(auth_router, "generate_otp", lambda email: (calls.update(generated_for=email) or "123456"))
     monkeypatch.setattr(auth_router, "send_otp_via_email_or_sms", lambda email, otp: calls.update(delivered_to=email, otp=otp))
 
