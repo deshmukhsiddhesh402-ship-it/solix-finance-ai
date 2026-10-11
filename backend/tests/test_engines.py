@@ -157,3 +157,7 @@ def test_npv_converts_arithmetic_overflow_to_value_error():
 def test_dcf_converts_arithmetic_overflow_to_value_error():
     with pytest.raises(ValueError, match="DCF result is not finite"):
         dcf_valuation([1.0, 1.0, 1.0], discount_rate_pct=1e308, terminal_growth_rate_pct=0)
+
+def test_cagr_converts_arithmetic_overflow_to_value_error():
+    with pytest.raises(ValueError, match="CAGR result is not finite"):
+        cagr(1e-308, 1e308, 1e-308)
