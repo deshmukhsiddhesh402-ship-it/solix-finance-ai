@@ -13,21 +13,27 @@ from app.core.db import get_db
 router = APIRouter()
 
 
+def _normalize_email(email: str) -> str:
+    """Use the same normalized email identity for OTPs and account lookup."""
+    return email.strip().lower()
+
+
 class OtpRequestBody(BaseModel):
     email: EmailStr
 
 
 @router.post("/otp/request")
 def request_otp(req: OtpRequestBody):
+    email = _normalize_email(str(req.email))
     try:
-        otp = generate_otp(str(req.email))
+        otp = generate_otp(email)
     except ValueError as exc:
         raise HTTPException(429, detail="Please wait before requesting another OTP.") from exc
 
     try:
-        send_otp_via_email_or_sms(str(req.email), otp)
+        send_otp_via_email_or_sms(email, otp)
     except RuntimeError as exc:
-        discard_otp(str(req.email))
+        discard_otp(email)
         raise HTTPException(503, detail="OTP delivery is not configured.") from exc
 
     response = {"message": "If the address is eligible, an OTP will be sent."}
@@ -44,12 +50,12 @@ class OtpVerifyBody(BaseModel):
 @router.post("/otp/verify")
 def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
     """Verify OTP and guarantee that every authenticated user has a tenant."""
-    if not verify_otp(str(req.email), req.otp):
+    email = _normalize_email(str(req.email))
+    if not verify_otp(email, req.otp):
         raise HTTPException(401, detail="Invalid or expired OTP")
 
     from app.models.auth_user import Organization, OrgMembership, User
 
-    email = str(req.email)
     user = db.query(User).filter(User.email == email).first()
 
     if not user:
