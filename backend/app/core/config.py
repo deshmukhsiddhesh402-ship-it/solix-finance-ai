@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
-    ENV: str = "development"
+    # Require an explicit environment so an unset deployment cannot silently run as development.
+    ENV: str
     # Returning a development OTP is opt-in; never enable this in a deployed environment.
     DEV_OTP_ENABLED: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
@@ -24,7 +25,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_production_secrets(self):
-        if self.ENV.strip().lower() in {"prod", "production"}:
+        environment = self.ENV.strip().lower()
+        if environment not in {"dev", "development", "test", "staging", "prod", "production"}:
+            raise ValueError("ENV must be one of dev, development, test, staging, prod, or production.")
+        if environment in {"prod", "production"}:
             if self.DEV_OTP_ENABLED:
                 raise ValueError("DEV_OTP_ENABLED must be false in production.")
             if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:
@@ -37,6 +41,13 @@ class Settings(BaseSettings):
                 parsed = urlparse(origin.strip())
                 if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                     raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
+                if (
+                    parsed.path or parsed.query or parsed.fragment
+                    or parsed.username is not None or parsed.password is not None
+                ):
+                    raise ValueError(
+                        "Production ALLOWED_ORIGINS must be origins only, without paths, queries, fragments, or credentials."
+                    )
                 if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:

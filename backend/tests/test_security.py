@@ -451,3 +451,312 @@ def test_otp_delivery_is_skipped_only_for_explicit_local_development(monkeypatch
     monkeypatch.setattr(app_settings, "ENV", "production")
     with pytest.raises(RuntimeError, match="delivery provider is not configured"):
         send_otp_via_email_or_sms("production@example.com", "123456")
+
+
+def test_settings_require_explicit_environment_when_env_file_is_absent(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValidationError, match="ENV"):
+        Settings()
+
+
+def test_settings_reject_unknown_environment():
+    with pytest.raises(ValidationError, match="ENV must be one of"):
+        Settings(ENV="production-ish")
+
+
+
+def test_production_rejects_development_otp_even_with_valid_other_settings():
+    with pytest.raises(ValidationError, match="DEV_OTP_ENABLED must be false"):
+        Settings(
+            ENV="production",
+            DEV_OTP_ENABLED=True,
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=["https://app.example.com"],
+        )
+
+
+@pytest.mark.parametrize(
+    "origins",
+    [
+        ["*"],
+        ["https://app.example.com", "http://localhost:3000"],
+        [""],
+        ["ftp://app.example.com"],
+    ],
+)
+def test_production_rejects_unsafe_or_invalid_allowed_origins(origins):
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="production",
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=origins,
+        )
+
+
+@pytest.mark.parametrize("algorithm", ["none", "RS256", "HS256 "])
+def test_settings_reject_unsupported_jwt_algorithm(algorithm):
+    with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
+        Settings(ENV="test", JWT_ALGORITHM=algorithm)
+
+
+def test_settings_reject_non_positive_jwt_expiration():
+    with pytest.raises(ValidationError, match="JWT_EXPIRE_MINUTES"):
+        Settings(ENV="test", JWT_EXPIRE_MINUTES=0)
+
+
+def test_persisted_journal_endpoint_retains_permission_dependency():
+    """Persisted organization data must not lose its fail-closed RBAC guard."""
+    from app.routers.accounting import create_journal_entry
+
+    dependency = create_journal_entry.__defaults__
+    assert dependency is not None
+    assert any(
+        getattr(value, "dependency", None) is not None
+        and getattr(value.dependency, "__name__", "") == "_dependency"
+        for value in dependency
+    )
+
+
+def test_stateless_trial_balance_remains_a_pure_calculation_endpoint():
+    """Stateless calculator compatibility is intentional; it stores no org data."""
+    from app.routers.accounting import trial_balance
+
+    assert "req" in trial_balance.__annotations__
+    assert len(trial_balance.__defaults__ or ()) == 0
+
+
+def test_allowed_origins_environment_value_uses_json_array(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("ALLOWED_ORIGINS", '["https://app.example.com","https://admin.example.com"]')
+
+    configured = Settings()
+
+    assert configured.ALLOWED_ORIGINS == [
+        "https://app.example.com",
+        "https://admin.example.com",
+    ]
+
+
+
+def test_permission_guard_rejects_user_without_org_membership(monkeypatch):
+    """A valid identity alone must not grant access to another organization."""
+    import uuid
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+
+    user_id = uuid.uuid4()
+    org_id = uuid.uuid4()
+    user = User(id=user_id, email="member-check@example.com", full_name="Member Check")
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *conditions):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            if self.model is OrgMembership:
+                return None
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise.require_permission("journal_entry", "create")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(org_id=str(org_id), authorization="Bearer valid-token", db=FakeDB())
+
+    assert exc_info.value.status_code == 403
+    assert "not a member" in exc_info.value.detail
+
+
+def test_permission_guard_denies_auditor_journal_creation(monkeypatch):
+    """Membership grants organization scope, but role permissions still apply."""
+    import uuid
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+
+    user_id = uuid.uuid4()
+    org_id = uuid.uuid4()
+    user = User(id=user_id, email="auditor-check@example.com", full_name="Auditor Check")
+    membership = OrgMembership(user_id=user_id, org_id=org_id, role="auditor")
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *conditions):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            if self.model is OrgMembership:
+                return membership
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise.require_permission("journal_entry", "create")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(org_id=str(org_id), authorization="Bearer valid-token", db=FakeDB())
+
+    assert exc_info.value.status_code == 403
+    assert "cannot create journal_entry" in exc_info.value.detail
+
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    ["", "Basic not-a-bearer-token", "Bearer "],
+)
+def test_permission_guard_rejects_missing_or_malformed_bearer_header(authorization):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried before authentication.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization=authorization,
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 401
+
+
+def test_permission_guard_rejects_invalid_token_before_database_access(monkeypatch):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: None)
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for an invalid token.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization="Bearer invalid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 401
+
+
+def test_permission_guard_rejects_invalid_user_identifier_in_token(monkeypatch):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": "not-a-uuid"})
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for a malformed subject.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization="Bearer valid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+
+def test_permission_guard_rejects_invalid_organization_identifier_before_database_access(monkeypatch):
+    """Malformed tenant identifiers must fail before any database lookup."""
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(
+        enterprise,
+        "decode_access_token",
+        lambda token: {"sub": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"},
+    )
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for a malformed organization identifier.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="not-an-organization-uuid",
+            authorization="Bearer valid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "organization identifier" in exc_info.value.detail
+
+
+@pytest.mark.parametrize(
+    ("role", "resource", "action"),
+    [
+        ("unknown-role", "journal_entry", "view"),
+        ("admin", "unknown-resource", "view"),
+        ("admin", "journal_entry", "unknown-action"),
+        ("auditor", "journal_entry", "create"),
+        ("accountant", "api_keys", "create"),
+    ],
+)
+def test_rbac_denies_unknown_or_disallowed_permissions(role, resource, action):
+    """Unknown roles/resources/actions and explicitly forbidden operations fail closed."""
+    from app.services.rbac_engine import has_permission
+
+    assert has_permission(role, resource, action) is False
+
+
+def test_rbac_permission_listing_for_unknown_role_is_empty():
+    from app.services.rbac_engine import list_permissions
+
+    assert list_permissions("unknown-role") == {}
+
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://app.example.com/path",
+        "https://app.example.com?tenant=other",
+        "https://app.example.com#fragment",
+        "https://user:password@app.example.com",
+    ],
+)
+def test_production_rejects_cors_urls_that_are_not_origins(origin):
+    """CORS allow-list entries must be origins, not URLs carrying extra components."""
+    with pytest.raises(ValidationError, match="origins only"):
+        Settings(
+            ENV="production",
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=[origin],
+        )
