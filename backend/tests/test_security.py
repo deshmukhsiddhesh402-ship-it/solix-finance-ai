@@ -463,3 +463,45 @@ def test_settings_require_explicit_environment_when_env_file_is_absent(monkeypat
 def test_settings_reject_unknown_environment():
     with pytest.raises(ValidationError, match="ENV must be one of"):
         Settings(ENV="production-ish")
+
+
+
+def test_production_rejects_development_otp_even_with_valid_other_settings():
+    with pytest.raises(ValidationError, match="DEV_OTP_ENABLED must be false"):
+        Settings(
+            ENV="production",
+            DEV_OTP_ENABLED=True,
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=["https://app.example.com"],
+        )
+
+
+@pytest.mark.parametrize(
+    "origins",
+    [
+        ["*"],
+        ["https://app.example.com", "http://localhost:3000"],
+        [""],
+        ["ftp://app.example.com"],
+    ],
+)
+def test_production_rejects_unsafe_or_invalid_allowed_origins(origins):
+    with pytest.raises(ValidationError):
+        Settings(
+            ENV="production",
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=origins,
+        )
+
+
+@pytest.mark.parametrize("algorithm", ["none", "RS256", "HS256 "])
+def test_settings_reject_unsupported_jwt_algorithm(algorithm):
+    with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
+        Settings(ENV="test", JWT_ALGORITHM=algorithm)
+
+
+def test_settings_reject_non_positive_jwt_expiration():
+    with pytest.raises(ValidationError, match="JWT_EXPIRE_MINUTES"):
+        Settings(ENV="test", JWT_EXPIRE_MINUTES=0)
