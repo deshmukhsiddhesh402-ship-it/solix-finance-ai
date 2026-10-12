@@ -621,3 +621,70 @@ def test_permission_guard_denies_auditor_journal_creation(monkeypatch):
 
     assert exc_info.value.status_code == 403
     assert "cannot create journal_entry" in exc_info.value.detail
+
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    ["", "Basic not-a-bearer-token", "Bearer "],
+)
+def test_permission_guard_rejects_missing_or_malformed_bearer_header(authorization):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried before authentication.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization=authorization,
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 401
+
+
+def test_permission_guard_rejects_invalid_token_before_database_access(monkeypatch):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: None)
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for an invalid token.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization="Bearer invalid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 401
+
+
+def test_permission_guard_rejects_invalid_user_identifier_in_token(monkeypatch):
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": "not-a-uuid"})
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for a malformed subject.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+            authorization="Bearer valid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 400
