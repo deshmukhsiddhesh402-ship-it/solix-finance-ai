@@ -539,3 +539,85 @@ def test_allowed_origins_environment_value_uses_json_array(monkeypatch, tmp_path
         "https://app.example.com",
         "https://admin.example.com",
     ]
+
+
+
+def test_permission_guard_rejects_user_without_org_membership(monkeypatch):
+    """A valid identity alone must not grant access to another organization."""
+    import uuid
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+
+    user_id = uuid.uuid4()
+    org_id = uuid.uuid4()
+    user = User(id=user_id, email="member-check@example.com", full_name="Member Check")
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *conditions):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            if self.model is OrgMembership:
+                return None
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise.require_permission("journal_entry", "create")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(org_id=str(org_id), authorization="Bearer valid-token", db=FakeDB())
+
+    assert exc_info.value.status_code == 403
+    assert "not a member" in exc_info.value.detail
+
+
+def test_permission_guard_denies_auditor_journal_creation(monkeypatch):
+    """Membership grants organization scope, but role permissions still apply."""
+    import uuid
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+
+    user_id = uuid.uuid4()
+    org_id = uuid.uuid4()
+    user = User(id=user_id, email="auditor-check@example.com", full_name="Auditor Check")
+    membership = OrgMembership(user_id=user_id, org_id=org_id, role="auditor")
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *conditions):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            if self.model is OrgMembership:
+                return membership
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise.require_permission("journal_entry", "create")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(org_id=str(org_id), authorization="Bearer valid-token", db=FakeDB())
+
+    assert exc_info.value.status_code == 403
+    assert "cannot create journal_entry" in exc_info.value.detail
