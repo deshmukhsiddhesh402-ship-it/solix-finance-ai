@@ -526,3 +526,16 @@ def test_stateless_trial_balance_remains_a_pure_calculation_endpoint():
 
     assert "req" in trial_balance.__annotations__
     assert len(trial_balance.__defaults__ or ()) == 0
+
+
+def test_allowed_origins_environment_value_uses_json_array(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("ALLOWED_ORIGINS", '["https://app.example.com","https://admin.example.com"]')
+
+    configured = Settings()
+
+    assert configured.ALLOWED_ORIGINS == [
+        "https://app.example.com",
+        "https://admin.example.com",
+    ]
