@@ -505,3 +505,24 @@ def test_settings_reject_unsupported_jwt_algorithm(algorithm):
 def test_settings_reject_non_positive_jwt_expiration():
     with pytest.raises(ValidationError, match="JWT_EXPIRE_MINUTES"):
         Settings(ENV="test", JWT_EXPIRE_MINUTES=0)
+
+
+def test_persisted_journal_endpoint_retains_permission_dependency():
+    """Persisted organization data must not lose its fail-closed RBAC guard."""
+    from app.routers.accounting import create_journal_entry
+
+    dependency = create_journal_entry.__defaults__
+    assert dependency is not None
+    assert any(
+        getattr(value, "dependency", None) is not None
+        and getattr(value.dependency, "__name__", "") == "_dependency"
+        for value in dependency
+    )
+
+
+def test_stateless_trial_balance_remains_a_pure_calculation_endpoint():
+    """Stateless calculator compatibility is intentional; it stores no org data."""
+    from app.routers.accounting import trial_balance
+
+    assert "req" in trial_balance.__annotations__
+    assert len(trial_balance.__defaults__ or ()) == 0
