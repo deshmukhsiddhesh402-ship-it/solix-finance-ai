@@ -41,6 +41,13 @@ class Settings(BaseSettings):
                 parsed = urlparse(origin.strip())
                 if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                     raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
+                if (
+                    parsed.path or parsed.query or parsed.fragment
+                    or parsed.username is not None or parsed.password is not None
+                ):
+                    raise ValueError(
+                        "Production ALLOWED_ORIGINS must be origins only, without paths, queries, fragments, or credentials."
+                    )
                 if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
