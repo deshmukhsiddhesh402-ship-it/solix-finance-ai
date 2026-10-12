@@ -739,3 +739,24 @@ def test_rbac_permission_listing_for_unknown_role_is_empty():
     from app.services.rbac_engine import list_permissions
 
     assert list_permissions("unknown-role") == {}
+
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://app.example.com/path",
+        "https://app.example.com?tenant=other",
+        "https://app.example.com#fragment",
+        "https://user:password@app.example.com",
+    ],
+)
+def test_production_rejects_cors_urls_that_are_not_origins(origin):
+    """CORS allow-list entries must be origins, not URLs carrying extra components."""
+    with pytest.raises(ValidationError, match="origins only"):
+        Settings(
+            ENV="production",
+            JWT_SECRET="a" * 48,
+            DATABASE_URL="postgresql://user:password@db.example:5432/solix",
+            ALLOWED_ORIGINS=[origin],
+        )
