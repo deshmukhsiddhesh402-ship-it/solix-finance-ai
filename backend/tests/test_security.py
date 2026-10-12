@@ -688,3 +688,54 @@ def test_permission_guard_rejects_invalid_user_identifier_in_token(monkeypatch):
         )
 
     assert exc_info.value.status_code == 400
+
+
+
+def test_permission_guard_rejects_invalid_organization_identifier_before_database_access(monkeypatch):
+    """Malformed tenant identifiers must fail before any database lookup."""
+    from fastapi import HTTPException
+    import app.routers.enterprise as enterprise
+
+    monkeypatch.setattr(
+        enterprise,
+        "decode_access_token",
+        lambda token: {"sub": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"},
+    )
+    dependency = enterprise.require_permission("journal_entry", "view")
+
+    class NeverQueriedDB:
+        def query(self, model):
+            raise AssertionError("Database must not be queried for a malformed organization identifier.")
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(
+            org_id="not-an-organization-uuid",
+            authorization="Bearer valid-token",
+            db=NeverQueriedDB(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "organization identifier" in exc_info.value.detail
+
+
+@pytest.mark.parametrize(
+    ("role", "resource", "action"),
+    [
+        ("unknown-role", "journal_entry", "view"),
+        ("admin", "unknown-resource", "view"),
+        ("admin", "journal_entry", "unknown-action"),
+        ("auditor", "journal_entry", "create"),
+        ("accountant", "api_keys", "create"),
+    ],
+)
+def test_rbac_denies_unknown_or_disallowed_permissions(role, resource, action):
+    """Unknown roles/resources/actions and explicitly forbidden operations fail closed."""
+    from app.services.rbac_engine import has_permission
+
+    assert has_permission(role, resource, action) is False
+
+
+def test_rbac_permission_listing_for_unknown_role_is_empty():
+    from app.services.rbac_engine import list_permissions
+
+    assert list_permissions("unknown-role") == {}
