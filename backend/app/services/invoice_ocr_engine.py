@@ -16,7 +16,6 @@ Excel or accounting journal entries.
 import io
 import re
 import base64
-import math
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -116,50 +115,117 @@ def invoices_to_excel(invoices: list[dict]) -> bytes:
 # ---------------------------------------------------------------------------
 # Convert extracted invoice to a double-entry journal entry
 # ---------------------------------------------------------------------------
-def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") -> list[dict]:
-    """Standard purchase-invoice journal entry:
-        Dr Purchases/Expense       (taxable value)
-        Dr Input CGST              (if any)
-        Dr Input SGST              (if any)
-        Dr Input IGST              (if any)
-        Cr Vendor (Accounts Payable) (total amount)
-    Rounds to 2dp and asserts the entry balances before returning it.
-    """
-    taxable = round(float(invoice.get("taxable_value") or 0), 2)
-    cgst = round(float(invoice.get("cgst_amount") or 0), 2)
-    sgst = round(float(invoice.get("sgst_amount") or 0), 2)
-    igst = round(float(invoice.get("igst_amount") or 0), 2)
-    total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+def _invoice_amount(invoice: dict, field: str, *, default=None):
+    """Validate and quantize one invoice amount to paise.
 
-    values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
-    if not all(math.isfinite(v) for v in values.values()):
-        raise ValueError("Invoice amounts must be finite numeric values.")
-    if any(v < 0 for v in values.values()):
-        raise ValueError("Invoice monetary values cannot be negative.")
-    expected_total = round(taxable + cgst + sgst + igst, 2)
-    if abs(expected_total - total) > 0.01:
+    Only absent optional fields may use a default; explicitly supplied None,
+    booleans, strings, non-finite values, and amounts above the supported
+    15-integer-digit currency range are rejected.
+    """
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
+
+    if field not in invoice:
+        if default is None:
+            raise ValueError(f"Invoice amount '{field}' is required.")
+        raw = default
+    else:
+        raw = invoice[field]
+
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, Decimal)):
+        raise ValueError(f"Invoice amount '{field}' must be a finite numeric value.")
+    try:
+        amount = Decimal(str(raw))
+        if not amount.is_finite():
+            raise ValueError(f"Invoice amount '{field}' must be finite.")
+        if amount < 0:
+            raise ValueError(f"Invoice amount '{field}' cannot be negative.")
+        if amount > Decimal("9999999999999.99"):
+            raise ValueError(f"Invoice amount '{field}' exceeds the supported limit.")
+        with localcontext() as context:
+            context.prec = max(28, len(amount.as_tuple().digits) + 4)
+            amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return amount
+    except (InvalidOperation, OverflowError, ValueError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith("Invoice amount"):
+            raise
+        raise ValueError(f"Invoice amount '{field}' is invalid or out of range.") from exc
+
+
+def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") -> list[dict]:
+    """Convert a validated purchase invoice into balanced journal lines.
+
+    Currency components and total are rounded to paise with Decimal
+    ROUND_HALF_UP. After rounding, totals must reconcile exactly; no
+    post-rounding tolerance is allowed for an unbalanced journal entry.
+    Missing GST components default to zero and a missing total is derived.
+    Explicitly supplied invalid values are never replaced by defaults.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+
+    if not isinstance(invoice, dict):
+        raise ValueError("Invoice must be a dictionary.")
+    if not isinstance(expense_account, str) or not expense_account.strip():
+        raise ValueError("Expense account must be a non-empty string.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in expense_account):
+        raise ValueError("Expense account contains unsupported control characters.")
+
+    zero = Decimal("0.00")
+    taxable = _invoice_amount(invoice, "taxable_value")
+    cgst = _invoice_amount(invoice, "cgst_amount", default=zero)
+    sgst = _invoice_amount(invoice, "sgst_amount", default=zero)
+    igst = _invoice_amount(invoice, "igst_amount", default=zero)
+    if "total_amount" in invoice:
+        total = _invoice_amount(invoice, "total_amount")
+    else:
+        total = (taxable + cgst + sgst + igst).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+    expected_total = (taxable + cgst + sgst + igst).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if expected_total != total:
         raise ValueError(
             f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
             "Review the extracted fields before posting."
         )
 
-    vendor = invoice.get("vendor_name") or "Unknown Vendor"
+    vendor_value = invoice.get("vendor_name", "Unknown Vendor")
+    if vendor_value is None:
+        vendor_value = "Unknown Vendor"
+    if not isinstance(vendor_value, str) or not vendor_value.strip():
+        raise ValueError("Vendor name must be a non-empty string when provided.")
+    vendor = vendor_value.strip()
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in vendor):
+        raise ValueError("Vendor name contains unsupported control characters.")
 
-    lines = [{"account_name": expense_account, "account_type": "expense", "debit": taxable, "credit": 0.0}]
+    def as_float(value):
+        return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    lines = [{
+        "account_name": expense_account.strip(),
+        "account_type": "expense",
+        "debit": as_float(taxable),
+        "credit": 0.0,
+    }]
     if cgst:
-        lines.append({"account_name": "Input CGST", "account_type": "asset", "debit": cgst, "credit": 0.0})
+        lines.append({"account_name": "Input CGST", "account_type": "asset", "debit": as_float(cgst), "credit": 0.0})
     if sgst:
-        lines.append({"account_name": "Input SGST", "account_type": "asset", "debit": sgst, "credit": 0.0})
+        lines.append({"account_name": "Input SGST", "account_type": "asset", "debit": as_float(sgst), "credit": 0.0})
     if igst:
-        lines.append({"account_name": "Input IGST", "account_type": "asset", "debit": igst, "credit": 0.0})
-    lines.append({"account_name": f"{vendor} (Payable)", "account_type": "liability", "debit": 0.0, "credit": total})
+        lines.append({"account_name": "Input IGST", "account_type": "asset", "debit": as_float(igst), "credit": 0.0})
+    lines.append({
+        "account_name": f"{vendor} (Payable)",
+        "account_type": "liability",
+        "debit": 0.0,
+        "credit": as_float(total),
+    })
 
-    total_debit = round(sum(l["debit"] for l in lines), 2)
-    total_credit = round(sum(l["credit"] for l in lines), 2)
-    if abs(total_debit - total_credit) > 0.01:
+    total_debit = sum((Decimal(str(line["debit"])) for line in lines), zero)
+    total_credit = sum((Decimal(str(line["credit"])) for line in lines), zero)
+    if total_debit != total_credit:
         raise ValueError(
             f"Journal entry doesn't balance (Dr {total_debit} vs Cr {total_credit}) — "
-            "the extracted taxable_value + tax amounts likely don't add up to total_amount. "
-            "Review the extracted fields before posting."
+            "review the extracted taxable value, tax amounts, and invoice total before posting."
         )
     return lines
