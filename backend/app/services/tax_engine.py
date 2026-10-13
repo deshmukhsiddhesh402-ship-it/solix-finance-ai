@@ -31,11 +31,15 @@ def _round_currency(value: Decimal) -> Decimal:
 
 
 def _require_finite_non_negative(value: float, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a finite, non-negative number.")
     if not math.isfinite(value) or value < 0:
         raise ValueError(f"{label} must be a finite, non-negative number.")
 
 
 def _require_rate(value: float, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a finite percentage between 0 and 100.")
     if not math.isfinite(value) or value < 0 or value > 100:
         raise ValueError(f"{label} must be a finite percentage between 0 and 100.")
 
