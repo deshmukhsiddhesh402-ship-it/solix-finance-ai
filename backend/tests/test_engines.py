@@ -172,7 +172,7 @@ def test_gstr3b_summary_aggregates_tax_and_input_credit_safely():
     }
 
 
-@pytest.mark.parametrize("bad_value", [True, "100", None, float("nan"), float("inf")])
+@pytest.mark.parametrize("bad_value", [True, "100", None, float("nan"), float("inf"), 10**1000])
 def test_tax_engine_amount_validation_rejects_wrong_types_and_non_finite_values(bad_value):
     with pytest.raises(ValueError, match="finite"):
         calculate_gst(bad_value, 18, True)
@@ -182,7 +182,7 @@ def test_tax_engine_amount_validation_rejects_wrong_types_and_non_finite_values(
         calculate_income_tax_new_regime(bad_value)
 
 
-@pytest.mark.parametrize("bad_rate", [True, "18", None, float("nan"), float("inf")])
+@pytest.mark.parametrize("bad_rate", [True, "18", None, float("nan"), float("inf"), 10**1000])
 def test_gst_rate_validation_rejects_wrong_types_and_non_finite_values(bad_rate):
     with pytest.raises(ValueError, match="percentage"):
         calculate_gst(100, bad_rate, True)
