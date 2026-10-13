@@ -77,9 +77,9 @@ def test_invoice_rejects_material_total_mismatch(total):
         invoice_to_journal_lines(valid_invoice(total_amount=total))
 
 
-def test_invoice_accepts_historical_one_paise_total_tolerance():
-    lines = invoice_to_journal_lines(valid_invoice(total_amount=1179.99))
-    assert lines[-1]["credit"] == 1179.99
+def test_invoice_rejects_one_paise_post_rounding_mismatch():
+    with pytest.raises(ValueError, match="does not reconcile"):
+        invoice_to_journal_lines(valid_invoice(total_amount=1179.99))
 
 
 @pytest.mark.parametrize("vendor", [123, [], "", "   ", "Acme\nSupplies"])
