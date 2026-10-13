@@ -107,3 +107,8 @@ def test_max_supported_currency_value_is_accepted_and_overflow_rejected():
     assert lines[0]["debit"] == float(max_amount)
     with pytest.raises(ValueError, match="limit"):
         invoice_to_journal_lines({"taxable_value": Decimal("1000000000000000"), "total_amount": Decimal("1000000000000000")})
+
+
+def test_taxable_value_is_required_instead_of_silently_defaulting_to_zero():
+    with pytest.raises(ValueError, match="required"):
+        invoice_to_journal_lines({"total_amount": 0})
