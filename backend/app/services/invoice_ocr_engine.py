@@ -16,7 +16,6 @@ Excel or accounting journal entries.
 import io
 import re
 import base64
-import math
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -158,12 +157,13 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     """Convert a validated purchase invoice into balanced journal lines.
 
     Monetary values are rounded to paise using Decimal ROUND_HALF_UP.
-    A one-paise difference is retained as the historical reconciliation
-    tolerance; invoices outside that tolerance are rejected for review.
+    Components and total are each rounded to paise; the rounded values must
+    then reconcile exactly. There is no post-rounding tolerance for an
+    unbalanced journal entry.
     Missing GST components default to zero and a missing total is derived.
     Explicitly supplied invalid values are never replaced by defaults.
     """
-    from decimal import Decimal, ROUND_HALF_UP
+    from decimal import Decimal
 
     if not isinstance(invoice, dict):
         raise ValueError("Invoice must be a dictionary.")
@@ -188,7 +188,7 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     expected_total = (taxable + cgst + sgst + igst).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    if abs(expected_total - total) > Decimal("0.01"):
+    if expected_total != total:
         raise ValueError(
             f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
             "Review the extracted fields before posting."
@@ -227,7 +227,7 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
 
     total_debit = sum((Decimal(str(line["debit"])) for line in lines), zero)
     total_credit = sum((Decimal(str(line["credit"])) for line in lines), zero)
-    if abs(total_debit - total_credit) > Decimal("0.01"):
+    if total_debit != total_credit:
         raise ValueError(
             f"Journal entry doesn't balance (Dr {total_debit} vs Cr {total_credit}) — "
             "review the extracted taxable value, tax amounts, and invoice total before posting."
