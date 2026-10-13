@@ -869,4 +869,4 @@ def test_ocr_file_signature_validation_rejects_extension_mismatch():
     assert ocr._has_expected_file_signature(b"\x89PNG\r\n\x1a\nrest", "png")
     assert not ocr._has_expected_file_signature(b"%PDF-1.7 sample", "png")
     assert not ocr._has_expected_file_signature(b"random bytes", "pdf")
-    assert not ocr._has_expected_file_signature(b"RIFF1234WEBP", "webp")
+    assert not ocr._has_expected_file_signature(b"RIFF1234NOPE", "webp")
