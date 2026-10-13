@@ -132,7 +132,7 @@ def _invoice_amount(invoice: dict, field: str, *, default=None):
         raw = invoice[field]
 
     if isinstance(raw, bool) or not isinstance(raw, (int, float, Decimal)):
-        raise ValueError(f"Invoice amount '{field}' must be a numeric value.")
+        raise ValueError(f"Invoice amount '{field}' must be a finite numeric value.")
     try:
         amount = Decimal(str(raw))
         if not amount.is_finite():
