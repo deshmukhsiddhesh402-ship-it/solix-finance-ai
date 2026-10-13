@@ -811,3 +811,62 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_ocr_session_rejects_cross_organization_access():
+    from fastapi import HTTPException
+    import app.routers.invoice_ocr as ocr
+
+    sid = "33333333-3333-4333-8333-333333333334"
+    ocr._EXTRACTED_INVOICES[sid] = {
+        "invoice": {"total_amount": 100},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": __import__("time").time(),
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            ocr._get_session(
+                sid,
+                "7f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+                "11111111-1111-4111-8111-111111111111",
+            )
+        assert exc.value.status_code == 403
+    finally:
+        ocr._EXTRACTED_INVOICES.pop(sid, None)
+
+
+def test_ocr_session_expiry_removes_stale_invoice():
+    import time
+    from fastapi import HTTPException
+    import app.routers.invoice_ocr as ocr
+
+    sid = "33333333-3333-4333-8333-333333333335"
+    ocr._EXTRACTED_INVOICES[sid] = {
+        "invoice": {"total_amount": 100},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": time.time() - ocr.OCR_SESSION_TTL_SECONDS - 1,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            ocr._get_session(
+                sid,
+                "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+                "11111111-1111-4111-8111-111111111111",
+            )
+        assert exc.value.status_code == 404
+        assert sid not in ocr._EXTRACTED_INVOICES
+    finally:
+        ocr._EXTRACTED_INVOICES.pop(sid, None)
+
+
+def test_ocr_file_signature_validation_rejects_extension_mismatch():
+    import app.routers.invoice_ocr as ocr
+
+    assert ocr._has_expected_file_signature(b"%PDF-1.7 sample", "pdf")
+    assert ocr._has_expected_file_signature(b"\\x89PNG\\r\\n\\x1a\\nrest", "png")
+    assert not ocr._has_expected_file_signature(b"%PDF-1.7 sample", "png")
+    assert not ocr._has_expected_file_signature(b"random bytes", "pdf")
+    assert not ocr._has_expected_file_signature(b"RIFF1234WEBP", "webp")
