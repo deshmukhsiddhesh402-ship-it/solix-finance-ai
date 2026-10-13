@@ -61,7 +61,9 @@ npm run dev
 ## Environment variables
 See `backend/.env.example` and `frontend/.env.local.example`.
 
-## Status: all 10 planned modules built
+## Module implementation status (not a production-completion claim)
+
+The modules below describe implemented features and foundations, not a claim that the entire platform is production-ready. Some paths still require live-service verification, background workers, external-provider setup, or additional authorization wiring. In particular, the limitations documented later in this README remain part of the current scope: RBAC is not yet enforced across every pre-existing router; scheduled reports and notifications do not independently deliver messages; external API integrations are not wired; some database round-trips and AI/OCR paths still require deployment-level testing; and the Voice Assistant, Document Scanner UI, and Fraud Detection features are not built. Do not treat a module label or passing unit test as proof of end-to-end production readiness.
 1. ✅ AI Excel Assistant — formula explain/generate/fix, VBA generator, Office Scripts, Pivot Table planner
 2. ✅ Accounting core — Journal → Trial Balance → P&L → Balance Sheet, ratios, depreciation (SLM/WDV), FIFO/LIFO/WAVG inventory
 3. ✅ Indian Tax — GST calculator + GSTR-3B summary, TDS calculator, Income Tax (new regime, FY2025-26)
