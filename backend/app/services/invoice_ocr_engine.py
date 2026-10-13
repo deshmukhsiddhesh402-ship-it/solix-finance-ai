@@ -139,7 +139,7 @@ def _invoice_amount(invoice: dict, field: str, *, default=None):
             raise ValueError(f"Invoice amount '{field}' must be finite.")
         if amount < 0:
             raise ValueError(f"Invoice amount '{field}' cannot be negative.")
-        if amount > Decimal("999999999999999.99"):
+        if amount > Decimal("9999999999999.99"):
             raise ValueError(f"Invoice amount '{field}' exceeds the supported limit.")
         with localcontext() as context:
             context.prec = max(28, len(amount.as_tuple().digits) + 4)
