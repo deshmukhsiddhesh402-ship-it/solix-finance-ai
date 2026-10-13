@@ -170,7 +170,7 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
         raise ValueError("Expense account contains unsupported control characters.")
 
     zero = Decimal("0.00")
-    taxable = _invoice_amount(invoice, "taxable_value", default=zero)
+    taxable = _invoice_amount(invoice, "taxable_value")
     cgst = _invoice_amount(invoice, "cgst_amount", default=zero)
     sgst = _invoice_amount(invoice, "sgst_amount", default=zero)
     igst = _invoice_amount(invoice, "igst_amount", default=zero)
