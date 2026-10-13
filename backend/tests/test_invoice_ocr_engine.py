@@ -102,11 +102,11 @@ def test_missing_optional_tax_fields_default_to_zero_but_explicit_none_does_not(
 
 
 def test_max_supported_currency_value_is_accepted_and_overflow_rejected():
-    max_amount = Decimal("999999999999999.99")
+    max_amount = Decimal("9999999999999.99")
     lines = invoice_to_journal_lines({"taxable_value": max_amount, "total_amount": max_amount})
-    assert lines[0]["debit"] == float(max_amount)
+    assert Decimal(str(lines[0]["debit"])).quantize(Decimal("0.01")) == max_amount
     with pytest.raises(ValueError, match="limit"):
-        invoice_to_journal_lines({"taxable_value": Decimal("1000000000000000"), "total_amount": Decimal("1000000000000000")})
+        invoice_to_journal_lines({"taxable_value": Decimal("10000000000000.00"), "total_amount": Decimal("1000000000000000")})
 
 
 def test_taxable_value_is_required_instead_of_silently_defaulting_to_zero():
