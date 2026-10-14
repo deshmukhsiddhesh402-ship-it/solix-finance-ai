@@ -10,8 +10,9 @@ surfaced as either:
   - "Deposits not yet credited" (in books, not yet in bank) or
   - "Bank-only items" (bank charges, interest credited, etc. not yet in books)
 """
-from dataclasses import dataclass, field
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date
+import math
 from typing import Literal
 
 
@@ -34,12 +35,53 @@ class BookLine:
     txn_type: Literal["credit", "debit"]  # credit = money in per books, debit = money out
 
 
+def _is_finite_number(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _validate_reconciliation_inputs(
+    bank_lines: list[BankLine],
+    book_lines: list[BookLine],
+    date_window_days: int,
+) -> None:
+    if type(date_window_days) is not int or not 0 <= date_window_days <= 31:
+        raise ValueError("date_window_days must be an integer between 0 and 31.")
+
+    for source_name, lines in (("bank_lines", bank_lines), ("book_lines", book_lines)):
+        seen_ids = set()
+        for line in lines:
+            if not isinstance(line.id, str) or not line.id.strip() or len(line.id) > 128:
+                raise ValueError(f"Each transaction ID in {source_name} must be a non-empty string of at most 128 characters.")
+            if line.id in seen_ids:
+                raise ValueError(f"Transaction IDs in {source_name} must be unique.")
+            seen_ids.add(line.id)
+
+            if type(line.txn_date) is not date:
+                raise ValueError(f"Each transaction date in {source_name} must be a date.")
+            if not _is_finite_number(line.amount) or line.amount <= 0:
+                raise ValueError(f"Each transaction amount in {source_name} must be a positive finite number.")
+            if line.txn_type not in ("credit", "debit"):
+                raise ValueError(f"Each transaction type in {source_name} must be credit or debit.")
+            if not isinstance(line.description, str) or len(line.description) > 2000:
+                raise ValueError(f"Each description in {source_name} must be a string of at most 2000 characters.")
+            if source_name == "bank_lines" and (
+                not isinstance(line.mode, str) or len(line.mode) > 64
+            ):
+                raise ValueError("Each bank transaction mode must be a string of at most 64 characters.")
+
+
 def reconcile(
     bank_lines: list[BankLine],
     book_lines: list[BookLine],
     date_window_days: int = 5,
 ) -> dict:
     """Match only unambiguous bank/book pairs; return uncertain candidates for review."""
+    _validate_reconciliation_inputs(bank_lines, book_lines, date_window_days)
     unmatched_bank = list(bank_lines)
     unmatched_book = list(book_lines)
     matched = []
@@ -120,6 +162,14 @@ def reconcile(
     total_bank_only_credits = sum(b.amount for b in bank_only_items if b.txn_type == "credit")
     total_bank_only_debits = sum(b.amount for b in bank_only_items if b.txn_type == "debit")
 
+    if not all(_is_finite_number(value) for value in (
+        total_outstanding_cheques,
+        total_deposits_not_credited,
+        total_bank_only_credits,
+        total_bank_only_debits,
+    )):
+        raise ValueError("Reconciliation totals exceed the supported numeric range.")
+
     return {
         "matched_count": len(matched),
         "matched": matched,
@@ -154,4 +204,10 @@ def reconciled_balance(
     """Classic bank reconciliation statement formula:
     Balance as per Bank + Deposits not yet credited - Outstanding cheques = Balance as per Books
     """
-    return round(balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total, 2)
+    values = (balance_as_per_bank, outstanding_cheques_total, deposits_not_credited_total)
+    if not all(_is_finite_number(value) for value in values):
+        raise ValueError("Reconciliation balances must be finite numbers.")
+    result = balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total
+    if not _is_finite_number(result):
+        raise ValueError("Reconciled balance exceeds the supported numeric range.")
+    return round(result, 2)

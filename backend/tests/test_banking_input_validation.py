@@ -1,8 +1,14 @@
 """Regression tests for bank reconciliation request validation."""
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.routers.banking import BankLineIn, BookLineIn, ReconcileRequest
+from app.routers.banking import (
+    BankLineIn,
+    BookLineIn,
+    ReconcileRequest,
+    reconcile_endpoint,
+)
 
 
 def bank_line(amount=100.0):
@@ -83,3 +89,19 @@ def test_reconciliation_allows_same_id_once_in_each_source():
     book["id"] = bank["id"]
     request = ReconcileRequest(bank_lines=[bank], book_lines=[book])
     assert request.bank_lines[0].id == request.book_lines[0].id
+
+
+def test_reconciliation_endpoint_returns_422_for_aggregate_overflow():
+    request = ReconcileRequest(
+        bank_lines=[],
+        book_lines=[
+            {**book_line(amount=1e308), "id": "book-large-1"},
+            {**book_line(amount=1e308), "id": "book-large-2"},
+        ],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        reconcile_endpoint(request, org_id="test-org", _user="test-user")
+
+    assert exc_info.value.status_code == 422
+    assert "supported numeric range" in exc_info.value.detail

@@ -1,7 +1,9 @@
 """Regression tests for ambiguous bank reconciliation matches."""
 from datetime import date
 
-from app.services.banking_engine import BankLine, BookLine, reconcile
+import pytest
+
+from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 
 
 def bank(identifier="bank-1", day=14, amount=100.0, txn_type="credit"):
@@ -114,3 +116,59 @@ def test_tied_candidate_ids_are_stable_when_book_input_order_changes():
         "book-after",
         "book-before",
     ]
+
+
+@pytest.mark.parametrize(
+    "date_window_days",
+    [-1, 32, True, 1.5, "5"],
+)
+def test_engine_rejects_invalid_date_windows(date_window_days):
+    with pytest.raises(ValueError, match="date_window_days"):
+        reconcile([bank()], [book("book-1", 14)], date_window_days=date_window_days)
+
+
+@pytest.mark.parametrize("amount", [0, -1, True, float("nan"), float("inf"), float("-inf"), "100"])
+def test_engine_rejects_invalid_direct_transaction_amounts(amount):
+    with pytest.raises(ValueError, match="positive finite number"):
+        reconcile([bank(amount=amount)], [])
+
+
+def test_engine_rejects_duplicate_ids_even_when_called_without_api_model():
+    with pytest.raises(ValueError, match="must be unique"):
+        reconcile([bank("duplicate"), bank("duplicate")], [])
+
+
+def test_engine_rejects_invalid_direct_transaction_type():
+    invalid = BankLine("bank-invalid", date(2026, 10, 14), "Payment", 100.0, "transfer")
+    with pytest.raises(ValueError, match="transaction type"):
+        reconcile([invalid], [])
+
+
+def test_engine_rejects_aggregate_amount_overflow():
+    with pytest.raises(ValueError, match="supported numeric range"):
+        reconcile(
+            [],
+            [
+                book("large-1", 14, amount=1e308),
+                book("large-2", 14, amount=1e308),
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        (float("nan"), 0.0, 0.0),
+        (100.0, float("inf"), 0.0),
+        (100.0, 0.0, float("-inf")),
+        (True, 0.0, 0.0),
+    ],
+)
+def test_reconciled_balance_rejects_non_finite_or_boolean_inputs(values):
+    with pytest.raises(ValueError, match="finite numbers"):
+        reconciled_balance(*values)
+
+
+def test_reconciled_balance_rejects_overflowed_result():
+    with pytest.raises(ValueError, match="supported numeric range"):
+        reconciled_balance(1e308, 0.0, 1e308)

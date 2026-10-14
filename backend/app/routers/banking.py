@@ -3,7 +3,7 @@ import math
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
@@ -77,15 +77,22 @@ def reconcile_endpoint(
 ):
     bank_lines = [BankLine(**l.model_dump()) for l in req.bank_lines]
     book_lines = [BookLine(**l.model_dump()) for l in req.book_lines]
-    result = reconcile(bank_lines, book_lines, req.date_window_days)
+    try:
+        result = reconcile(bank_lines, book_lines, req.date_window_days)
+        balance_as_per_books = reconciled_balance(
+            req.balance_as_per_bank,
+            result["totals"]["outstanding_cheques"],
+            result["totals"]["deposits_not_credited"],
+        )
+    except ValueError as exc:
+        # Finite individual values can still overflow when aggregated. Return a
+        # client error instead of leaking a 500 for a mathematically invalid request.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     result["reconciliation_statement"] = {
         "balance_as_per_bank": req.balance_as_per_bank,
         "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
         "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
-        "balance_as_per_books": reconciled_balance(
-            req.balance_as_per_bank,
-            result["totals"]["outstanding_cheques"],
-            result["totals"]["deposits_not_credited"],
-        ),
+        "balance_as_per_books": balance_as_per_books,
     }
     return result
