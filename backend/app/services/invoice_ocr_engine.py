@@ -108,7 +108,7 @@ def _excel_cell(value):
         # untrusted text with an apostrophe so spreadsheet apps treat it as
         # data rather than a formula when a user opens the exported workbook.
         text = value[:32767]
-        if text.lstrip(" \\t\\r\\n")[:1] in ("=", "+", "-", "@"):
+        if text.lstrip()[:1] in ("=", "+", "-", "@"):
             return "'" + text[:32766]
         return text
     if isinstance(value, int):
