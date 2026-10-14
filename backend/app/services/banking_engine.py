@@ -39,10 +39,11 @@ def reconcile(
     book_lines: list[BookLine],
     date_window_days: int = 5,
 ) -> dict:
-    """Match bank and book lines; return matched pairs + unmatched on both sides."""
+    """Match only unambiguous bank/book pairs; return uncertain candidates for review."""
     unmatched_bank = list(bank_lines)
     unmatched_book = list(book_lines)
     matched = []
+    ambiguous_matches = []
 
     for bl in list(unmatched_bank):
         # A bank credit corresponds to a book credit (money received);
@@ -53,16 +54,31 @@ def reconcile(
             and abs(bk.amount - bl.amount) < 0.01
             and abs((bk.txn_date - bl.txn_date).days) <= date_window_days
         ]
-        if candidates:
-            # Prefer the closest date match.
-            best = min(candidates, key=lambda bk: abs((bk.txn_date - bl.txn_date).days))
-            matched.append({
-                "bank_id": bl.id, "book_id": best.id, "amount": bl.amount,
-                "txn_type": bl.txn_type, "bank_date": bl.txn_date.isoformat(),
-                "book_date": best.txn_date.isoformat(),
+        if not candidates:
+            continue
+
+        # Keep the prior nearest-date preference, but do not silently choose
+        # when two or more candidates are equally close. Leave every involved
+        # item unmatched so a human can review the ambiguity.
+        distances = [(abs((bk.txn_date - bl.txn_date).days), bk) for bk in candidates]
+        best_distance = min(distance for distance, _ in distances)
+        best_candidates = [bk for distance, bk in distances if distance == best_distance]
+        if len(best_candidates) != 1:
+            ambiguous_matches.append({
+                "bank_id": bl.id,
+                "candidate_book_ids": [bk.id for bk in best_candidates],
+                "reason": "Multiple book transactions have the same amount, type, and closest date; manual review required.",
             })
-            unmatched_bank.remove(bl)
-            unmatched_book.remove(best)
+            continue
+
+        best = best_candidates[0]
+        matched.append({
+            "bank_id": bl.id, "book_id": best.id, "amount": bl.amount,
+            "txn_type": bl.txn_type, "bank_date": bl.txn_date.isoformat(),
+            "book_date": best.txn_date.isoformat(),
+        })
+        unmatched_bank.remove(bl)
+        unmatched_book.remove(best)
 
     # Classify remaining unmatched book lines.
     outstanding_cheques = [b for b in unmatched_book if b.txn_type == "debit"]
@@ -78,6 +94,7 @@ def reconcile(
     return {
         "matched_count": len(matched),
         "matched": matched,
+        "ambiguous_matches": ambiguous_matches,
         "outstanding_cheques": [
             {"id": b.id, "date": b.txn_date.isoformat(), "description": b.description, "amount": b.amount}
             for b in outstanding_cheques
