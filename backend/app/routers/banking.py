@@ -20,6 +20,13 @@ class BankLineIn(BaseModel):
     txn_type: Literal["credit", "debit"]
     mode: str = Field(default="", max_length=64)
 
+    @field_validator("amount", mode="before")
+    @classmethod
+    def amount_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Transaction amount must be numeric, not boolean.")
+        return value
+
     @field_validator("amount")
     @classmethod
     def amount_must_be_finite(cls, value: float) -> float:
@@ -48,6 +55,20 @@ class ReconcileRequest(BaseModel):
     book_lines: list[BookLineIn] = Field(max_length=10000)
     date_window_days: int = Field(default=5, ge=0, le=31)
     balance_as_per_bank: float = 0.0
+
+    @field_validator("date_window_days", mode="before")
+    @classmethod
+    def date_window_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("date_window_days must be an integer, not boolean.")
+        return value
+
+    @field_validator("balance_as_per_bank", mode="before")
+    @classmethod
+    def bank_balance_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Bank balance must be numeric, not boolean.")
+        return value
 
     @field_validator("balance_as_per_bank")
     @classmethod
@@ -79,7 +100,10 @@ def reconcile_endpoint(
     book_lines = [BookLine(**l.model_dump()) for l in req.book_lines]
     try:
         result = reconcile(bank_lines, book_lines, req.date_window_days)
-        balance_as_per_books = reconciled_balance(
+        # Ambiguous candidates can change the reconciliation outcome. Do not
+        # publish a final book balance until a person resolves those items.
+        requires_manual_review = bool(result["ambiguous_matches"])
+        balance_as_per_books = None if requires_manual_review else reconciled_balance(
             req.balance_as_per_bank,
             result["totals"]["outstanding_cheques"],
             result["totals"]["deposits_not_credited"],
@@ -94,5 +118,7 @@ def reconcile_endpoint(
         "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
         "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
         "balance_as_per_books": balance_as_per_books,
+        "manual_review_required": requires_manual_review,
+        "ambiguous_transaction_count": len(result["ambiguous_matches"]),
     }
     return result

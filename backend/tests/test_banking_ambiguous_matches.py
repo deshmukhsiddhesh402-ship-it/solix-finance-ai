@@ -28,8 +28,13 @@ def test_equal_closest_candidates_are_flagged_and_not_auto_matched():
         "candidate_book_ids": ["book-after", "book-before"],
         "reason": "Multiple book transactions have the same amount, type, and closest date; manual review required.",
     }]
-    assert {row["id"] for row in result["deposits_not_credited"]} == {"book-before", "book-after"}
-    assert [row["id"] for row in result["bank_only_items"]] == ["bank-1"]
+    assert result["deposits_not_credited"] == []
+    assert result["outstanding_cheques"] == []
+    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-before", "book-after"]
+    assert [row["id"] for row in result["unresolved_bank_items"]] == ["bank-1"]
+    assert result["totals"]["deposits_not_credited"] == 0
+    assert result["totals"]["outstanding_cheques"] == 0
+    assert result["bank_only_items"] == []
 
 
 def test_unique_closest_candidate_is_still_matched():
@@ -77,8 +82,11 @@ def test_two_bank_lines_competing_for_one_book_line_are_both_flagged():
             "reason": "Multiple bank transactions compete for the same closest book transaction; manual review required.",
         },
     ]
-    assert [row["id"] for row in result["bank_only_items"]] == ["bank-a", "bank-b"]
-    assert [row["id"] for row in result["deposits_not_credited"]] == ["book-only"]
+    assert result["bank_only_items"] == []
+    assert [row["id"] for row in result["unresolved_bank_items"]] == ["bank-a", "bank-b"]
+    assert result["deposits_not_credited"] == []
+    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-only"]
+    assert result["totals"]["deposits_not_credited"] == 0
 
 
 def test_cross_side_conflict_is_not_resolved_by_input_order():
@@ -100,6 +108,8 @@ def test_cross_side_conflict_is_not_resolved_by_input_order():
     } == {
         item["bank_id"] for item in reverse["ambiguous_matches"]
     } == {"bank-a", "bank-b"}
+    assert forward["unresolved_bank_items"] == reverse["unresolved_bank_items"]
+    assert forward["unresolved_book_items"] == reverse["unresolved_book_items"]
 
 
 def test_tied_candidate_ids_are_stable_when_book_input_order_changes():
@@ -186,3 +196,105 @@ def test_reconciled_balance_rejects_non_finite_or_boolean_inputs(values):
 def test_reconciled_balance_rejects_overflowed_result():
     with pytest.raises(ValueError, match="supported numeric range"):
         reconciled_balance(1e308, 0.0, 1e308)
+
+
+
+def test_endpoint_withholds_final_balance_when_reconciliation_is_ambiguous():
+    from app.routers.banking import ReconcileRequest, reconcile_endpoint
+
+    request = ReconcileRequest(
+        bank_lines=[{
+            "id": "bank-ambiguous",
+            "txn_date": "2026-10-14",
+            "description": "Customer payment",
+            "amount": 100,
+            "txn_type": "credit",
+        }],
+        book_lines=[
+            {
+                "id": "book-candidate-a",
+                "txn_date": "2026-10-14",
+                "description": "Payment A",
+                "amount": 100,
+                "txn_type": "credit",
+            },
+            {
+                "id": "book-candidate-b",
+                "txn_date": "2026-10-14",
+                "description": "Payment B",
+                "amount": 100,
+                "txn_type": "credit",
+            },
+        ],
+        balance_as_per_bank=1000,
+    )
+
+    result = reconcile_endpoint(
+        request,
+        org_id="00000000-0000-0000-0000-000000000001",
+        _user="test-user",
+    )
+
+    assert result["reconciliation_statement"]["balance_as_per_books"] is None
+    assert result["reconciliation_statement"]["manual_review_required"] is True
+    assert result["reconciliation_statement"]["ambiguous_transaction_count"] == 1
+
+
+
+@pytest.mark.parametrize(
+    "field_value",
+    [
+        {"date_window_days": True},
+        {"balance_as_per_bank": True},
+    ],
+)
+def test_reconciliation_request_rejects_boolean_numeric_fields(field_value):
+    from pydantic import ValidationError
+    from app.routers.banking import ReconcileRequest
+
+    with pytest.raises(ValidationError):
+        ReconcileRequest(bank_lines=[], book_lines=[], **field_value)
+
+
+@pytest.mark.parametrize("amount_field", ["bank_lines", "book_lines"])
+def test_reconciliation_request_rejects_boolean_transaction_amounts(amount_field):
+    from pydantic import ValidationError
+    from app.routers.banking import ReconcileRequest
+
+    line = {
+        "id": "transaction-1",
+        "txn_date": "2026-10-14",
+        "description": "Customer payment",
+        "amount": True,
+        "txn_type": "credit",
+    }
+
+    with pytest.raises(ValidationError):
+        ReconcileRequest(
+            bank_lines=[line] if amount_field == "bank_lines" else [],
+            book_lines=[line] if amount_field == "book_lines" else [],
+        )
+
+
+
+def test_ambiguous_items_are_excluded_without_hiding_confirmed_unmatched_items():
+    result = reconcile(
+        [bank("bank-ambiguous", amount=100), bank("bank-only", amount=300)],
+        [
+            book("book-candidate-a", 14, amount=100),
+            book("book-candidate-b", 14, amount=100),
+            book("book-deposit", 14, amount=400),
+            book("book-cheque", 14, amount=50, txn_type="debit"),
+        ],
+    )
+
+    assert [item["id"] for item in result["unresolved_bank_items"]] == ["bank-ambiguous"]
+    assert {item["id"] for item in result["unresolved_book_items"]} == {
+        "book-candidate-a",
+        "book-candidate-b",
+    }
+    assert [item["id"] for item in result["bank_only_items"]] == ["bank-only"]
+    assert [item["id"] for item in result["deposits_not_credited"]] == ["book-deposit"]
+    assert [item["id"] for item in result["outstanding_cheques"]] == ["book-cheque"]
+    assert result["totals"]["deposits_not_credited"] == 400
+    assert result["totals"]["outstanding_cheques"] == 50
