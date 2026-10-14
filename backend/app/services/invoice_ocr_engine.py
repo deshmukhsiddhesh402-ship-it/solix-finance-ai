@@ -181,6 +181,16 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     cgst = _invoice_amount(invoice.get("cgst_amount"), "cgst_amount")
     sgst = _invoice_amount(invoice.get("sgst_amount"), "sgst_amount")
     igst = _invoice_amount(invoice.get("igst_amount"), "igst_amount")
+
+    # An invoice should use either intra-state tax components (CGST/SGST)
+    # or inter-state IGST, not both. OCR can misread nearby tax columns, so
+    # block ambiguous mixed-tax data before generating accounting entries.
+    if igst > 0 and (cgst > 0 or sgst > 0):
+        raise ValueError(
+            "Invoice tax fields contain both IGST and CGST/SGST. "
+            "Review the extracted tax fields before generating journal lines."
+        )
+
     supplied_total = invoice.get("total_amount")
     total = (
         round(taxable + cgst + sgst + igst, 2)
