@@ -57,22 +57,34 @@ def extract_state_code(gstin: str) -> str | None:
 # ---------------------------------------------------------------------------
 # PDF -> image rasterization (for scanned/image-based invoice PDFs)
 # ---------------------------------------------------------------------------
+MAX_PDF_RENDER_DPI = 300
+MAX_PDF_RENDER_PAGES = 20
+MAX_PDF_PAGE_PIXELS = 20_000_000
+
+
 def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -> list[bytes]:
-    """Rasterize each PDF page to a PNG image (as bytes) using PyMuPDF.
-    Needed because scanned invoice PDFs have no extractable text layer —
-    Claude's vision has to look at the page as a picture.
+    """Rasterize a bounded number of PDF pages to PNG images.
+
+    Reject extreme render settings and oversized page dimensions before
+    allocating a pixel buffer. The input file-size limit alone cannot prevent
+    a tiny PDF from declaring an enormous page size.
     """
     import fitz  # PyMuPDF — local import: only needed on this path
-    if dpi <= 0:
-        raise ValueError("DPI must be positive.")
-    if max_pages <= 0:
-        raise ValueError("max_pages must be positive.")
+    if not isinstance(dpi, int) or isinstance(dpi, bool) or dpi <= 0 or dpi > MAX_PDF_RENDER_DPI:
+        raise ValueError(f"DPI must be between 1 and {MAX_PDF_RENDER_DPI}.")
+    if not isinstance(max_pages, int) or isinstance(max_pages, bool) or max_pages <= 0 or max_pages > MAX_PDF_RENDER_PAGES:
+        raise ValueError(f"max_pages must be between 1 and {MAX_PDF_RENDER_PAGES}.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
     try:
         for page in list(doc)[:max_pages]:
+            rect = page.rect
+            width_px = rect.width * zoom
+            height_px = rect.height * zoom
+            if width_px <= 0 or height_px <= 0 or width_px * height_px > MAX_PDF_PAGE_PIXELS:
+                raise ValueError("PDF page dimensions exceed the supported rendering limit.")
             pix = page.get_pixmap(matrix=matrix)
             images.append(pix.tobytes("png"))
         return images
