@@ -160,11 +160,29 @@ def reconcile(
         unmatched_bank.remove(bl)
         unmatched_book.remove(best)
 
-    # Classify remaining unmatched book lines.
-    outstanding_cheques = [b for b in unmatched_book if b.txn_type == "debit"]
-    deposits_not_credited = [b for b in unmatched_book if b.txn_type == "credit"]
-    # Remaining unmatched bank lines are bank-only items (charges, interest, etc).
-    bank_only_items = list(unmatched_bank)
+    # An ambiguous candidate is unresolved, not a confirmed bank-only item or
+    # an outstanding/deposit timing difference. Keep it in a separate review
+    # bucket so reconciliation totals do not imply a conclusion we have not made.
+    unresolved_bank_ids = {item["bank_id"] for item in ambiguous_matches}
+    unresolved_book_ids = {
+        candidate_id
+        for item in ambiguous_matches
+        for candidate_id in item["candidate_book_ids"]
+    }
+    unresolved_bank_items = [b for b in unmatched_bank if b.id in unresolved_bank_ids]
+    unresolved_book_items = [b for b in unmatched_book if b.id in unresolved_book_ids]
+
+    # Only confidently unmatched items are classified into conventional buckets.
+    outstanding_cheques = [
+        b for b in unmatched_book
+        if b.id not in unresolved_book_ids and b.txn_type == "debit"
+    ]
+    deposits_not_credited = [
+        b for b in unmatched_book
+        if b.id not in unresolved_book_ids and b.txn_type == "credit"
+    ]
+    # Remaining unmatched bank lines with no plausible best candidate are bank-only.
+    bank_only_items = [b for b in unmatched_bank if b.id not in unresolved_bank_ids]
 
     total_outstanding_cheques = sum(b.amount for b in outstanding_cheques)
     total_deposits_not_credited = sum(b.amount for b in deposits_not_credited)
@@ -183,6 +201,16 @@ def reconcile(
         "matched_count": len(matched),
         "matched": matched,
         "ambiguous_matches": ambiguous_matches,
+        "unresolved_bank_items": [
+            {"id": b.id, "date": b.txn_date.isoformat(), "description": b.description,
+             "amount": b.amount, "txn_type": b.txn_type, "mode": b.mode}
+            for b in unresolved_bank_items
+        ],
+        "unresolved_book_items": [
+            {"id": b.id, "date": b.txn_date.isoformat(), "description": b.description,
+             "amount": b.amount, "txn_type": b.txn_type}
+            for b in unresolved_book_items
+        ],
         "outstanding_cheques": [
             {"id": b.id, "date": b.txn_date.isoformat(), "description": b.description, "amount": b.amount}
             for b in outstanding_cheques
