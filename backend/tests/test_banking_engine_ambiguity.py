@@ -112,3 +112,27 @@ def test_transaction_outside_date_window_is_not_matched():
     assert result["ambiguous_matches"] == []
     assert [item["id"] for item in result["bank_only_items"]] == ["bank-1"]
     assert [item["id"] for item in result["deposits_not_credited"]] == ["book-1"]
+
+
+
+def test_ambiguous_reconciliation_withholds_final_book_balance():
+    from app.routers.banking import ReconcileRequest, reconcile_endpoint
+
+    request = ReconcileRequest(
+        bank_lines=[{
+            "id": "bank-1", "txn_date": "2026-10-14", "description": "Payment",
+            "amount": 100, "txn_type": "credit",
+        }],
+        book_lines=[
+            {"id": "book-1", "txn_date": "2026-10-14", "description": "Payment A", "amount": 100, "txn_type": "credit"},
+            {"id": "book-2", "txn_date": "2026-10-14", "description": "Payment B", "amount": 100, "txn_type": "credit"},
+        ],
+        balance_as_per_bank=1000,
+    )
+
+    result = reconcile_endpoint(request, org_id="00000000-0000-0000-0000-000000000001", _user="test-user")
+
+    statement = result["reconciliation_statement"]
+    assert statement["manual_review_required"] is True
+    assert statement["ambiguous_transaction_count"] == 1
+    assert statement["balance_as_per_books"] is None
