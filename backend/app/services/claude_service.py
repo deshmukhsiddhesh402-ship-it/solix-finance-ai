@@ -69,6 +69,37 @@ def ask_claude_with_image(
     return "".join(block.text for block in response.content if block.type == "text")
 
 
+
+def ask_claude_with_images(
+    system_prompt: str,
+    user_text: str,
+    images: list[tuple[str, str]],
+    max_tokens: int = 1500,
+) -> str:
+    """Send a bounded multi-image request for multi-page invoice PDFs."""
+    _validate_request(system_prompt, user_text, max_tokens)
+    if not isinstance(images, list) or not images or len(images) > 5:
+        raise ValueError("Between 1 and 5 document images are supported per request.")
+    total_chars = 0
+    content = []
+    for image_base64, media_type in images:
+        if media_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+            raise ValueError("Unsupported image media type.")
+        if not isinstance(image_base64, str) or not image_base64:
+            raise ValueError("Image payload must be non-empty base64 text.")
+        total_chars += len(image_base64)
+        if total_chars > MAX_CLAUDE_IMAGE_BASE64_CHARS:
+            raise ValueError("Combined image payload exceeds the supported size limit.")
+        content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_base64}})
+    content.append({"type": "text", "text": user_text})
+    response = _client.messages.create(
+        model=settings.CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+    return "".join(block.text for block in response.content if block.type == "text")
+
 def ask_claude_with_tools(
     system_prompt: str, user_message: str, tools: list[dict], max_tokens: int = 1500,
 ):
