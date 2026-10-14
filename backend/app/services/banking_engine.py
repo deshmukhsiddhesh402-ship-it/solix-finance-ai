@@ -45,33 +45,62 @@ def reconcile(
     matched = []
     ambiguous_matches = []
 
-    for bl in list(unmatched_bank):
-        # A bank credit corresponds to a book credit (money received);
-        # a bank debit corresponds to a book debit (money paid out).
+    # Resolve each bank line's nearest candidate against the original book
+    # population first. A greedy one-pass loop can otherwise consume a book
+    # line for the first bank line even when another bank line has an equally
+    # plausible claim to it.
+    candidate_info = []
+    best_claims = {}
+    ambiguous_indices = set()
+    for index, bl in enumerate(bank_lines):
         candidates = [
-            bk for bk in unmatched_book
+            bk for bk in book_lines
             if bk.txn_type == bl.txn_type
             and abs(bk.amount - bl.amount) < 0.01
             and abs((bk.txn_date - bl.txn_date).days) <= date_window_days
         ]
         if not candidates:
+            candidate_info.append(([], []))
             continue
 
-        # Keep the prior nearest-date preference, but do not silently choose
-        # when two or more candidates are equally close. Leave every involved
-        # item unmatched so a human can review the ambiguity.
         distances = [(abs((bk.txn_date - bl.txn_date).days), bk) for bk in candidates]
         best_distance = min(distance for distance, _ in distances)
         best_candidates = [bk for distance, bk in distances if distance == best_distance]
-        if len(best_candidates) != 1:
+        candidate_info.append((candidates, best_candidates))
+        if len(best_candidates) > 1:
+            ambiguous_indices.add(index)
+        for bk in best_candidates:
+            best_claims.setdefault(id(bk), []).append(index)
+
+    # If multiple bank lines claim the same closest book line, flag every
+    # claimant. Do not let input ordering silently decide which bank line wins.
+    cross_side_conflicts = {
+        index
+        for claimants in best_claims.values() if len(claimants) > 1
+        for index in claimants
+    }
+    ambiguous_indices.update(cross_side_conflicts)
+
+    for index, bl in enumerate(bank_lines):
+        candidates, best_candidates = candidate_info[index]
+        if index in ambiguous_indices:
+            candidate_ids = [bk.id for bk in best_candidates]
+            if len(best_candidates) > 1:
+                reason = "Multiple book transactions have the same amount, type, and closest date; manual review required."
+            else:
+                reason = "Multiple bank transactions compete for the same closest book transaction; manual review required."
             ambiguous_matches.append({
                 "bank_id": bl.id,
-                "candidate_book_ids": [bk.id for bk in best_candidates],
-                "reason": "Multiple book transactions have the same amount, type, and closest date; manual review required.",
+                "candidate_book_ids": candidate_ids,
+                "reason": reason,
             })
+            continue
+        if not best_candidates:
             continue
 
         best = best_candidates[0]
+        # A candidate shared by multiple best-match claims was marked ambiguous
+        # above, so this removal is independent of input ordering.
         matched.append({
             "bank_id": bl.id, "book_id": best.id, "amount": bl.amount,
             "txn_type": bl.txn_type, "bank_date": bl.txn_date.isoformat(),
