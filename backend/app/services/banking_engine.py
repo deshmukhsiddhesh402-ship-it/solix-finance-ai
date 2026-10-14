@@ -10,8 +10,8 @@ surfaced as either:
   - "Deposits not yet credited" (in books, not yet in bank) or
   - "Bank-only items" (bank charges, interest credited, etc. not yet in books)
 """
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import date
 import math
 from typing import Literal
 
@@ -65,7 +65,7 @@ def _validate_reconciliation_inputs(
                 raise ValueError(f"Each transaction date in {source_name} must be a date.")
             if not _is_finite_number(line.amount) or line.amount <= 0:
                 raise ValueError(f"Each transaction amount in {source_name} must be a positive finite number.")
-            if line.txn_type not in {"credit", "debit"}:
+            if line.txn_type not in ("credit", "debit"):
                 raise ValueError(f"Each transaction type in {source_name} must be credit or debit.")
             if not isinstance(line.description, str) or len(line.description) > 2000:
                 raise ValueError(f"Each description in {source_name} must be a string of at most 2000 characters.")
