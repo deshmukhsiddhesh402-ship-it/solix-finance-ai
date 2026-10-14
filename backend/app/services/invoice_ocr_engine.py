@@ -48,10 +48,10 @@ def is_valid_gstin_format(gstin: str) -> bool:
 
 
 def extract_state_code(gstin: str) -> str | None:
-    """First 2 digits of a valid GSTIN are the GST state code."""
+    """First 2 digits of a structurally valid GSTIN are the GST state code."""
     if not is_valid_gstin_format(gstin):
         return None
-    return gstin[:2]
+    return gstin.strip()[:2]
 
 
 # ---------------------------------------------------------------------------
