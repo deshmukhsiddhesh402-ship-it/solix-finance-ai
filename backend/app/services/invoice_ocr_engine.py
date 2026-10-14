@@ -185,6 +185,14 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     sgst = _invoice_amount(invoice.get("sgst_amount"), "sgst_amount")
     igst = _invoice_amount(invoice.get("igst_amount"), "igst_amount")
 
+    # Validate aggregate numeric range before business-rule comparisons. Very
+    # large finite individual fields can overflow when added, and that must be
+    # reported as a range error rather than whichever tax-field check runs first.
+    raw_expected_total = taxable + cgst + sgst + igst
+    if not math.isfinite(raw_expected_total):
+        raise ValueError("Combined invoice amounts exceed the supported numeric range.")
+    expected_total = round(raw_expected_total, 2)
+
     # An invoice should use either intra-state tax components (CGST/SGST)
     # or inter-state IGST, not both. OCR can misread nearby tax columns, so
     # block ambiguous mixed-tax data before generating accounting entries.
@@ -204,14 +212,11 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
 
     supplied_total = invoice.get("total_amount")
     total = (
-        round(taxable + cgst + sgst + igst, 2)
+        expected_total
         if supplied_total is None or supplied_total == ""
         else _invoice_amount(supplied_total, "total_amount")
     )
 
-    expected_total = round(taxable + cgst + sgst + igst, 2)
-    if not math.isfinite(expected_total):
-        raise ValueError("Combined invoice amounts exceed the supported numeric range.")
     if abs(expected_total - total) > 0.01:
         raise ValueError(
             f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
