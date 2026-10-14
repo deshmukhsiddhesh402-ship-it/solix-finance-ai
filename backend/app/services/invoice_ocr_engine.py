@@ -193,6 +193,14 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
             "Invoice tax fields contain both IGST and CGST/SGST. "
             "Review the extracted tax fields before generating journal lines."
         )
+    # For an intra-state taxable purchase, CGST and SGST are the two equal
+    # halves of the same GST rate. OCR column drift can leave one half missing
+    # or assign different amounts; don't silently post that as a valid entry.
+    if (cgst > 0 or sgst > 0) and abs(cgst - sgst) > 0.01:
+        raise ValueError(
+            "CGST and SGST amounts do not match. "
+            "Review the extracted intra-state tax fields before generating journal lines."
+        )
 
     supplied_total = invoice.get("total_amount")
     total = (
