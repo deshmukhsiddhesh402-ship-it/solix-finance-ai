@@ -42,9 +42,9 @@ def is_valid_gstin_format(gstin: str) -> bool:
     checking (https://www.gst.gov.in — public search, or a paid GSP API for
     programmatic access).
     """
-    if not gstin:
+    if not isinstance(gstin, str) or not gstin.strip():
         return False
-    return bool(GSTIN_PATTERN.match(gstin.strip().upper()))
+    return bool(GSTIN_PATTERN.fullmatch(gstin.strip().upper()))
 
 
 def extract_state_code(gstin: str) -> str | None:
