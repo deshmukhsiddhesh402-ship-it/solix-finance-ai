@@ -56,3 +56,15 @@ def test_extreme_values_cannot_create_non_finite_journal_totals():
 def test_expense_account_must_be_a_non_empty_name(account):
     with pytest.raises(ValueError, match="Expense account"):
         invoice_to_journal_lines(valid_invoice(), expense_account=account)
+
+
+@pytest.mark.parametrize(
+    "tax_fields",
+    [
+        {"cgst_amount": 9.00, "sgst_amount": 0.00, "igst_amount": 9.00},
+        {"cgst_amount": 0.00, "sgst_amount": 9.00, "igst_amount": 9.00},
+    ],
+)
+def test_mixed_igst_and_cgst_or_sgst_is_rejected(tax_fields):
+    with pytest.raises(ValueError, match="both IGST and CGST/SGST"):
+        invoice_to_journal_lines(valid_invoice(**tax_fields))
