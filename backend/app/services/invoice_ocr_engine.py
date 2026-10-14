@@ -79,7 +79,10 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
     try:
-        for page in list(doc)[:max_pages]:
+        # islice bounds iteration itself; list(doc) would materialize every page
+        # before slicing, defeating the page-count resource limit on huge PDFs.
+        from itertools import islice
+        for page in islice(doc, max_pages):
             rect = page.rect
             width_px = rect.width * zoom
             height_px = rect.height * zoom
