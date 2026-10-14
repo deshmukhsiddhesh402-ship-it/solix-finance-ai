@@ -84,7 +84,7 @@ def reconcile(
     for index, bl in enumerate(bank_lines):
         best_candidates = candidate_info[index]
         if index in ambiguous_indices:
-            candidate_ids = [bk.id for bk in best_candidates]
+            candidate_ids = sorted(bk.id for bk in best_candidates)
             if len(best_candidates) > 1:
                 reason = "Multiple book transactions have the same amount, type, and closest date; manual review required."
             else:
