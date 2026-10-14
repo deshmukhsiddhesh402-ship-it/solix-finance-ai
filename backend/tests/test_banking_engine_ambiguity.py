@@ -87,3 +87,28 @@ def test_closest_date_candidate_is_preferred_when_not_tied():
     assert result["matched"][0]["book_id"] == "book-near"
     assert result["ambiguous_matches"] == []
     assert [item["id"] for item in result["deposits_not_credited"]] == ["book-far"]
+
+
+def test_opposite_transaction_types_are_not_matched():
+    result = reconcile(
+        [bank("bank-credit", txn_type="credit")],
+        [book("book-debit", txn_type="debit")],
+    )
+
+    assert result["matched_count"] == 0
+    assert result["ambiguous_matches"] == []
+    assert [item["id"] for item in result["bank_only_items"]] == ["bank-credit"]
+    assert [item["id"] for item in result["outstanding_cheques"]] == ["book-debit"]
+
+
+def test_transaction_outside_date_window_is_not_matched():
+    result = reconcile(
+        [bank("bank-1", day="2026-10-14")],
+        [book("book-1", day="2026-10-01")],
+        date_window_days=5,
+    )
+
+    assert result["matched_count"] == 0
+    assert result["ambiguous_matches"] == []
+    assert [item["id"] for item in result["bank_only_items"]] == ["bank-1"]
+    assert [item["id"] for item in result["deposits_not_credited"]] == ["book-1"]
