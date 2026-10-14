@@ -20,6 +20,13 @@ class BankLineIn(BaseModel):
     txn_type: Literal["credit", "debit"]
     mode: str = Field(default="", max_length=64)
 
+    @field_validator("amount", mode="before")
+    @classmethod
+    def amount_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Transaction amount must be numeric, not boolean.")
+        return value
+
     @field_validator("amount")
     @classmethod
     def amount_must_be_finite(cls, value: float) -> float:
@@ -48,6 +55,20 @@ class ReconcileRequest(BaseModel):
     book_lines: list[BookLineIn] = Field(max_length=10000)
     date_window_days: int = Field(default=5, ge=0, le=31)
     balance_as_per_bank: float = 0.0
+
+    @field_validator("date_window_days", mode="before")
+    @classmethod
+    def date_window_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("date_window_days must be an integer, not boolean.")
+        return value
+
+    @field_validator("balance_as_per_bank", mode="before")
+    @classmethod
+    def bank_balance_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Bank balance must be numeric, not boolean.")
+        return value
 
     @field_validator("balance_as_per_bank")
     @classmethod
