@@ -4,7 +4,7 @@ from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 from app.routers.enterprise import require_permission
@@ -56,6 +56,17 @@ class ReconcileRequest(BaseModel):
         if not math.isfinite(value):
             raise ValueError("Bank balance must be finite.")
         return value
+
+    @model_validator(mode="after")
+    def transaction_ids_must_be_unique_per_source(self):
+        for source_name, lines in (
+            ("bank_lines", self.bank_lines),
+            ("book_lines", self.book_lines),
+        ):
+            ids = [line.id for line in lines]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"Transaction IDs in {source_name} must be unique.")
+        return self
 
 
 @router.post("/reconcile")
