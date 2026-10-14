@@ -84,3 +84,22 @@ def test_pdf_renderer_closes_document_after_success(monkeypatch):
     assert images == [b"png-data"]
     assert page.rendered is True
     assert document.closed is True
+
+
+def test_pdf_renderer_stops_iterating_at_max_pages(monkeypatch):
+    class TrackingDocument(FakeDocument):
+        def __init__(self, pages):
+            super().__init__(pages)
+            self.iterated = 0
+
+        def __iter__(self):
+            for page in self.pages:
+                self.iterated += 1
+                yield page
+
+    document = TrackingDocument([FakePage() for _ in range(10)])
+    install_fake_fitz(monkeypatch, document)
+    images = invoice_ocr_engine.pdf_pages_to_images(b"%PDF-", max_pages=2)
+    assert len(images) == 2
+    assert document.iterated == 2
+    assert document.closed is True
