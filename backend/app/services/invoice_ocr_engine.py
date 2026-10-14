@@ -99,23 +99,40 @@ def encode_image_base64(image_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Export extracted invoices to Excel
 # ---------------------------------------------------------------------------
+def _excel_cell(value):
+    """Keep untrusted OCR values compatible with Excel's scalar cell model."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        # Excel cells have a 32,767-character limit.
+        return value[:32767]
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return None
+
+
 def invoices_to_excel(invoices: list[dict]) -> bytes:
-    """Flatten a list of extracted invoice dicts into a single-sheet Excel
-    file, one row per invoice (line items summarized as a count)."""
+    """Flatten extracted invoices to Excel without trusting AI-returned field types."""
     rows = []
     for inv in invoices:
+        if not isinstance(inv, dict):
+            continue
+        gstin = inv.get("vendor_gstin")
+        line_items = inv.get("line_items")
         rows.append({
-            "Vendor Name": inv.get("vendor_name"),
-            "Vendor GSTIN": inv.get("vendor_gstin"),
-            "GSTIN Valid": is_valid_gstin_format(inv.get("vendor_gstin") or ""),
-            "Invoice Number": inv.get("invoice_number"),
-            "Invoice Date": inv.get("invoice_date"),
-            "Taxable Value": inv.get("taxable_value"),
-            "CGST": inv.get("cgst_amount"),
-            "SGST": inv.get("sgst_amount"),
-            "IGST": inv.get("igst_amount"),
-            "Total Amount": inv.get("total_amount"),
-            "Line Items": len(inv.get("line_items") or []),
+            "Vendor Name": _excel_cell(inv.get("vendor_name")),
+            "Vendor GSTIN": _excel_cell(gstin),
+            "GSTIN Valid": is_valid_gstin_format(gstin) if isinstance(gstin, str) else False,
+            "Invoice Number": _excel_cell(inv.get("invoice_number")),
+            "Invoice Date": _excel_cell(inv.get("invoice_date")),
+            "Taxable Value": _excel_cell(inv.get("taxable_value")),
+            "CGST": _excel_cell(inv.get("cgst_amount")),
+            "SGST": _excel_cell(inv.get("sgst_amount")),
+            "IGST": _excel_cell(inv.get("igst_amount")),
+            "Total Amount": _excel_cell(inv.get("total_amount")),
+            "Line Items": len(line_items) if isinstance(line_items, list) else 0,
         })
     df = pd.DataFrame(rows)
     buffer = io.BytesIO()
