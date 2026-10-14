@@ -50,11 +50,23 @@ def reconcile(
 
     def candidates_for(bank_index: int, book_indices: set[int]) -> list[int]:
         bank = bank_lines[bank_index]
-        return [
-            book_index for book_index in book_indices
+        candidates = [
+            book_index for book_index in sorted(book_indices)
             if book_lines[book_index].txn_type == bank.txn_type
             and abs(book_lines[book_index].amount - bank.amount) < 0.01
             and abs((book_lines[book_index].txn_date - bank.txn_date).days) <= date_window_days
+        ]
+        if not candidates:
+            return []
+        # Preserve the engine's closest-date preference, but retain ties so
+        # equally plausible matches are sent for manual review.
+        closest_days = min(
+            abs((book_lines[index].txn_date - bank.txn_date).days)
+            for index in candidates
+        )
+        return [
+            index for index in candidates
+            if abs((book_lines[index].txn_date - bank.txn_date).days) == closest_days
         ]
 
     # Repeatedly resolve pairs that are each other's sole candidate. Recompute
@@ -62,14 +74,14 @@ def reconcile(
     while True:
         bank_options = {
             bank_index: candidates_for(bank_index, active_book)
-            for bank_index in active_bank
+            for bank_index in sorted(active_bank)
         }
         book_options = {
             book_index: [
                 bank_index for bank_index in active_bank
                 if book_index in bank_options[bank_index]
             ]
-            for book_index in active_book
+            for book_index in sorted(active_book)
         }
         certain_pairs = [
             (bank_index, options[0])
@@ -96,7 +108,7 @@ def reconcile(
     # bank-only items, outstanding cheques, or deposits not yet credited.
     ambiguous_bank_options = {
         bank_index: candidates_for(bank_index, active_book)
-        for bank_index in active_bank
+        for bank_index in sorted(active_bank)
     }
     ambiguous_bank_options = {
         bank_index: options for bank_index, options in ambiguous_bank_options.items()
