@@ -35,3 +35,16 @@ def test_excel_export_truncates_oversized_text_to_excel_cell_limit():
     frame = pd.read_excel(io.BytesIO(output))
 
     assert len(frame.loc[0, "Vendor Name"]) == 32767
+
+
+
+@pytest.mark.parametrize("text", ["=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(A1:A2)", "  =1+1", "\\t=1+1"])
+def test_excel_export_treats_formula_like_text_as_data(text):
+    from openpyxl import load_workbook
+
+    output = invoices_to_excel([{"vendor_name": text}])
+    workbook = load_workbook(io.BytesIO(output), data_only=False)
+    cell = workbook["Invoices"]["A2"]
+
+    assert cell.data_type != "f"
+    assert cell.value.startswith("'")
