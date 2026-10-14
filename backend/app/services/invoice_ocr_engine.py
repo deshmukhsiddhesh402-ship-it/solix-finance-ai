@@ -104,8 +104,13 @@ def _excel_cell(value):
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, str):
-        # Excel cells have a 32,767-character limit.
-        return value[:32767]
+        # Excel cells have a 32,767-character limit. Prefix formula-like
+        # untrusted text with an apostrophe so spreadsheet apps treat it as
+        # data rather than a formula when a user opens the exported workbook.
+        text = value[:32767]
+        if text.lstrip(" \\t\\r\\n")[:1] in ("=", "+", "-", "@"):
+            return "'" + text[:32766]
+        return text
     if isinstance(value, int):
         return value
     if isinstance(value, float):
