@@ -97,3 +97,10 @@ def test_multi_image_request_rejects_more_than_five_images():
             "extract",
             [("a", "image/png")] * 6,
         )
+
+
+@pytest.mark.parametrize("vendor_gstin", [123, [], {}, True])
+def test_extraction_marks_non_string_gstin_invalid_without_crashing(vendor_gstin):
+    result = invoice_ocr._parse_extraction(json.dumps({"vendor_gstin": vendor_gstin}))
+
+    assert result["gstin_format_valid"] is False
