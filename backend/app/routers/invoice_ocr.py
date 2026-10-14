@@ -59,8 +59,13 @@ def _parse_extraction(raw: str) -> dict:
         raise HTTPException(502, detail="Could not parse the extracted invoice data. Try a clearer image.") from exc
     if not isinstance(data, dict):
         raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
-    if data.get("vendor_gstin"):
-        data["gstin_format_valid"] = is_valid_gstin_format(data["vendor_gstin"])
+    vendor_gstin = data.get("vendor_gstin")
+    if vendor_gstin:
+        # Vision output is untrusted JSON; malformed field types must not turn
+        # a recoverable extraction result into an unhandled AttributeError.
+        data["gstin_format_valid"] = (
+            is_valid_gstin_format(vendor_gstin) if isinstance(vendor_gstin, str) else False
+        )
     return data
 
 
