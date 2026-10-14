@@ -28,8 +28,13 @@ def test_equal_closest_candidates_are_flagged_and_not_auto_matched():
         "candidate_book_ids": ["book-after", "book-before"],
         "reason": "Multiple book transactions have the same amount, type, and closest date; manual review required.",
     }]
-    assert {row["id"] for row in result["deposits_not_credited"]} == {"book-before", "book-after"}
-    assert [row["id"] for row in result["bank_only_items"]] == ["bank-1"]
+    assert result["deposits_not_credited"] == []
+    assert result["outstanding_cheques"] == []
+    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-before", "book-after"]
+    assert [row["id"] for row in result["unresolved_bank_items"]] == ["bank-1"]
+    assert result["totals"]["deposits_not_credited"] == 0
+    assert result["totals"]["outstanding_cheques"] == 0
+    assert result["bank_only_items"] == []
 
 
 def test_unique_closest_candidate_is_still_matched():
@@ -77,8 +82,11 @@ def test_two_bank_lines_competing_for_one_book_line_are_both_flagged():
             "reason": "Multiple bank transactions compete for the same closest book transaction; manual review required.",
         },
     ]
-    assert [row["id"] for row in result["bank_only_items"]] == ["bank-a", "bank-b"]
-    assert [row["id"] for row in result["deposits_not_credited"]] == ["book-only"]
+    assert result["bank_only_items"] == []
+    assert [row["id"] for row in result["unresolved_bank_items"]] == ["bank-a", "bank-b"]
+    assert result["deposits_not_credited"] == []
+    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-only"]
+    assert result["totals"]["deposits_not_credited"] == 0
 
 
 def test_cross_side_conflict_is_not_resolved_by_input_order():
@@ -100,6 +108,8 @@ def test_cross_side_conflict_is_not_resolved_by_input_order():
     } == {
         item["bank_id"] for item in reverse["ambiguous_matches"]
     } == {"bank-a", "bank-b"}
+    assert forward["unresolved_bank_items"] == reverse["unresolved_bank_items"]
+    assert forward["unresolved_book_items"] == reverse["unresolved_book_items"]
 
 
 def test_tied_candidate_ids_are_stable_when_book_input_order_changes():
