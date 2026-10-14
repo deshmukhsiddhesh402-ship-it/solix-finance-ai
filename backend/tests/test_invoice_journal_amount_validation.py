@@ -68,3 +68,14 @@ def test_expense_account_must_be_a_non_empty_name(account):
 def test_mixed_igst_and_cgst_or_sgst_is_rejected(tax_fields):
     with pytest.raises(ValueError, match="both IGST and CGST/SGST"):
         invoice_to_journal_lines(valid_invoice(**tax_fields))
+
+
+@pytest.mark.parametrize("vendor_name", [123, True, [], {}, "V" * 256])
+def test_invalid_or_oversized_vendor_names_are_rejected(vendor_name):
+    with pytest.raises(ValueError, match="vendor name"):
+        invoice_to_journal_lines(valid_invoice(vendor_name=vendor_name))
+
+
+def test_blank_vendor_name_uses_safe_fallback():
+    lines = invoice_to_journal_lines(valid_invoice(vendor_name="   "))
+    assert lines[-1]["account_name"] == "Unknown Vendor (Payable)"
