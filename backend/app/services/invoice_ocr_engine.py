@@ -207,7 +207,17 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
             "Review the extracted fields before posting."
         )
 
-    vendor = invoice.get("vendor_name") or "Unknown Vendor"
+    vendor_value = invoice.get("vendor_name")
+    if vendor_value is None or vendor_value == "":
+        vendor = "Unknown Vendor"
+    elif not isinstance(vendor_value, str):
+        raise ValueError("Invoice vendor name must be text.")
+    else:
+        vendor = vendor_value.strip()
+        if not vendor:
+            vendor = "Unknown Vendor"
+        if len(vendor) > 255:
+            raise ValueError("Invoice vendor name cannot exceed 255 characters.")
 
     lines = [{"account_name": expense_account.strip(), "account_type": "expense", "debit": taxable, "credit": 0.0}]
     if cgst:
