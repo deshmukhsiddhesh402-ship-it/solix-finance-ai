@@ -123,7 +123,7 @@ def invoices_to_excel(invoices: list[dict]) -> bytes:
         line_items = inv.get("line_items")
         rows.append({
             "Vendor Name": _excel_cell(inv.get("vendor_name")),
-            "Vendor GSTIN": _excel_cell(gstin),
+            "Vendor GSTIN": _excel_cell(gstin) if isinstance(gstin, str) else None,
             "GSTIN Valid": is_valid_gstin_format(gstin) if isinstance(gstin, str) else False,
             "Invoice Number": _excel_cell(inv.get("invoice_number")),
             "Invoice Date": _excel_cell(inv.get("invoice_date")),
