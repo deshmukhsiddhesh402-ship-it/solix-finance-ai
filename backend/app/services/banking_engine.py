@@ -60,13 +60,13 @@ def reconcile(
             and abs((bk.txn_date - bl.txn_date).days) <= date_window_days
         ]
         if not candidates:
-            candidate_info.append(([], []))
+            candidate_info.append([])
             continue
 
         distances = [(abs((bk.txn_date - bl.txn_date).days), bk) for bk in candidates]
         best_distance = min(distance for distance, _ in distances)
         best_candidates = [bk for distance, bk in distances if distance == best_distance]
-        candidate_info.append((candidates, best_candidates))
+        candidate_info.append(best_candidates)
         if len(best_candidates) > 1:
             ambiguous_indices.add(index)
         for bk in best_candidates:
@@ -82,7 +82,7 @@ def reconcile(
     ambiguous_indices.update(cross_side_conflicts)
 
     for index, bl in enumerate(bank_lines):
-        candidates, best_candidates = candidate_info[index]
+        best_candidates = candidate_info[index]
         if index in ambiguous_indices:
             candidate_ids = [bk.id for bk in best_candidates]
             if len(best_candidates) > 1:
