@@ -70,6 +70,31 @@ def test_mixed_igst_and_cgst_or_sgst_is_rejected(tax_fields):
         invoice_to_journal_lines(valid_invoice(**tax_fields))
 
 
+@pytest.mark.parametrize(
+    "tax_fields",
+    [
+        {"cgst_amount": 9.00, "sgst_amount": 0.00, "igst_amount": 0.00},
+        {"cgst_amount": 0.00, "sgst_amount": 9.00, "igst_amount": 0.00},
+        {"cgst_amount": 9.00, "sgst_amount": 8.50, "igst_amount": 0.00},
+    ],
+)
+def test_intra_state_cgst_and_sgst_must_match(tax_fields):
+    with pytest.raises(ValueError, match="CGST and SGST amounts do not match"):
+        invoice_to_journal_lines(valid_invoice(**tax_fields))
+
+
+def test_intra_state_cgst_and_sgst_allow_one_paise_rounding_difference():
+    lines = invoice_to_journal_lines(valid_invoice(
+        taxable_value=100.00,
+        cgst_amount=9.00,
+        sgst_amount=8.99,
+        igst_amount=0.00,
+        total_amount=117.99,
+    ))
+    assert sum(line["debit"] for line in lines) == pytest.approx(117.99)
+    assert sum(line["credit"] for line in lines) == pytest.approx(117.99)
+
+
 @pytest.mark.parametrize("vendor_name", [123, True, [], {}, "V" * 256])
 def test_invalid_or_oversized_vendor_names_are_rejected(vendor_name):
     with pytest.raises(ValueError, match="vendor name"):
