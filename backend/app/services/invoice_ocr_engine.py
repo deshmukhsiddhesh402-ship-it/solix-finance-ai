@@ -73,7 +73,7 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -
     if not isinstance(dpi, int) or isinstance(dpi, bool) or dpi <= 0 or dpi > MAX_PDF_RENDER_DPI:
         raise ValueError(f"DPI must be between 1 and {MAX_PDF_RENDER_DPI} (DPI must be positive).")
     if not isinstance(max_pages, int) or isinstance(max_pages, bool) or max_pages <= 0 or max_pages > MAX_PDF_RENDER_PAGES:
-        raise ValueError(f"max_pages must be between 1 and {MAX_PDF_RENDER_PAGES}.")
+        raise ValueError(f"max_pages must be between 1 and {MAX_PDF_RENDER_PAGES}; max_pages must be positive.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     zoom = dpi / 72  # PDF default is 72 DPI
