@@ -274,3 +274,27 @@ def test_reconciliation_request_rejects_boolean_transaction_amounts(amount_field
             bank_lines=[line] if amount_field == "bank_lines" else [],
             book_lines=[line] if amount_field == "book_lines" else [],
         )
+
+
+
+def test_ambiguous_items_are_excluded_without_hiding_confirmed_unmatched_items():
+    result = reconcile(
+        [bank("bank-ambiguous", amount=100), bank("bank-only", amount=300)],
+        [
+            book("book-candidate-a", 14, amount=100),
+            book("book-candidate-b", 14, amount=100),
+            book("book-deposit", 14, amount=400),
+            book("book-cheque", 14, amount=50, txn_type="debit"),
+        ],
+    )
+
+    assert [item["id"] for item in result["unresolved_bank_items"]] == ["bank-ambiguous"]
+    assert {item["id"] for item in result["unresolved_book_items"]} == {
+        "book-candidate-a",
+        "book-candidate-b",
+    }
+    assert [item["id"] for item in result["bank_only_items"]] == ["bank-only"]
+    assert [item["id"] for item in result["deposits_not_credited"]] == ["book-deposit"]
+    assert [item["id"] for item in result["outstanding_cheques"]] == ["book-cheque"]
+    assert result["totals"]["deposits_not_credited"] == 400
+    assert result["totals"]["outstanding_cheques"] == 50
