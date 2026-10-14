@@ -196,3 +196,45 @@ def test_reconciled_balance_rejects_non_finite_or_boolean_inputs(values):
 def test_reconciled_balance_rejects_overflowed_result():
     with pytest.raises(ValueError, match="supported numeric range"):
         reconciled_balance(1e308, 0.0, 1e308)
+
+
+
+def test_endpoint_withholds_final_balance_when_reconciliation_is_ambiguous():
+    from app.routers.banking import ReconcileRequest, reconcile_endpoint
+
+    request = ReconcileRequest(
+        bank_lines=[{
+            "id": "bank-ambiguous",
+            "txn_date": "2026-10-14",
+            "description": "Customer payment",
+            "amount": 100,
+            "txn_type": "credit",
+        }],
+        book_lines=[
+            {
+                "id": "book-candidate-a",
+                "txn_date": "2026-10-14",
+                "description": "Payment A",
+                "amount": 100,
+                "txn_type": "credit",
+            },
+            {
+                "id": "book-candidate-b",
+                "txn_date": "2026-10-14",
+                "description": "Payment B",
+                "amount": 100,
+                "txn_type": "credit",
+            },
+        ],
+        balance_as_per_bank=1000,
+    )
+
+    result = reconcile_endpoint(
+        request,
+        org_id="00000000-0000-0000-0000-000000000001",
+        _user="test-user",
+    )
+
+    assert result["reconciliation_statement"]["balance_as_per_books"] is None
+    assert result["reconciliation_statement"]["manual_review_required"] is True
+    assert result["reconciliation_statement"]["ambiguous_transaction_count"] == 1
