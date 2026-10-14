@@ -52,9 +52,18 @@ def _validate_reconciliation_inputs(
     if type(date_window_days) is not int or not 0 <= date_window_days <= 31:
         raise ValueError("date_window_days must be an integer between 0 and 31.")
 
-    for source_name, lines in (("bank_lines", bank_lines), ("book_lines", book_lines)):
+    for source_name, lines, expected_type in (
+        ("bank_lines", bank_lines, BankLine),
+        ("book_lines", book_lines, BookLine),
+    ):
+        if not isinstance(lines, list):
+            raise ValueError(f"{source_name} must be a list of transaction lines.")
         seen_ids = set()
         for line in lines:
+            # The engine is also callable outside the validated HTTP request
+            # models. Reject malformed elements before dereferencing fields.
+            if not isinstance(line, expected_type):
+                raise ValueError(f"Each item in {source_name} must be a {expected_type.__name__} instance.")
             if not isinstance(line.id, str) or not line.id.strip() or len(line.id) > 128:
                 raise ValueError(f"Each transaction ID in {source_name} must be a non-empty string of at most 128 characters.")
             if line.id in seen_ids:
