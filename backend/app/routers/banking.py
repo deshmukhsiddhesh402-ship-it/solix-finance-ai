@@ -88,14 +88,19 @@ def reconcile_endpoint(
     bank_lines = [BankLine(**l.model_dump()) for l in req.bank_lines]
     book_lines = [BookLine(**l.model_dump()) for l in req.book_lines]
     result = reconcile(bank_lines, book_lines, req.date_window_days)
+    requires_manual_review = bool(result["ambiguous_matches"])
     result["reconciliation_statement"] = {
         "balance_as_per_bank": req.balance_as_per_bank,
         "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
         "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
-        "balance_as_per_books": reconciled_balance(
+        # An unresolved candidate can change statement totals. Do not present
+        # a provisional number as a reconciled book balance.
+        "balance_as_per_books": None if requires_manual_review else reconciled_balance(
             req.balance_as_per_bank,
             result["totals"]["outstanding_cheques"],
             result["totals"]["deposits_not_credited"],
         ),
+        "manual_review_required": requires_manual_review,
+        "ambiguous_transaction_count": len(result["ambiguous_matches"]),
     }
     return result
