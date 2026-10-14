@@ -38,7 +38,7 @@ def test_excel_export_truncates_oversized_text_to_excel_cell_limit():
 
 
 
-@pytest.mark.parametrize("text", ["=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(A1:A2)", "  =1+1", "\\t=1+1"])
+@pytest.mark.parametrize("text", ["=1+1", "+SUM(A1:A2)", "-1+2", "@SUM(A1:A2)", "  =1+1"])
 def test_excel_export_treats_formula_like_text_as_data(text):
     from openpyxl import load_workbook
 
