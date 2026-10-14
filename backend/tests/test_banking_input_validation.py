@@ -60,3 +60,23 @@ def test_reconciliation_allows_negative_bank_balance_for_overdraft():
         balance_as_per_bank=-250.0,
     )
     assert request.balance_as_per_bank == -250.0
+
+
+
+def test_reconciliation_rejects_duplicate_bank_transaction_ids():
+    duplicate = bank_line()
+    duplicate["txn_date"] = "2026-10-15"
+    with pytest.raises(ValidationError, match="bank_lines must be unique"):
+        ReconcileRequest(bank_lines=[bank_line(), duplicate], book_lines=[])
+
+
+def test_reconciliation_rejects_duplicate_book_transaction_ids():
+    duplicate = book_line()
+    duplicate["txn_date"] = "2026-10-15"
+    with pytest.raises(ValidationError, match="book_lines must be unique"):
+        ReconcileRequest(bank_lines=[], book_lines=[book_line(), duplicate])
+
+
+def test_reconciliation_allows_same_id_once_in_each_source():
+    request = ReconcileRequest(bank_lines=[bank_line()], book_lines=[book_line()])
+    assert request.bank_lines[0].id == request.book_lines[0].id
