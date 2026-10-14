@@ -3,7 +3,7 @@ import json, re, uuid, io, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
+from app.services.claude_service import ask_claude_with_image, ask_claude_with_images, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
 
@@ -13,7 +13,8 @@ MAX_OCR_SESSIONS = 1000
 OCR_SESSION_TTL_SECONDS = 30 * 60
 IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
-MAX_PDF_PAGES = 20
+MAX_PDF_PAGES = 6
+MAX_PDF_PAGES_TO_EXTRACT = 5
 
 def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     """Reject extension/content mismatches before invoking PDF/image processing."""
@@ -51,16 +52,48 @@ def _store_session(session_id: str, session: dict) -> None:
 def _strip_json_fences(text: str) -> str:
     return text.strip().replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
 
-def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
-    raw = ask_claude_with_image(INVOICE_EXTRACTION_SYSTEM_PROMPT, "Extract the invoice fields from this document image.", encode_image_base64(image_bytes), media_type, max_tokens=1500)
+def _parse_extraction(raw: str) -> dict:
     try:
         data = json.loads(_strip_json_fences(raw))
     except json.JSONDecodeError as exc:
         raise HTTPException(502, detail="Could not parse the extracted invoice data. Try a clearer image.") from exc
     if not isinstance(data, dict):
         raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
-    if data.get("vendor_gstin"):
-        data["gstin_format_valid"] = is_valid_gstin_format(data["vendor_gstin"])
+    vendor_gstin = data.get("vendor_gstin")
+    if vendor_gstin is not None and vendor_gstin != "":
+        # Vision output is untrusted JSON; malformed field types must not turn
+        # a recoverable extraction result into an unhandled AttributeError.
+        data["gstin_format_valid"] = (
+            is_valid_gstin_format(vendor_gstin) if isinstance(vendor_gstin, str) else False
+        )
+    return data
+
+
+def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
+    raw = ask_claude_with_image(INVOICE_EXTRACTION_SYSTEM_PROMPT, "Extract the invoice fields from this document image.", encode_image_base64(image_bytes), media_type, max_tokens=1500)
+    return _parse_extraction(raw)
+
+
+def _extract_pdf_pages(images: list[bytes]) -> dict:
+    selected = images[:MAX_PDF_PAGES_TO_EXTRACT]
+    encoded = [(encode_image_base64(page), "image/png") for page in selected]
+    user_text = (
+        f"Extract the invoice using all {len(selected)} attached page images in their given order. "
+        "They are pages from one invoice. Combine line items across pages without duplicating items. "
+        "Use invoice-level header and totals only when visible; do not add amounts across pages unless they are line items. "
+        "If header/totals are not visible, return null for those fields. Do not guess."
+    )
+    try:
+        raw = ask_claude_with_images(INVOICE_EXTRACTION_SYSTEM_PROMPT, user_text, encoded, max_tokens=2000)
+    except ValueError as exc:
+        raise HTTPException(413, detail="Rendered PDF pages exceed the supported OCR payload size. Try a lower-resolution or shorter PDF.") from exc
+    data = _parse_extraction(raw)
+    data["extraction_pages_processed"] = len(selected)
+    data["extraction_incomplete"] = len(images) > len(selected)
+    if data["extraction_incomplete"]:
+        existing = data.get("confidence_notes")
+        warning = "Only the first 5 pages were processed; later pages may contain omitted details."
+        data["confidence_notes"] = f"{existing}; {warning}" if existing and existing != "none" else warning
     return data
 
 @router.post("/extract-invoice")
@@ -69,7 +102,9 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
+    # Read at most one byte beyond the limit so oversized uploads are rejected
+    # without buffering the entire attacker-controlled file into application memory.
+    file_bytes = await file.read(MAX_INVOICE_BYTES + 1)
     lower = (file.filename or "").lower()
     if len(file_bytes) > MAX_INVOICE_BYTES:
         raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
@@ -84,7 +119,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
-        extracted = _extract_single_image(images[0], "image/png")
+        extracted = _extract_pdf_pages(images)
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
     session_id = str(uuid.uuid4())
@@ -117,6 +152,8 @@ def _get_session(session_id: str, org_id: str, user_id: str) -> dict:
 @router.post("/to-journal-entry")
 def to_journal_entry(req: JournalEntryRequest, org_id: str = Query(...), _user: str = Depends(require_permission("invoice_ocr", "view"))):
     session = _get_session(req.session_id, org_id, _user)
+    if session["invoice"].get("extraction_incomplete"):
+        raise HTTPException(422, detail="Invoice OCR processed only the first 5 PDF pages. Review/re-upload a shorter document before generating journal lines.")
     try: lines = invoice_to_journal_lines(session["invoice"], req.expense_account)
     except ValueError as exc: raise HTTPException(422, detail=str(exc)) from exc
     return {"journal_lines": lines}
