@@ -133,6 +133,20 @@ def test_engine_rejects_invalid_direct_transaction_amounts(amount):
         reconcile([bank(amount=amount)], [])
 
 
+def test_engine_rejects_malformed_transaction_objects_in_both_sources():
+    for malformed in (None, {}, "not-a-transaction"):
+        with pytest.raises(ValueError, match="must be a BankLine instance"):
+            reconcile([malformed], [])
+        with pytest.raises(ValueError, match="must be a BookLine instance"):
+            reconcile([], [malformed])
+
+
+@pytest.mark.parametrize("bank_lines,book_lines", [(None, []), ([], None), ({}, [])])
+def test_engine_rejects_non_list_transaction_collections(bank_lines, book_lines):
+    with pytest.raises(ValueError, match="must be a list"):
+        reconcile(bank_lines, book_lines)
+
+
 def test_engine_rejects_duplicate_ids_even_when_called_without_api_model():
     with pytest.raises(ValueError, match="must be unique"):
         reconcile([bank("duplicate"), bank("duplicate")], [])
