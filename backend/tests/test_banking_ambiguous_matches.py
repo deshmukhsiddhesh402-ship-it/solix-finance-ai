@@ -98,3 +98,19 @@ def test_cross_side_conflict_is_not_resolved_by_input_order():
     } == {
         item["bank_id"] for item in reverse["ambiguous_matches"]
     } == {"bank-a", "bank-b"}
+
+
+def test_tied_candidate_ids_are_stable_when_book_input_order_changes():
+    bank_line = bank(day=14)
+    before = book("book-before", 13)
+    after = book("book-after", 15)
+
+    forward = reconcile([bank_line], [before, after], date_window_days=5)
+    reverse = reconcile([bank_line], [after, before], date_window_days=5)
+
+    assert forward["matched"] == reverse["matched"] == []
+    assert forward["ambiguous_matches"] == reverse["ambiguous_matches"]
+    assert forward["ambiguous_matches"][0]["candidate_book_ids"] == [
+        "book-after",
+        "book-before",
+    ]
