@@ -2,8 +2,6 @@
 import io
 
 import pandas as pd
-import pytest
-
 from app.services.invoice_ocr_engine import invoices_to_excel
 
 
