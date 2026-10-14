@@ -10,6 +10,7 @@ from app.services.banking_engine import BankLine, BookLine, reconcile, reconcile
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_RECONCILIATION_CANDIDATE_PAIRS = 100_000
 
 
 class BankLineIn(BaseModel):
@@ -66,6 +67,15 @@ class ReconcileRequest(BaseModel):
             ids = [line.id for line in lines]
             if len(ids) != len(set(ids)):
                 raise ValueError(f"Transaction IDs in {source_name} must be unique.")
+        # Bound pairwise comparisons as well as each list length. The matching
+        # engine recomputes candidates while resolving ambiguities, so a large
+        # cross-product could monopolize API workers.
+        candidate_pairs = len(self.bank_lines) * len(self.book_lines)
+        if candidate_pairs > MAX_RECONCILIATION_CANDIDATE_PAIRS:
+            raise ValueError(
+                "Bank/book transaction combination exceeds the reconciliation limit; "
+                "process this statement in smaller batches."
+            )
         return self
 
 
