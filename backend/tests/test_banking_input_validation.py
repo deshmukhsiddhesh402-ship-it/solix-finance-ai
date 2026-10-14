@@ -78,5 +78,8 @@ def test_reconciliation_rejects_duplicate_book_transaction_ids():
 
 
 def test_reconciliation_allows_same_id_once_in_each_source():
-    request = ReconcileRequest(bank_lines=[bank_line()], book_lines=[book_line()])
+    bank = bank_line()
+    book = book_line()
+    book["id"] = bank["id"]
+    request = ReconcileRequest(bank_lines=[bank], book_lines=[book])
     assert request.bank_lines[0].id == request.book_lines[0].id
