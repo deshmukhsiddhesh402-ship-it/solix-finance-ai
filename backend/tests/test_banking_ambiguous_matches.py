@@ -238,3 +238,39 @@ def test_endpoint_withholds_final_balance_when_reconciliation_is_ambiguous():
     assert result["reconciliation_statement"]["balance_as_per_books"] is None
     assert result["reconciliation_statement"]["manual_review_required"] is True
     assert result["reconciliation_statement"]["ambiguous_transaction_count"] == 1
+
+
+
+@pytest.mark.parametrize(
+    "field_value",
+    [
+        {"date_window_days": True},
+        {"balance_as_per_bank": True},
+    ],
+)
+def test_reconciliation_request_rejects_boolean_numeric_fields(field_value):
+    from pydantic import ValidationError
+    from app.routers.banking import ReconcileRequest
+
+    with pytest.raises(ValidationError):
+        ReconcileRequest(bank_lines=[], book_lines=[], **field_value)
+
+
+@pytest.mark.parametrize("amount_field", ["bank_lines", "book_lines"])
+def test_reconciliation_request_rejects_boolean_transaction_amounts(amount_field):
+    from pydantic import ValidationError
+    from app.routers.banking import ReconcileRequest
+
+    line = {
+        "id": "transaction-1",
+        "txn_date": "2026-10-14",
+        "description": "Customer payment",
+        "amount": True,
+        "txn_type": "credit",
+    }
+
+    with pytest.raises(ValidationError):
+        ReconcileRequest(
+            bank_lines=[line] if amount_field == "bank_lines" else [],
+            book_lines=[line] if amount_field == "book_lines" else [],
+        )
