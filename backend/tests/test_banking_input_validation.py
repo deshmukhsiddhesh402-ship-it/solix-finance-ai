@@ -83,3 +83,19 @@ def test_reconciliation_allows_same_id_once_in_each_source():
     book["id"] = bank["id"]
     request = ReconcileRequest(bank_lines=[bank], book_lines=[book])
     assert request.bank_lines[0].id == request.book_lines[0].id
+
+
+
+def test_reconciliation_rejects_excessive_bank_book_candidate_product():
+    # 317 x 316 exceeds the 100,000 candidate-comparison budget.
+    bank_lines = [
+        {**bank_line(), "id": f"bank-{index}"}
+        for index in range(317)
+    ]
+    book_lines = [
+        {**book_line(), "id": f"book-{index}"}
+        for index in range(316)
+    ]
+
+    with pytest.raises(ValidationError, match="combination exceeds the reconciliation limit"):
+        ReconcileRequest(bank_lines=bank_lines, book_lines=book_lines)
