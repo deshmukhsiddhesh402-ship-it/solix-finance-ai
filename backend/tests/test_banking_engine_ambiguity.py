@@ -71,3 +71,19 @@ def test_distinct_amounts_remain_separately_reconcilable():
 
     assert result["matched_count"] == 2
     assert result["ambiguous_matches"] == []
+
+
+def test_closest_date_candidate_is_preferred_when_not_tied():
+    result = reconcile(
+        [bank("bank-1", day="2026-10-14")],
+        [
+            book("book-near", day="2026-10-13"),
+            book("book-far", day="2026-10-11"),
+        ],
+        date_window_days=5,
+    )
+
+    assert result["matched_count"] == 1
+    assert result["matched"][0]["book_id"] == "book-near"
+    assert result["ambiguous_matches"] == []
+    assert [item["id"] for item in result["deposits_not_credited"]] == ["book-far"]
