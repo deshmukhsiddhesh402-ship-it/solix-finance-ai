@@ -25,7 +25,7 @@ def test_equal_closest_candidates_are_flagged_and_not_auto_matched():
     assert result["matched"] == []
     assert result["ambiguous_matches"] == [{
         "bank_id": "bank-1",
-        "candidate_book_ids": ["book-before", "book-after"],
+        "candidate_book_ids": ["book-after", "book-before"],
         "reason": "Multiple book transactions have the same amount, type, and closest date; manual review required.",
     }]
     assert {row["id"] for row in result["deposits_not_credited"]} == {"book-before", "book-after"}
