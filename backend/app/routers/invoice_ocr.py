@@ -1,11 +1,14 @@
 """Module: OCR & Invoice Processing — tenant-scoped API."""
 import json, re, uuid, io, time
+from sqlalchemy.orm import Session
+from app.core.db import get_db
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
+from app.services.billing_engine import check_and_consume_usage, release_usage
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -64,7 +67,7 @@ def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
     return data
 
 @router.post("/extract-invoice")
-async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
+async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), db: Session = Depends(get_db), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
     try:
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
@@ -78,6 +81,9 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
     if not _has_expected_file_signature(file_bytes, extension):
         raise HTTPException(400, detail="Invoice file content does not match its file type.")
+    preview = check_and_consume_usage(db, org_uuid, "invoice_ocr_this_month", consume=False)
+    if not preview["allowed"]:
+        raise HTTPException(429, detail="Monthly invoice-OCR limit reached for this plan.")
     if extension == "pdf":
         try:
             images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
@@ -87,8 +93,15 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         extracted = _extract_single_image(images[0], "image/png")
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
+    quota = check_and_consume_usage(db, org_uuid, "invoice_ocr_this_month")
+    if not quota["allowed"]:
+        raise HTTPException(429, detail="Monthly invoice-OCR limit reached for this plan.")
     session_id = str(uuid.uuid4())
-    _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
+    try:
+        _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
+    except Exception:
+        release_usage(db, org_uuid, "invoice_ocr_this_month")
+        raise
     return {"session_id": session_id, "invoice": extracted}
 
 class JournalEntryRequest(BaseModel):
