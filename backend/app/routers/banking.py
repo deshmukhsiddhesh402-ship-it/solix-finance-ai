@@ -42,6 +42,13 @@ class BookLineIn(BaseModel):
     amount: float = Field(gt=0)
     txn_type: Literal["credit", "debit"]
 
+    @field_validator("amount", mode="before")
+    @classmethod
+    def amount_must_not_be_boolean(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Transaction amount must be numeric, not boolean.")
+        return value
+
     @field_validator("amount")
     @classmethod
     def amount_must_be_finite(cls, value: float) -> float:

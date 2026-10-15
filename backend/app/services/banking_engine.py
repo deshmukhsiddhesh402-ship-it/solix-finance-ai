@@ -169,8 +169,14 @@ def reconcile(
         for item in ambiguous_matches
         for candidate_id in item["candidate_book_ids"]
     }
-    unresolved_bank_items = [b for b in unmatched_bank if b.id in unresolved_bank_ids]
-    unresolved_book_items = [b for b in unmatched_book if b.id in unresolved_book_ids]
+    unresolved_bank_items = sorted(
+        (b for b in unmatched_bank if b.id in unresolved_bank_ids),
+        key=lambda line: line.id,
+    )
+    unresolved_book_items = sorted(
+        (b for b in unmatched_book if b.id in unresolved_book_ids),
+        key=lambda line: line.id,
+    )
 
     # Only confidently unmatched items are classified into conventional buckets.
     outstanding_cheques = [
