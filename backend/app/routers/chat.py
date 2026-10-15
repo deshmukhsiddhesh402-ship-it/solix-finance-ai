@@ -112,10 +112,16 @@ async def upload_document(
     if not quota["allowed"]:
         raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
     session_id = str(uuid.uuid4())
-    _store_chat_session(_TFIDF_SESSIONS, session_id, {
-        "filename": file.filename, "index": index, "org_id": str(org_uuid),
-        "user_id": str(user_uuid), "created_at": time.time(),
-    })
+    try:
+        _store_chat_session(_TFIDF_SESSIONS, session_id, {
+            "filename": file.filename, "index": index, "org_id": str(org_uuid),
+            "user_id": str(user_uuid), "created_at": time.time(),
+        })
+    except Exception:
+        # The keyword index is in-memory only. If it cannot be registered,
+        # undo the reservation so the user is not charged for an unusable session.
+        release_usage(db, org_uuid, "ai_chat_uploads_this_month")
+        raise
     return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
 
 
