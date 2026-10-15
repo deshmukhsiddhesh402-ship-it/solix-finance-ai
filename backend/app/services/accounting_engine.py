@@ -31,6 +31,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Account name must be non-empty.")
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
+        if isinstance(line.debit, bool) or isinstance(line.credit, bool):
+            raise ValueError("Debit and credit amounts must be numeric, not boolean.")
         if not math.isfinite(line.debit) or not math.isfinite(line.credit):
             raise ValueError("Debit and credit amounts must be finite.")
         if line.debit < 0 or line.credit < 0:
