@@ -97,7 +97,9 @@ def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True,
         plan = "trial"
     previous_period = row["usage_period_start"]
     current_usage = int(row[usage_key] or 0)
-    period_reset = previous_period is None or previous_period < period_start
+    # Reset for any non-current anchor, including malformed/future values.
+    # A future anchor must not preserve stale counters indefinitely.
+    period_reset = previous_period is None or previous_period != period_start
     if period_reset:
         current_usage = 0
         db.execute(text(
