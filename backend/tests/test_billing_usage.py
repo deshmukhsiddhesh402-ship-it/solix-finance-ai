@@ -99,6 +99,7 @@ def test_stale_usage_period_resets_before_limit_check():
     assert result["allowed"] is True
     assert result["current_usage"] == 0
     assert any("SET ai_chat_uploads_this_month = 0" in sql for sql, _ in db.statements)
+    assert any("invoice_ocr_this_month = 0" in sql for sql, _ in db.statements)
 
 
 def test_enterprise_plan_is_unlimited():
