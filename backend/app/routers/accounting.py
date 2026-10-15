@@ -30,6 +30,21 @@ class LedgerLineIn(BaseModel):
     tds_rate: float | None = Field(default=None, ge=0, le=100)
     tds_amount: float | None = Field(default=None, ge=0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, values):
+        # Pydantic otherwise coerces JSON booleans to floats (True -> 1.0),
+        # which is unsafe for journal and GST/TDS monetary inputs.
+        if isinstance(values, dict):
+            numeric_fields = (
+                "debit", "credit", "gst_rate_pct", "gst_taxable_value",
+                "tds_rate", "tds_amount",
+            )
+            for field_name in numeric_fields:
+                if isinstance(values.get(field_name), bool):
+                    raise ValueError(f"{field_name} must be numeric, not boolean.")
+        return values
+
     @model_validator(mode="after")
     def require_one_positive_side(self):
         numeric_values = {
