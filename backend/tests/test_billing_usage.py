@@ -54,6 +54,13 @@ def _row(plan="trial", count=0, period=None):
     }
 
 
+def test_subscription_usage_period_default_is_timezone_independent():
+    from app.models.billing import Subscription
+
+    default_sql = str(Subscription.__table__.c.usage_period_start.server_default.arg)
+    assert "date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'" in default_sql
+
+
 def test_usage_period_start_is_first_day_of_utc_month():
     assert _current_usage_period_start(NOW) == datetime(2026, 10, 1, tzinfo=timezone.utc)
 
