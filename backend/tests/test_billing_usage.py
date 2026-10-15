@@ -112,6 +112,17 @@ def test_stale_usage_period_resets_before_limit_check():
     assert any("invoice_ocr_this_month = 0" in sql for sql, _ in db.statements)
 
 
+def test_future_usage_period_resets_instead_of_preserving_stale_counters():
+    future_period = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    db = _FakeDB(_row(count=10, period=future_period))
+    result = check_and_consume_usage(
+        db, ORG, "ai_chat_uploads_this_month", consume=False, now=NOW
+    )
+    assert result["allowed"] is True
+    assert result["current_usage"] == 0
+    assert any("usage_period_start = :period_start" in sql for sql, _ in db.statements)
+
+
 def test_enterprise_plan_is_unlimited():
     db = _FakeDB(_row(plan="enterprise", count=9000))
     result = check_and_consume_usage(db, ORG, "invoice_ocr_this_month", now=NOW)
