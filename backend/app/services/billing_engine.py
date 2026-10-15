@@ -76,10 +76,22 @@ def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True,
         "ON CONFLICT (org_id) DO NOTHING"
     ), params)
     row = db.execute(text(
-        f"SELECT plan, usage_period_start, {usage_key} FROM subscriptions "
+        f"SELECT plan, status, current_period_end, usage_period_start, {usage_key} FROM subscriptions "
         "WHERE org_id = :org_id FOR UPDATE"
     ), params).mappings().one()
+    from datetime import datetime, timezone
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    else:
+        current_time = current_time.astimezone(timezone.utc)
     plan = row["plan"] if row["plan"] in PLANS else "trial"
+    if plan != "trial" and (
+        row["status"] != "active"
+        or row["current_period_end"] is None
+        or row["current_period_end"] <= current_time
+    ):
+        plan = "trial"
     previous_period = row["usage_period_start"]
     current_usage = int(row[usage_key] or 0)
     period_reset = previous_period is None or previous_period < period_start
