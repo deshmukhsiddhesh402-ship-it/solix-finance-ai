@@ -65,3 +65,12 @@ def test_finance_calculator_models_reject_boolean_numeric_values(model_type, pay
     payload[field_name] = True
     with pytest.raises(ValidationError, match="not boolean"):
         models[model_type](**payload)
+
+@pytest.mark.parametrize("field_name", ["debit", "credit"])
+def test_trial_balance_engine_rejects_boolean_amounts(field_name):
+    from app.services.accounting_engine import LedgerLine, build_trial_balance
+
+    values = {"account_name": "Cash", "account_type": "asset", "debit": 0.0, "credit": 0.0}
+    values[field_name] = True
+    with pytest.raises(ValueError, match="not boolean"):
+        build_trial_balance([LedgerLine(**values)])
