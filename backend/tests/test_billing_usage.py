@@ -45,6 +45,8 @@ ORG = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
 def _row(plan="trial", count=0, period=None):
     return {
         "plan": plan,
+        "status": "active",
+        "current_period_end": datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc),
         "usage_period_start": period or _current_usage_period_start(NOW),
         "ai_chat_uploads_this_month": count,
         "invoice_ocr_this_month": count,
@@ -108,6 +110,26 @@ def test_enterprise_plan_is_unlimited():
     assert result["allowed"] is True
     assert result["current_usage"] == 9001
     assert result["limit"] is None
+
+
+def test_expired_paid_plan_falls_back_to_trial_quota():
+    db = _FakeDB({
+        **_row(plan="pro", count=10),
+        "current_period_end": datetime(2026, 10, 1, tzinfo=timezone.utc),
+    })
+    result = check_and_consume_usage(db, ORG, "ai_chat_uploads_this_month", now=NOW)
+    assert result["plan"] == "trial"
+    assert result["allowed"] is False
+    assert result["current_usage"] == 10
+
+
+def test_cancelled_paid_plan_falls_back_to_trial_quota():
+    row = _row(plan="enterprise", count=10)
+    row["status"] = "cancelled"
+    db = _FakeDB(row)
+    result = check_and_consume_usage(db, ORG, "ai_chat_uploads_this_month", now=NOW)
+    assert result["plan"] == "trial"
+    assert result["allowed"] is False
 
 
 def test_unknown_usage_key_fails_closed():
