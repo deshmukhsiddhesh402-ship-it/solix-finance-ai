@@ -83,12 +83,14 @@ async def upload_document(
 
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
-        vectors = get_embeddings(chunks, input_type="document")
         quota = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month")
         if not quota["allowed"]:
             raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
         session_id = None
         try:
+            # Reserve quota before paid/expensive embedding work. The exception
+            # path below releases it if embedding or persistence fails.
+            vectors = get_embeddings(chunks, input_type="document")
             doc_row = Document(
                 org_id=org_uuid, uploaded_by=user_uuid,
                 file_name=file.filename, file_type=file.filename.split(".")[-1],
@@ -114,12 +116,13 @@ async def upload_document(
             raise
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
-    index = build_index(chunks)
     quota = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month")
     if not quota["allowed"]:
         raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
     session_id = str(uuid.uuid4())
     try:
+        # Reserve quota before building the in-memory retrieval index.
+        index = build_index(chunks)
         _store_chat_session(_TFIDF_SESSIONS, session_id, {
             "filename": file.filename, "index": index, "org_id": str(org_uuid),
             "user_id": str(user_uuid), "created_at": time.time(),
