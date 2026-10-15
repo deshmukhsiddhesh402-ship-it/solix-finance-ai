@@ -170,6 +170,15 @@ def balance_sheet(req: TrialBalanceRequest):
 
 
 class RatiosRequest(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        if isinstance(values, dict):
+            for name, value in values.items():
+                if isinstance(value, bool):
+                    raise ValueError(f"{name} must be numeric, not boolean.")
+        return values
+
     current_assets: float = Field(ge=0)
     current_liabilities: float = Field(ge=0)
     inventory: float = Field(ge=0)
@@ -193,6 +202,15 @@ def ratios(req: RatiosRequest):
 
 
 class StraightLineRequest(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        if isinstance(values, dict):
+            for name in ("cost", "salvage", "useful_life_years"):
+                if isinstance(values.get(name), bool):
+                    raise ValueError(f"{name} must be numeric, not boolean.")
+        return values
+
     cost: float = Field(ge=0)
     salvage: float = Field(ge=0)
     useful_life_years: int = Field(ge=1)
@@ -213,6 +231,15 @@ def depreciation_straight_line(req: StraightLineRequest):
 
 
 class WdvRequest(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        if isinstance(values, dict):
+            for name in ("cost", "rate_pct", "years"):
+                if isinstance(values.get(name), bool):
+                    raise ValueError(f"{name} must be numeric, not boolean.")
+        return values
+
     cost: float = Field(ge=0)
     rate_pct: float = Field(gt=0, le=100)
     years: int = Field(ge=1)
@@ -230,6 +257,15 @@ def depreciation_wdv(req: WdvRequest):
 
 
 class InventoryTxnIn(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        if isinstance(values, dict):
+            for name in ("quantity", "unit_cost"):
+                if isinstance(values.get(name), bool):
+                    raise ValueError(f"{name} must be numeric, not boolean.")
+        return values
+
     txn_type: Literal["purchase", "sale"]
     quantity: float = Field(gt=0)
     unit_cost: float = Field(ge=0)
