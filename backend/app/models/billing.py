@@ -21,6 +21,6 @@ class Subscription(Base):
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     ai_chat_uploads_this_month = Column(Integer, nullable=False, default=0)
     invoice_ocr_this_month = Column(Integer, nullable=False, default=0)
-    usage_period_start = Column(DateTime(timezone=True), nullable=False, server_default=text("timezone('UTC', date_trunc('month', timezone('UTC', now())))"))
+    usage_period_start = Column(DateTime(timezone=True), nullable=False, server_default=text("(date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
