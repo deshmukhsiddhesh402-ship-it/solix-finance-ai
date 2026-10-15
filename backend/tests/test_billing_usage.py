@@ -147,3 +147,18 @@ def test_release_usage_is_scoped_to_current_period():
     assert "usage_period_start = :period_start" in sql
     assert params["period_start"] == _current_usage_period_start(NOW)
     assert db.commits == 1
+
+def test_usage_period_start_normalizes_naive_datetime_as_utc():
+    naive_now = datetime(2026, 10, 15, 12, 34, 56)
+    assert _current_usage_period_start(naive_now) == datetime(2026, 10, 1, tzinfo=timezone.utc)
+
+
+def test_usage_period_start_normalizes_non_utc_offset():
+    from datetime import timedelta
+
+    plus_five_thirty = timezone(timedelta(hours=5, minutes=30))
+    local_now = datetime(2026, 10, 1, 2, 0, tzinfo=plus_five_thirty)
+    # This instant is still in September in UTC, so the period anchor must be
+    # September 1 rather than October 1 based on the caller's local calendar.
+    assert _current_usage_period_start(local_now) == datetime(2026, 9, 1, tzinfo=timezone.utc)
+
