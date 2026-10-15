@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
-from app.services.billing_engine import check_and_consume_usage, release_usage
+from app.services.billing_engine import check_and_consume_usage, release_usage_after_failure
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -102,7 +102,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
             extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
         _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     except Exception:
-        release_usage(db, org_uuid, "invoice_ocr_this_month")
+        release_usage_after_failure(db, org_uuid, "invoice_ocr_this_month")
         raise
     return {"session_id": session_id, "invoice": extracted}
 
