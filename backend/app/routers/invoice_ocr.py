@@ -84,20 +84,22 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
     preview = check_and_consume_usage(db, org_uuid, "invoice_ocr_this_month", consume=False)
     if not preview["allowed"]:
         raise HTTPException(429, detail="Monthly invoice-OCR limit reached for this plan.")
-    if extension == "pdf":
-        try:
-            images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
-        except (ValueError, RuntimeError) as exc:
-            raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
-        if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
-        extracted = _extract_single_image(images[0], "image/png")
-    else:
-        extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
     quota = check_and_consume_usage(db, org_uuid, "invoice_ocr_this_month")
     if not quota["allowed"]:
         raise HTTPException(429, detail="Monthly invoice-OCR limit reached for this plan.")
     session_id = str(uuid.uuid4())
     try:
+        # Reserve quota before PDF decoding and AI extraction so concurrent
+        # requests cannot do expensive OCR after the final unit is consumed.
+        if extension == "pdf":
+            try:
+                images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
+            if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
+            extracted = _extract_single_image(images[0], "image/png")
+        else:
+            extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
         _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     except Exception:
         release_usage(db, org_uuid, "invoice_ocr_this_month")
