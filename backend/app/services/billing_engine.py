@@ -86,7 +86,8 @@ def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True,
     if period_reset:
         current_usage = 0
         db.execute(text(
-            f"UPDATE subscriptions SET {usage_key} = 0, usage_period_start = :period_start, updated_at = now() "
+            "UPDATE subscriptions SET ai_chat_uploads_this_month = 0, "
+            "invoice_ocr_this_month = 0, usage_period_start = :period_start, updated_at = now() "
             "WHERE org_id = :org_id"
         ), params)
     limit = get_plan_limits(plan).get(limit_key)
