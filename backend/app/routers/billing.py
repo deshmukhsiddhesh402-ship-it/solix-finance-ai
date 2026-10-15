@@ -9,7 +9,7 @@ from app.core.db import get_db
 from app.core.config import settings
 from app.services.billing_engine import (
     PLANS, build_order_payload, verify_webhook_signature, verify_payment_signature,
-    validate_gateway_payment, is_within_limit,
+    validate_gateway_payment, check_and_consume_usage,
 )
 from app.routers.enterprise import require_permission
 
@@ -215,9 +215,9 @@ def check_limit(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
 
-    from app.models.billing import Subscription
-    sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
-    plan = sub.plan if sub else "trial"
-    current_usage = getattr(sub, usage_key, 0) or 0 if sub else 0
-    allowed = is_within_limit(plan, usage_key.replace("_this_month", "_per_month"), current_usage)
-    return {"plan": plan, "usage_key": usage_key, "current_usage": current_usage, "allowed": allowed}
+    result = check_and_consume_usage(db, org_uuid, usage_key, consume=False)
+    return {
+        "plan": result["plan"], "usage_key": usage_key,
+        "current_usage": result["current_usage"], "limit": result["limit"],
+        "allowed": result["allowed"],
+    }

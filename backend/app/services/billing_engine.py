@@ -11,6 +11,9 @@ real, tested crypto — not a stub.
 """
 import hmac
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +37,119 @@ PLANS = {
 
 def get_plan_limits(plan: str) -> dict:
     return PLANS.get(plan, PLANS["trial"])["limits"]
+
+
+
+# ---------------------------------------------------------------------------
+# Atomic monthly usage metering
+# ---------------------------------------------------------------------------
+_USAGE_COUNTERS = {
+    "ai_chat_uploads_this_month": "ai_chat_uploads_per_month",
+    "invoice_ocr_this_month": "invoice_ocr_per_month",
+}
+
+
+def _current_usage_period_start(now=None):
+    """Return the UTC start of the current calendar month."""
+    from datetime import datetime, timezone
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    return current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True, now=None) -> dict:
+    """Check/reset a monthly quota and optionally consume one unit atomically.
+
+    PostgreSQL row locking serializes requests for one organization, so two
+    uploads cannot both consume the final available unit. Missing subscriptions
+    are initialized on the trial plan. Callers should release the reservation
+    if downstream persistence fails.
+    """
+    from sqlalchemy import text
+    limit_key = _USAGE_COUNTERS.get(usage_key)
+    if not limit_key:
+        raise ValueError("Unsupported usage key.")
+    period_start = _current_usage_period_start(now)
+    params = {"org_id": str(org_id), "period_start": period_start}
+    db.execute(text(
+        "INSERT INTO subscriptions (org_id, plan, status, usage_period_start) "
+        "VALUES (:org_id, 'trial', 'active', :period_start) "
+        "ON CONFLICT (org_id) DO NOTHING"
+    ), params)
+    row = db.execute(text(
+        f"SELECT plan, status, current_period_end, usage_period_start, {usage_key} FROM subscriptions "
+        "WHERE org_id = :org_id FOR UPDATE"
+    ), params).mappings().one()
+    from datetime import datetime, timezone
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    else:
+        current_time = current_time.astimezone(timezone.utc)
+    plan = row["plan"] if row["plan"] in PLANS else "trial"
+    if plan != "trial" and (
+        row["status"] != "active"
+        or row["current_period_end"] is None
+        or row["current_period_end"] <= current_time
+    ):
+        plan = "trial"
+    previous_period = row["usage_period_start"]
+    current_usage = int(row[usage_key] or 0)
+    # Reset for any non-current anchor, including malformed/future values.
+    # A future anchor must not preserve stale counters indefinitely.
+    period_reset = previous_period is None or previous_period != period_start
+    if period_reset:
+        current_usage = 0
+        db.execute(text(
+            "UPDATE subscriptions SET ai_chat_uploads_this_month = 0, "
+            "invoice_ocr_this_month = 0, usage_period_start = :period_start, updated_at = now() "
+            "WHERE org_id = :org_id"
+        ), params)
+    limit = get_plan_limits(plan).get(limit_key)
+    allowed = limit is None or current_usage < limit
+    if consume and allowed:
+        current_usage += 1
+        db.execute(text(
+            f"UPDATE subscriptions SET {usage_key} = :current_usage, usage_period_start = :period_start, updated_at = now() "
+            "WHERE org_id = :org_id"
+        ), {**params, "current_usage": current_usage})
+    db.commit()
+    return {
+        "plan": plan, "usage_key": usage_key, "current_usage": current_usage,
+        "limit": limit, "allowed": allowed, "consumed": bool(consume and allowed),
+    }
+
+
+def release_usage(db, org_id, usage_key: str, *, now=None) -> None:
+    """Release a reserved unit after downstream failure, without crossing months."""
+    from sqlalchemy import text
+    if usage_key not in _USAGE_COUNTERS:
+        raise ValueError("Unsupported usage key.")
+    db.execute(text(
+        f"UPDATE subscriptions SET {usage_key} = GREATEST({usage_key} - 1, 0), updated_at = now() "
+        "WHERE org_id = :org_id AND usage_period_start = :period_start"
+    ), {"org_id": str(org_id), "period_start": _current_usage_period_start(now)})
+    db.commit()
+
+def release_usage_after_failure(db, org_id, usage_key: str, *, now=None) -> bool:
+    """Best-effort quota compensation that preserves the original failure.
+
+    A downstream upload/OCR error should remain the error returned to the caller
+    even if the compensation transaction also fails. The failure is logged so
+    quota drift is visible to operators instead of being silently ignored.
+    """
+    try:
+        release_usage(db, org_id, usage_key, now=now)
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to release reserved %s usage after downstream failure for org %s",
+            usage_key,
+            org_id,
+        )
+        return False
 
 
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:

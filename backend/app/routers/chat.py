@@ -11,6 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
+from app.services.billing_engine import check_and_consume_usage, release_usage_after_failure
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -76,29 +77,61 @@ async def upload_document(
         raise HTTPException(422, detail="No extractable text found in this file.")
 
     chunks = chunk_text(text)
+    preview = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month", consume=False)
+    if not preview["allowed"]:
+        raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
+
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
-        vectors = get_embeddings(chunks, input_type="document")
-        doc_row = Document(
-            org_id=org_uuid, uploaded_by=user_uuid,
-            file_name=file.filename, file_type=file.filename.split(".")[-1],
-        )
-        db.add(doc_row)
-        db.flush()
-        for chunk_text_, vector in zip(chunks, vectors):
-            db.add(DocumentChunk(document_id=doc_row.id, chunk_text=chunk_text_, embedding=vector))
-        db.commit()
-        session_id = str(doc_row.id)
-        _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
-            "filename": file.filename, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time(),
-        })
+        quota = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month")
+        if not quota["allowed"]:
+            raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
+        session_id = None
+        try:
+            # Reserve quota before paid/expensive embedding work. The exception
+            # path below releases it if embedding or persistence fails.
+            vectors = get_embeddings(chunks, input_type="document")
+            doc_row = Document(
+                org_id=org_uuid, uploaded_by=user_uuid,
+                file_name=file.filename, file_type=file.filename.split(".")[-1],
+            )
+            db.add(doc_row)
+            db.flush()
+            session_id = str(doc_row.id)
+            for chunk_text_, vector in zip(chunks, vectors):
+                db.add(DocumentChunk(document_id=doc_row.id, chunk_text=chunk_text_, embedding=vector))
+            # Register the session before committing. If session registration or
+            # the database commit fails, remove the transient session and release
+            # the already-reserved quota rather than leaving an unusable upload.
+            _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
+                "filename": file.filename, "org_id": str(org_uuid),
+                "user_id": str(user_uuid), "created_at": time.time(),
+            })
+            db.commit()
+        except Exception:
+            if session_id:
+                _SEMANTIC_SESSIONS.pop(session_id, None)
+            db.rollback()
+            release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
+            raise
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
+    quota = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month")
+    if not quota["allowed"]:
+        raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
     session_id = str(uuid.uuid4())
-    _store_chat_session(_TFIDF_SESSIONS, session_id, {
-        "filename": file.filename, "index": build_index(chunks), "org_id": str(org_uuid),
-        "user_id": str(user_uuid), "created_at": time.time(),
-    })
+    try:
+        # Reserve quota before building the in-memory retrieval index.
+        index = build_index(chunks)
+        _store_chat_session(_TFIDF_SESSIONS, session_id, {
+            "filename": file.filename, "index": index, "org_id": str(org_uuid),
+            "user_id": str(user_uuid), "created_at": time.time(),
+        })
+    except Exception:
+        # The keyword index is in-memory only. If it cannot be registered,
+        # undo the reservation so the user is not charged for an unusable session.
+        release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
+        raise
     return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
 
 
