@@ -7,6 +7,7 @@ from app.services.billing_engine import (
     _current_usage_period_start,
     check_and_consume_usage,
     release_usage,
+    release_usage_after_failure,
 )
 
 
@@ -147,6 +148,19 @@ def test_release_usage_is_scoped_to_current_period():
     assert "usage_period_start = :period_start" in sql
     assert params["period_start"] == _current_usage_period_start(NOW)
     assert db.commits == 1
+
+def test_failed_quota_compensation_is_logged_without_masking_error(caplog, monkeypatch):
+    def fail_release(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.services.billing_engine.release_usage", fail_release)
+    with caplog.at_level("ERROR", logger="app.services.billing_engine"):
+        released = release_usage_after_failure(_FakeDB(_row()), ORG, "ai_chat_uploads_this_month", now=NOW)
+
+    assert released is False
+    assert "Failed to release reserved ai_chat_uploads_this_month usage" in caplog.text
+    assert "database unavailable" in caplog.text
+
 
 def test_usage_period_start_normalizes_naive_datetime_as_utc():
     naive_now = datetime(2026, 10, 15, 12, 34, 56)
