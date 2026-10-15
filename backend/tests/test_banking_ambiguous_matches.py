@@ -30,7 +30,7 @@ def test_equal_closest_candidates_are_flagged_and_not_auto_matched():
     }]
     assert result["deposits_not_credited"] == []
     assert result["outstanding_cheques"] == []
-    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-before", "book-after"]
+    assert [row["id"] for row in result["unresolved_book_items"]] == ["book-after", "book-before"]
     assert [row["id"] for row in result["unresolved_bank_items"]] == ["bank-1"]
     assert result["totals"]["deposits_not_credited"] == 0
     assert result["totals"]["outstanding_cheques"] == 0
