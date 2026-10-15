@@ -21,14 +21,14 @@ router = APIRouter()
 class LedgerLineIn(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
-    debit: float = Field(default=0.0, ge=0)
-    credit: float = Field(default=0.0, ge=0)
-    gst_rate_pct: float | None = Field(default=None, ge=0, le=100)
+    debit: float = Field(default=0.0, ge=0, strict=True)
+    credit: float = Field(default=0.0, ge=0, strict=True)
+    gst_rate_pct: float | None = Field(default=None, ge=0, le=100, strict=True)
     gst_type: Literal["IGST", "CGST", "SGST", "NONE"] | None = None
-    gst_taxable_value: float | None = Field(default=None, ge=0)
+    gst_taxable_value: float | None = Field(default=None, ge=0, strict=True)
     tds_section: str | None = Field(default=None, min_length=3, max_length=10)
-    tds_rate: float | None = Field(default=None, ge=0, le=100)
-    tds_amount: float | None = Field(default=None, ge=0)
+    tds_rate: float | None = Field(default=None, ge=0, le=100, strict=True)
+    tds_amount: float | None = Field(default=None, ge=0, strict=True)
 
     @model_validator(mode="after")
     def require_one_positive_side(self):
