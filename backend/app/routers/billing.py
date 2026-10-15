@@ -9,7 +9,7 @@ from app.core.db import get_db
 from app.core.config import settings
 from app.services.billing_engine import (
     PLANS, build_order_payload, verify_webhook_signature, verify_payment_signature,
-    validate_gateway_payment, is_within_limit,
+    validate_gateway_payment, check_and_consume_usage,
 )
 from app.routers.enterprise import require_permission
 
