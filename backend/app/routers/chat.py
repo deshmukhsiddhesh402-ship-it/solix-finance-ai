@@ -87,6 +87,7 @@ async def upload_document(
         quota = check_and_consume_usage(db, org_uuid, "ai_chat_uploads_this_month")
         if not quota["allowed"]:
             raise HTTPException(429, detail="Monthly AI document-upload limit reached for this plan.")
+        session_id = None
         try:
             doc_row = Document(
                 org_id=org_uuid, uploaded_by=user_uuid,
@@ -94,17 +95,23 @@ async def upload_document(
             )
             db.add(doc_row)
             db.flush()
+            session_id = str(doc_row.id)
             for chunk_text_, vector in zip(chunks, vectors):
                 db.add(DocumentChunk(document_id=doc_row.id, chunk_text=chunk_text_, embedding=vector))
+            # Register the session before committing. If session registration or
+            # the database commit fails, remove the transient session and release
+            # the already-reserved quota rather than leaving an unusable upload.
+            _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
+                "filename": file.filename, "org_id": str(org_uuid),
+                "user_id": str(user_uuid), "created_at": time.time(),
+            })
             db.commit()
         except Exception:
+            if session_id:
+                _SEMANTIC_SESSIONS.pop(session_id, None)
             db.rollback()
             release_usage(db, org_uuid, "ai_chat_uploads_this_month")
             raise
-        session_id = str(doc_row.id)
-        _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
-            "filename": file.filename, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time(),
-        })
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
     index = build_index(chunks)
