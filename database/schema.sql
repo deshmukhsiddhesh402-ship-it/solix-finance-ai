@@ -259,7 +259,7 @@ CREATE TABLE subscriptions (
     current_period_end          TIMESTAMPTZ,
     ai_chat_uploads_this_month  INT NOT NULL DEFAULT 0,
     invoice_ocr_this_month      INT NOT NULL DEFAULT 0,
-    usage_period_start          TIMESTAMPTZ NOT NULL DEFAULT timezone('UTC', date_trunc('month', timezone('UTC', now()))),
+    usage_period_start          TIMESTAMPTZ NOT NULL DEFAULT (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
