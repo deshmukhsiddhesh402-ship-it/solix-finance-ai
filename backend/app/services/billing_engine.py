@@ -11,6 +11,9 @@ real, tested crypto — not a stub.
 """
 import hmac
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +130,25 @@ def release_usage(db, org_id, usage_key: str, *, now=None) -> None:
         "WHERE org_id = :org_id AND usage_period_start = :period_start"
     ), {"org_id": str(org_id), "period_start": _current_usage_period_start(now)})
     db.commit()
+
+def release_usage_after_failure(db, org_id, usage_key: str, *, now=None) -> bool:
+    """Best-effort quota compensation that preserves the original failure.
+
+    A downstream upload/OCR error should remain the error returned to the caller
+    even if the compensation transaction also fails. The failure is logged so
+    quota drift is visible to operators instead of being silently ignored.
+    """
+    try:
+        release_usage(db, org_id, usage_key, now=now)
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to release reserved %s usage after downstream failure for org %s",
+            usage_key,
+            org_id,
+        )
+        return False
+
 
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:
     """Check whether the org is still within its plan's usage limit for a
