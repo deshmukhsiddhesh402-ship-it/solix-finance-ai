@@ -11,7 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
-from app.services.billing_engine import check_and_consume_usage, release_usage
+from app.services.billing_engine import check_and_consume_usage, release_usage_after_failure
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -112,7 +112,7 @@ async def upload_document(
             if session_id:
                 _SEMANTIC_SESSIONS.pop(session_id, None)
             db.rollback()
-            release_usage(db, org_uuid, "ai_chat_uploads_this_month")
+            release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
             raise
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
@@ -130,7 +130,7 @@ async def upload_document(
     except Exception:
         # The keyword index is in-memory only. If it cannot be registered,
         # undo the reservation so the user is not charged for an unusable session.
-        release_usage(db, org_uuid, "ai_chat_uploads_this_month")
+        release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
         raise
     return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
 
