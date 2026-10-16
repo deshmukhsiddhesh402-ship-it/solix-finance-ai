@@ -8,6 +8,16 @@ from typing import Literal
 import math
 
 
+def _is_finite_number(value: object) -> bool:
+    """Return False for non-numeric values and numbers outside float range."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Trial Balance
 # ---------------------------------------------------------------------------
@@ -32,12 +42,7 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
         amounts = (line.debit, line.credit)
-        if any(
-            not isinstance(value, (int, float))
-            or isinstance(value, bool)
-            or not math.isfinite(value)
-            for value in amounts
-        ):
+        if any(not _is_finite_number(value) for value in amounts):
             raise ValueError("Debit and credit amounts must be finite numbers.")
         if line.debit < 0 or line.credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
@@ -92,7 +97,7 @@ def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
             raise ValueError("Trial balance row has an invalid account type.")
         for field in ("debit", "credit"):
             value = row.get(field)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            if not _is_finite_number(value):
                 raise ValueError("Trial balance amounts must be finite numbers.")
             if value < 0:
                 raise ValueError("Trial balance amounts cannot be negative.")
