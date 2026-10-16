@@ -154,7 +154,7 @@ def straight_line_depreciation(cost: float, salvage: float, useful_life_years: i
         or not isinstance(useful_life_years, int)
         or useful_life_years < 1
     ):
-        raise ValueError("useful_life_years must be a positive integer.")
+        raise ValueError("useful_life_years must be at least 1 and a positive integer.")
     return round((cost - salvage) / useful_life_years, 2)
 
 
