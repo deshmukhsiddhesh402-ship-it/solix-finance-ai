@@ -18,6 +18,17 @@ from app.services.accounting_engine import (
 router = APIRouter()
 
 
+def _new_account_code(account_name: str) -> str:
+    """Create a compact, collision-resistant account code for auto-created accounts.
+
+    Account names are not guaranteed to have unique prefixes (for example,
+    "Office Supplies" and "Office Salary" both begin with "OFFICE S"),
+    while chart_of_accounts enforces UNIQUE (org_id, code).
+    """
+    prefix = "".join(char for char in account_name.upper() if char.isalnum())[:5] or "ACCT"
+    return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
 class LedgerLineIn(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
@@ -99,7 +110,7 @@ def create_journal_entry(
             raise HTTPException(422, detail="Account name already exists with a different account type.")
         if not account:
             account = ChartOfAccount(
-                org_id=org_uuid, code=line.account_name[:10].upper(),
+                org_id=org_uuid, code=_new_account_code(line.account_name),
                 name=line.account_name, account_type=line.account_type,
             )
             db.add(account)
