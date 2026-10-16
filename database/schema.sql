@@ -246,6 +246,24 @@ CREATE TABLE notifications (
 );
 CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read);
 
+
+-- ---------------------------------------------------------------------
+-- SUBSCRIPTION USAGE RESERVATIONS (idempotent quota compensation)
+-- ---------------------------------------------------------------------
+CREATE TABLE subscription_usage_reservations (
+    id              UUID PRIMARY KEY,
+    org_id          UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    usage_key       VARCHAR(64) NOT NULL CHECK (
+        usage_key IN ('ai_chat_uploads_this_month', 'invoice_ocr_this_month')
+    ),
+    period_start    TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    released_at     TIMESTAMPTZ
+);
+CREATE INDEX idx_usage_reservations_org_period
+    ON subscription_usage_reservations (org_id, period_start);
+
+
 -- ---------------------------------------------------------------------
 -- SUBSCRIPTION BILLING (Razorpay)
 -- ---------------------------------------------------------------------

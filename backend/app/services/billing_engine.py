@@ -60,13 +60,14 @@ def _current_usage_period_start(now=None):
 
 
 def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True, now=None) -> dict:
-    """Check/reset a monthly quota and optionally consume one unit atomically.
+    """Check/reset a monthly quota and optionally reserve one unit atomically.
 
-    PostgreSQL row locking serializes requests for one organization, so two
-    uploads cannot both consume the final available unit. Missing subscriptions
-    are initialized on the trial plan. Callers should release the reservation
-    if downstream persistence fails.
+    PostgreSQL row locking serializes requests for one organization. Each
+    successful reservation gets a unique ID persisted in the same transaction
+    as the counter increment; compensation must present that ID and is
+    idempotent, so one failed request cannot release another request's unit.
     """
+    import uuid
     from sqlalchemy import text
     limit_key = _USAGE_COUNTERS.get(usage_key)
     if not limit_key:
@@ -98,7 +99,6 @@ def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True,
     previous_period = row["usage_period_start"]
     current_usage = int(row[usage_key] or 0)
     # Reset for any non-current anchor, including malformed/future values.
-    # A future anchor must not preserve stale counters indefinitely.
     period_reset = previous_period is None or previous_period != period_start
     if period_reset:
         current_usage = 0
@@ -109,39 +109,66 @@ def check_and_consume_usage(db, org_id, usage_key: str, *, consume: bool = True,
         ), params)
     limit = get_plan_limits(plan).get(limit_key)
     allowed = limit is None or current_usage < limit
+    reservation_id = None
     if consume and allowed:
+        reservation_id = str(uuid.uuid4())
         current_usage += 1
         db.execute(text(
             f"UPDATE subscriptions SET {usage_key} = :current_usage, usage_period_start = :period_start, updated_at = now() "
             "WHERE org_id = :org_id"
         ), {**params, "current_usage": current_usage})
+        db.execute(text(
+            "INSERT INTO subscription_usage_reservations "
+            "(id, org_id, usage_key, period_start) "
+            "VALUES (:reservation_id, :org_id, :usage_key, :period_start)"
+        ), {**params, "reservation_id": reservation_id, "usage_key": usage_key})
     db.commit()
     return {
         "plan": plan, "usage_key": usage_key, "current_usage": current_usage,
         "limit": limit, "allowed": allowed, "consumed": bool(consume and allowed),
+        "reservation_id": reservation_id,
     }
 
 
-def release_usage(db, org_id, usage_key: str, *, now=None) -> None:
-    """Release a reserved unit after downstream failure, without crossing months."""
+def release_usage(db, org_id, usage_key: str, reservation_id: str, *, now=None) -> None:
+    """Idempotently release only the matching reservation in the current month."""
     from sqlalchemy import text
     if usage_key not in _USAGE_COUNTERS:
         raise ValueError("Unsupported usage key.")
+    if not reservation_id:
+        raise ValueError("A reservation ID is required to release usage.")
+    counter = usage_key
     db.execute(text(
-        f"UPDATE subscriptions SET {usage_key} = GREATEST({usage_key} - 1, 0), updated_at = now() "
-        "WHERE org_id = :org_id AND usage_period_start = :period_start"
-    ), {"org_id": str(org_id), "period_start": _current_usage_period_start(now)})
+        "WITH released AS ("
+        " UPDATE subscription_usage_reservations "
+        " SET released_at = now() "
+        " WHERE id = :reservation_id AND org_id = :org_id "
+        " AND usage_key = :usage_key AND period_start = :period_start "
+        " AND released_at IS NULL RETURNING org_id"
+        ") "
+        f"UPDATE subscriptions SET {counter} = GREATEST({counter} - 1, 0), updated_at = now() "
+        "WHERE org_id = :org_id AND usage_period_start = :period_start "
+        "AND EXISTS (SELECT 1 FROM released)"
+    ), {
+        "org_id": str(org_id),
+        "usage_key": usage_key,
+        "reservation_id": str(reservation_id),
+        "period_start": _current_usage_period_start(now),
+    })
     db.commit()
 
-def release_usage_after_failure(db, org_id, usage_key: str, *, now=None) -> bool:
-    """Best-effort quota compensation that preserves the original failure.
+
+def release_usage_after_failure(
+    db, org_id, usage_key: str, reservation_id: str, *, now=None
+) -> bool:
+    """Best-effort, idempotent quota compensation that preserves the original failure.
 
     A downstream upload/OCR error should remain the error returned to the caller
     even if the compensation transaction also fails. The failure is logged so
     quota drift is visible to operators instead of being silently ignored.
     """
     try:
-        release_usage(db, org_id, usage_key, now=now)
+        release_usage(db, org_id, usage_key, reservation_id, now=now)
         return True
     except Exception:
         logger.exception(
@@ -149,8 +176,19 @@ def release_usage_after_failure(db, org_id, usage_key: str, *, now=None) -> bool
             usage_key,
             org_id,
         )
+        # A failed SQLAlchemy transaction must be rolled back before this
+        # request-scoped session can be safely reused or closed. Preserve the
+        # downstream exception by treating rollback as best-effort too.
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:
+                logger.exception(
+                    "Failed to roll back quota compensation transaction for org %s",
+                    org_id,
+                )
         return False
-
 
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:
     """Check whether the org is still within its plan's usage limit for a

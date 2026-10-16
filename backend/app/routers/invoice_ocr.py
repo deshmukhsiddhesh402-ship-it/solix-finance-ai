@@ -102,7 +102,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
             extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
         _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     except Exception:
-        release_usage_after_failure(db, org_uuid, "invoice_ocr_this_month")
+        release_usage_after_failure(db, org_uuid, "invoice_ocr_this_month", quota["reservation_id"])
         raise
     return {"session_id": session_id, "invoice": extracted}
 
