@@ -157,3 +157,50 @@ def test_postgres_duplicate_release_only_decrements_once(pg_engine):
     released = {str(row.id): row.released_at for row in states}
     assert released[first["reservation_id"]] is not None
     assert released[second["reservation_id"]] is None
+
+def test_postgres_release_cannot_cross_organizations_or_months(pg_engine):
+    first_org = _seed_org(pg_engine)
+    second_org = _seed_org(pg_engine)
+    with Session(pg_engine) as db:
+        reservation = check_and_consume_usage(
+            db, first_org, "ai_chat_uploads_this_month", now=NOW
+        )
+
+    # Even with the correct reservation UUID, a different org cannot release it.
+    with Session(pg_engine) as db:
+        release_usage(
+            db, second_org, "ai_chat_uploads_this_month",
+            reservation["reservation_id"], now=NOW,
+        )
+
+    # Simulate the next month's counter reset before the old request fails.
+    next_month = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
+    with pg_engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE subscriptions
+            SET ai_chat_uploads_this_month = 0,
+                usage_period_start = :period_start
+            WHERE org_id = :org_id
+        """), {
+            "org_id": first_org,
+            "period_start": datetime(2026, 11, 1, tzinfo=timezone.utc),
+        })
+    with Session(pg_engine) as db:
+        release_usage(
+            db, first_org, "ai_chat_uploads_this_month",
+            reservation["reservation_id"], now=next_month,
+        )
+
+    with pg_engine.connect() as conn:
+        first_count = conn.execute(text(
+            "SELECT ai_chat_uploads_this_month FROM subscriptions WHERE org_id = :org_id"
+        ), {"org_id": first_org}).scalar_one()
+        second_count = conn.execute(text(
+            "SELECT ai_chat_uploads_this_month FROM subscriptions WHERE org_id = :org_id"
+        ), {"org_id": second_org}).scalar_one()
+        released_at = conn.execute(text("""
+            SELECT released_at FROM subscription_usage_reservations WHERE id = :reservation_id
+        """), {"reservation_id": reservation["reservation_id"]}).scalar_one()
+    assert first_count == 0
+    assert second_count == 0
+    assert released_at is None
