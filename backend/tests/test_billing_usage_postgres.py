@@ -6,11 +6,11 @@ Set TEST_DATABASE_URL to enable them; CI provisions a disposable PostgreSQL serv
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import os
+from pathlib import Path
 import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.services.billing_engine import check_and_consume_usage, release_usage
@@ -56,18 +56,11 @@ def pg_engine():
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
             """))
-            conn.execute(text("""
-                CREATE TABLE subscription_usage_reservations (
-                    id UUID PRIMARY KEY,
-                    org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-                    usage_key VARCHAR(64) NOT NULL CHECK (
-                        usage_key IN ('ai_chat_uploads_this_month', 'invoice_ocr_this_month')
-                    ),
-                    period_start TIMESTAMPTZ NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    released_at TIMESTAMPTZ
-                )
-            """))
+            migration_path = (
+                Path(__file__).resolve().parents[2]
+                / "database" / "migrations" / "006_subscription_usage_reservations.sql"
+            )
+            conn.exec_driver_sql(migration_path.read_text(encoding="utf-8"))
         yield test_engine
     finally:
         test_engine.dispose()
