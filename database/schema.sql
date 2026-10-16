@@ -262,9 +262,6 @@ CREATE TABLE subscription_usage_reservations (
 );
 CREATE INDEX idx_usage_reservations_org_period
     ON subscription_usage_reservations (org_id, period_start);
-CREATE INDEX idx_usage_reservations_unreleased
-    ON subscription_usage_reservations (org_id, usage_key, period_start)
-    WHERE released_at IS NULL;
 
 
 -- ---------------------------------------------------------------------
