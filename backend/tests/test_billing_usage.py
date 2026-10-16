@@ -181,8 +181,9 @@ def test_failed_quota_compensation_is_logged_without_masking_error(caplog, monke
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr("app.services.billing_engine.release_usage", fail_release)
+    db = _FakeDB(_row())
     with caplog.at_level("ERROR", logger="app.services.billing_engine"):
-        released = release_usage_after_failure(_FakeDB(_row()), ORG, "ai_chat_uploads_this_month", "4b5d66c0-5d66-4c0b-b2c5-7cbbd4a8ad01", now=NOW)
+        released = release_usage_after_failure(db, ORG, "ai_chat_uploads_this_month", "4b5d66c0-5d66-4c0b-b2c5-7cbbd4a8ad01", now=NOW)
 
     assert released is False
     assert db.rollbacks == 1
