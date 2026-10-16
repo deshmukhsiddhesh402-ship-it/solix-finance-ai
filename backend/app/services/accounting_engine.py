@@ -37,9 +37,11 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     for line in lines:
         if not isinstance(line, LedgerLine):
             raise ValueError("Trial balance lines must be LedgerLine objects.")
-        if not line.account_name or not line.account_name.strip():
-            raise ValueError("Account name must be non-empty.")
-        if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
+        if not isinstance(line.account_name, str) or not line.account_name.strip():
+            raise ValueError("Account name must be a non-empty string.")
+        if not isinstance(line.account_type, str) or line.account_type not in {
+            "asset", "liability", "equity", "income", "expense"
+        }:
             raise ValueError("Invalid account type.")
         amounts = (line.debit, line.credit)
         if any(not _is_finite_number(value) for value in amounts):
@@ -89,11 +91,13 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
 
 def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
     """Validate rows before financial statements consume them directly."""
+    if not isinstance(trial_balance_rows, list):
+        raise ValueError("Trial balance rows must be a list.")
     valid_types = {"asset", "liability", "equity", "income", "expense"}
     for row in trial_balance_rows:
         if not isinstance(row, dict):
             raise ValueError("Trial balance rows must be objects.")
-        if row.get("type") not in valid_types:
+        if not isinstance(row.get("type"), str) or row.get("type") not in valid_types:
             raise ValueError("Trial balance row has an invalid account type.")
         for field in ("debit", "credit"):
             value = row.get(field)
