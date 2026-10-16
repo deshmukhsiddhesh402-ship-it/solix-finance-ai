@@ -8,6 +8,16 @@ from typing import Literal
 import math
 
 
+def _is_finite_number(value: object) -> bool:
+    """Return False for non-numeric values and numbers outside float range."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Trial Balance
 # ---------------------------------------------------------------------------
@@ -27,12 +37,15 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     for line in lines:
         if not isinstance(line, LedgerLine):
             raise ValueError("Trial balance lines must be LedgerLine objects.")
-        if not line.account_name or not line.account_name.strip():
-            raise ValueError("Account name must be non-empty.")
-        if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
+        if not isinstance(line.account_name, str) or not line.account_name.strip():
+            raise ValueError("Account name must be a non-empty string.")
+        if not isinstance(line.account_type, str) or line.account_type not in {
+            "asset", "liability", "equity", "income", "expense"
+        }:
             raise ValueError("Invalid account type.")
-        if not math.isfinite(line.debit) or not math.isfinite(line.credit):
-            raise ValueError("Debit and credit amounts must be finite.")
+        amounts = (line.debit, line.credit)
+        if any(not _is_finite_number(value) for value in amounts):
+            raise ValueError("Debit and credit amounts must be finite numbers.")
         if line.debit < 0 or line.credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
         acc = totals.setdefault(
@@ -42,11 +55,15 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Account cannot have multiple account types.")
         acc["debit"] += line.debit
         acc["credit"] += line.credit
+        if not math.isfinite(acc["debit"]) or not math.isfinite(acc["credit"]):
+            raise ValueError("Aggregated debit and credit amounts must remain finite.")
 
     rows = []
     total_debit, total_credit = 0.0, 0.0
     for name, acc in totals.items():
         net = acc["debit"] - acc["credit"]
+        if not math.isfinite(net):
+            raise ValueError("Account net balance must remain finite.")
         debit_balance = net if net > 0 else 0.0
         credit_balance = -net if net < 0 else 0.0
         rows.append({
@@ -57,8 +74,13 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
         })
         total_debit += debit_balance
         total_credit += credit_balance
+        if not math.isfinite(total_debit) or not math.isfinite(total_credit):
+            raise ValueError("Trial balance totals must remain finite.")
 
-    is_balanced = round(total_debit - total_credit, 2) == 0.0
+    net_total_difference = total_debit - total_credit
+    if not math.isfinite(net_total_difference):
+        raise ValueError("Trial balance difference must remain finite.")
+    is_balanced = round(net_total_difference, 2) == 0.0
     return {
         "rows": rows,
         "total_debit": round(total_debit, 2),
@@ -69,15 +91,17 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
 
 def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
     """Validate rows before financial statements consume them directly."""
+    if not isinstance(trial_balance_rows, list):
+        raise ValueError("Trial balance rows must be a list.")
     valid_types = {"asset", "liability", "equity", "income", "expense"}
     for row in trial_balance_rows:
         if not isinstance(row, dict):
             raise ValueError("Trial balance rows must be objects.")
-        if row.get("type") not in valid_types:
+        if not isinstance(row.get("type"), str) or row.get("type") not in valid_types:
             raise ValueError("Trial balance row has an invalid account type.")
         for field in ("debit", "credit"):
             value = row.get(field)
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            if not _is_finite_number(value):
                 raise ValueError("Trial balance amounts must be finite numbers.")
             if value < 0:
                 raise ValueError("Trial balance amounts cannot be negative.")
