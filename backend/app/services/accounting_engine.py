@@ -139,14 +139,22 @@ def financial_ratios(
 # Depreciation
 # ---------------------------------------------------------------------------
 def straight_line_depreciation(cost: float, salvage: float, useful_life_years: int) -> float:
-    if not all(math.isfinite(v) for v in (cost, salvage)):
-        raise ValueError("cost and salvage must be finite.")
+    """Calculate annual straight-line depreciation after strict input validation."""
+    if any(
+        not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
+        for value in (cost, salvage)
+    ):
+        raise ValueError("cost and salvage must be finite numbers.")
     if cost < 0 or salvage < 0:
         raise ValueError("cost and salvage cannot be negative.")
     if salvage > cost:
         raise ValueError("salvage cannot exceed cost.")
-    if useful_life_years < 1:
-        raise ValueError("useful_life_years must be at least 1.")
+    if (
+        isinstance(useful_life_years, bool)
+        or not isinstance(useful_life_years, int)
+        or useful_life_years < 1
+    ):
+        raise ValueError("useful_life_years must be at least 1 and a positive integer.")
     return round((cost - salvage) / useful_life_years, 2)
 
 
