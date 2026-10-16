@@ -133,14 +133,17 @@ def test_postgres_duplicate_release_only_decrements_once(pg_engine):
         )
     assert first["reservation_id"] != second["reservation_id"]
 
-    with Session(pg_engine) as db:
-        release_usage(
-            db, org_id, "ai_chat_uploads_this_month", first["reservation_id"], now=NOW
-        )
-    with Session(pg_engine) as db:
-        release_usage(
-            db, org_id, "ai_chat_uploads_this_month", first["reservation_id"], now=NOW
-        )
+    barrier = __import__("threading").Barrier(2)
+
+    def release_same_reservation():
+        with Session(pg_engine) as db:
+            barrier.wait(timeout=10)
+            release_usage(
+                db, org_id, "ai_chat_uploads_this_month", first["reservation_id"], now=NOW
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: release_same_reservation(), range(2)))
 
     with pg_engine.connect() as conn:
         count = conn.execute(text(
