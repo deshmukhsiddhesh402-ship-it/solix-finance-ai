@@ -47,3 +47,22 @@ def test_trial_balance_still_accepts_balanced_finite_amounts():
     assert result["is_balanced"] is True
     assert result["total_debit"] == 1000.0
     assert result["total_credit"] == 1000.0
+
+
+@pytest.mark.parametrize("account_name", [None, 123, [], {}])
+def test_trial_balance_rejects_malformed_account_names(account_name):
+    with pytest.raises(ValueError, match="Account name"):
+        build_trial_balance([LedgerLine(account_name, "asset", debit=1, credit=0)])
+
+
+def test_trial_balance_rejects_unhashable_account_type():
+    with pytest.raises(ValueError, match="Invalid account type"):
+        build_trial_balance([LedgerLine("Cash", [], debit=1, credit=0)])
+
+
+@pytest.mark.parametrize("rows", [None, {}, "invalid"])
+def test_financial_statement_engine_rejects_non_list_trial_balance_rows(rows):
+    from app.services.accounting_engine import build_profit_and_loss
+
+    with pytest.raises(ValueError, match="must be a list"):
+        build_profit_and_loss(rows)
