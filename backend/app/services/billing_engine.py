@@ -176,6 +176,18 @@ def release_usage_after_failure(
             usage_key,
             org_id,
         )
+        # A failed SQLAlchemy transaction must be rolled back before this
+        # request-scoped session can be safely reused or closed. Preserve the
+        # downstream exception by treating rollback as best-effort too.
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:
+                logger.exception(
+                    "Failed to roll back quota compensation transaction for org %s",
+                    org_id,
+                )
         return False
 
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:
