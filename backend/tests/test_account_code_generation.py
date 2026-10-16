@@ -1,4 +1,10 @@
 """Regression tests for automatically generated chart-of-account codes."""
+import os
+import sys
+
+# Keep imports working whether pytest is launched from the repository root
+# or from the backend directory (both patterns are used by CI).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.routers.accounting import _new_account_code
 
