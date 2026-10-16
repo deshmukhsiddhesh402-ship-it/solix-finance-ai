@@ -167,6 +167,16 @@ def test_release_usage_is_scoped_to_current_period():
     assert params["period_start"] == _current_usage_period_start(NOW)
     assert db.commits == 1
 
+
+@pytest.mark.parametrize("usage_key", ["arbitrary_column", "", "users"])
+def test_release_usage_rejects_unsupported_key_before_database_access(usage_key):
+    db = _FakeDB(_row())
+    with pytest.raises(ValueError, match="Unsupported usage key"):
+        release_usage(db, ORG, usage_key, now=NOW)
+    assert db.statements == []
+    assert db.commits == 0
+
+
 def test_failed_quota_compensation_is_logged_without_masking_error(caplog, monkeypatch):
     def fail_release(*args, **kwargs):
         raise RuntimeError("database unavailable")
@@ -193,4 +203,3 @@ def test_usage_period_start_normalizes_non_utc_offset():
     # This instant is still in September in UTC, so the period anchor must be
     # September 1 rather than October 1 based on the caller's local calendar.
     assert _current_usage_period_start(local_now) == datetime(2026, 9, 1, tzinfo=timezone.utc)
-
