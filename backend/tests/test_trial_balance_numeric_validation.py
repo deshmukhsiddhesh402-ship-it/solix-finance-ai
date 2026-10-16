@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.services.accounting_engine import LedgerLine, build_trial_balance
 
 
-@pytest.mark.parametrize("amount", [True, False, "100", None, float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("amount", [True, False, "100", None, 10**1000, float("nan"), float("inf"), float("-inf")])
 def test_trial_balance_rejects_non_numeric_or_non_finite_amounts(amount):
     with pytest.raises(ValueError, match="finite numbers"):
         build_trial_balance([LedgerLine("Cash", "asset", debit=amount, credit=0)])
