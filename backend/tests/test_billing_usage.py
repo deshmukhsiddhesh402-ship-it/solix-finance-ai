@@ -27,6 +27,7 @@ class _FakeDB:
         self.row = row
         self.statements = []
         self.commits = 0
+        self.rollbacks = 0
 
     def execute(self, statement, params=None):
         sql = str(statement)
@@ -37,6 +38,9 @@ class _FakeDB:
 
     def commit(self):
         self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
@@ -181,6 +185,7 @@ def test_failed_quota_compensation_is_logged_without_masking_error(caplog, monke
         released = release_usage_after_failure(_FakeDB(_row()), ORG, "ai_chat_uploads_this_month", "4b5d66c0-5d66-4c0b-b2c5-7cbbd4a8ad01", now=NOW)
 
     assert released is False
+    assert db.rollbacks == 1
     assert "Failed to release reserved ai_chat_uploads_this_month usage" in caplog.text
     assert "database unavailable" in caplog.text
 
