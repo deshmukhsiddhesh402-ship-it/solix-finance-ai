@@ -112,7 +112,7 @@ async def upload_document(
             if session_id:
                 _SEMANTIC_SESSIONS.pop(session_id, None)
             db.rollback()
-            release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
+            release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month", quota["reservation_id"])
             raise
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
@@ -130,7 +130,7 @@ async def upload_document(
     except Exception:
         # The keyword index is in-memory only. If it cannot be registered,
         # undo the reservation so the user is not charged for an unusable session.
-        release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month")
+        release_usage_after_failure(db, org_uuid, "ai_chat_uploads_this_month", quota["reservation_id"])
         raise
     return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
 
