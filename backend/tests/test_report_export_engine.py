@@ -12,7 +12,7 @@ from app.services.report_export_engine import dashboard_to_excel, dashboard_to_p
 def test_dashboard_excel_export_keeps_untrusted_strings_literal():
     payload = dashboard_to_excel(
         kpis={"=1+1": "=HYPERLINK(\"https://example.invalid\",\"click\")"},
-        monthly=[{"month": "  =1+1", "revenue": 100}],
+        monthly=[{"month": "  =1+1", "revenue": 100}, {"month": "\u00a0=2+2", "revenue": 200}],
         expense_breakdown_rows=[{"category": "+SUM(1,1)", "amount": 10}],
     )
     workbook = load_workbook(io.BytesIO(payload), data_only=False)
@@ -20,6 +20,7 @@ def test_dashboard_excel_export_keeps_untrusted_strings_literal():
     assert workbook["KPI Summary"]["A2"].value == "'=1+1"
     assert workbook["KPI Summary"]["B2"].value.startswith("'=HYPERLINK")
     assert workbook["Monthly Trend"]["A2"].value == "'  =1+1"
+    assert workbook["Monthly Trend"]["A3"].value == "'\u00a0=2+2"
     assert workbook["Expense Breakdown"]["A2"].value == "'+SUM(1,1)"
     assert not [
         cell.coordinate
