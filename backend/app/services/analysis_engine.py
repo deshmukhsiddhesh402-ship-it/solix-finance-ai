@@ -98,6 +98,8 @@ def dcf_valuation(
     g = terminal_growth_rate_pct / 100
     if r <= -1:
         raise ValueError("discount_rate_pct must be greater than -100%.")
+    if g <= -1:
+        raise ValueError("terminal_growth_rate_pct must be greater than -100%.")
     if r <= g:
         raise ValueError("Discount rate must exceed terminal growth rate.")
 
