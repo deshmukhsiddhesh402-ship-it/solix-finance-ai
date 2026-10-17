@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.services.document_engine import extract_text, chunk_text
 from app.services.rag_engine import build_index, retrieve, semantic_retrieve
-from app.services.embedding_service import embeddings_available, get_embeddings, get_query_embedding
+from app.services.embedding_service import (
+    embeddings_available,
+    get_embeddings,
+    get_query_embedding,
+    MAX_EMBEDDING_BATCH,
+    MAX_EMBEDDING_TEXT_CHARS,
+)
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
@@ -52,6 +58,42 @@ def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
     return session_org_id == org_id
 
 
+def _split_embedding_chunks(chunks: list[str], max_chars: int = MAX_EMBEDDING_TEXT_CHARS) -> list[str]:
+    """Split retrieval chunks into provider-safe word groups without truncating text."""
+    if max_chars < 1:
+        raise ValueError("Embedding chunk size must be positive.")
+    result: list[str] = []
+    for chunk in chunks:
+        current: list[str] = []
+        current_chars = 0
+        for word in chunk.split():
+            if len(word) > max_chars:
+                raise ValueError("A document token exceeds the embedding provider's supported text length.")
+            extra = len(word) + (1 if current else 0)
+            if current and current_chars + extra > max_chars:
+                result.append(" ".join(current))
+                current = []
+                current_chars = 0
+                extra = len(word)
+            current.append(word)
+            current_chars += extra
+        if current:
+            result.append(" ".join(current))
+    return result
+
+
+def _embed_document_chunks(chunks: list[str]) -> tuple[list[str], list[list[float]]]:
+    """Split to provider limits and embed in batches no larger than provider maximum."""
+    embedding_chunks = _split_embedding_chunks(chunks)
+    vectors: list[list[float]] = []
+    for start in range(0, len(embedding_chunks), MAX_EMBEDDING_BATCH):
+        batch = embedding_chunks[start : start + MAX_EMBEDDING_BATCH]
+        batch_vectors = get_embeddings(batch, input_type="document")
+        if len(batch_vectors) != len(batch):
+            raise RuntimeError("Embedding provider returned an unexpected result count.")
+        vectors.extend(batch_vectors)
+    return embedding_chunks, vectors
+
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -78,7 +120,10 @@ async def upload_document(
     chunks = chunk_text(text)
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
-        vectors = get_embeddings(chunks, input_type="document")
+        try:
+            chunks, vectors = _embed_document_chunks(chunks)
+        except ValueError as exc:
+            raise HTTPException(422, detail=str(exc)) from exc
         doc_row = Document(
             org_id=org_uuid, uploaded_by=user_uuid,
             file_name=file.filename, file_type=file.filename.split(".")[-1],
