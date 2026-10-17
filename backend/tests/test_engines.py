@@ -96,3 +96,48 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+def test_npv_rejects_invalid_rates_and_cash_flows():
+    import math
+    import pytest
+    for rate in (-100, -101, math.nan, math.inf, -math.inf, True, "10"):
+        with pytest.raises(ValueError):
+            npv(rate, [-100, 120])
+    for cash_flows in ([], None, [-100, math.nan], [-100, math.inf], [True, 120], ["100", 120]):
+        with pytest.raises(ValueError):
+            npv(10, cash_flows)
+
+
+def test_npv_rejects_numeric_overflow():
+    import pytest
+    with pytest.raises(ValueError, match="supported numeric range"):
+        npv(-99.999, [1, 1e308, 1e308, 1e308])
+
+
+def test_irr_rejects_invalid_search_parameters_and_cash_flows():
+    import math
+    import pytest
+    for low, high, tol, max_iter in (
+        (-100, 100, 1e-6, 200),
+        (10, 10, 1e-6, 200),
+        (10, 5, 1e-6, 200),
+        (-99, 100, 0, 200),
+        (-99, 100, math.nan, 200),
+        (-99, 100, 1e-6, 0),
+        (-99, 100, 1e-6, True),
+        (-99, 100, 1e-6, 1.5),
+        (-99, math.inf, 1e-6, 200),
+    ):
+        with pytest.raises(ValueError):
+            irr([-100, 120], low=low, high=high, tol=tol, max_iter=max_iter)
+    for cash_flows in ([], None, [-100, math.nan], [-100, math.inf], [True, 120], ["100", 120]):
+        with pytest.raises(ValueError):
+            irr(cash_flows)
+
+
+def test_irr_returns_endpoint_root_and_preserves_normal_case():
+    assert irr([0, 100], low=-99, high=1000) == -99.0
+    cash_flows = [-1000, 300, 300, 300, 300, 300]
+    rate = irr(cash_flows)
+    assert rate is not None
+    assert abs(npv(rate, cash_flows)) < 1.0
