@@ -16,8 +16,8 @@ def _safe_excel_text(value):
     """Keep user-controlled strings literal when a spreadsheet opens them."""
     if not isinstance(value, str):
         return value
-    first = value.lstrip(" \\t\\r\\n")[:1]
-    if first in {"=", "+", "-", "@", "\\t", "\\r", "\\n"}:
+    first = value.lstrip(" \t\r\n")[:1]
+    if first in {"=", "+", "-", "@", "\t", "\r", "\n"}:
         return "'" + value
     return value
 
