@@ -2,6 +2,8 @@
 Module: Live Financial Dashboard — report export (Excel + PDF).
 """
 import io
+from xml.sax.saxutils import escape
+
 import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -10,12 +12,31 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 
 
+def _safe_excel_text(value):
+    """Keep user-controlled strings literal when a spreadsheet opens them."""
+    if not isinstance(value, str):
+        return value
+    first = value.lstrip(" \\t\\r\\n")[:1]
+    if first in {"=", "+", "-", "@", "\\t", "\\r", "\\n"}:
+        return "'" + value
+    return value
+
+
+def _safe_excel_mapping(row: dict) -> dict:
+    return {_safe_excel_text(key): _safe_excel_text(value) for key, value in row.items()}
+
+
 def dashboard_to_excel(kpis: dict, monthly: list[dict], expense_breakdown_rows: list[dict]) -> bytes:
+    """Build an Excel report without turning untrusted strings into formulas."""
+    safe_kpis = _safe_excel_mapping(kpis)
+    safe_monthly = [_safe_excel_mapping(row) for row in monthly]
+    safe_expenses = [_safe_excel_mapping(row) for row in expense_breakdown_rows]
+
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        pd.DataFrame([kpis]).T.rename(columns={0: "Value"}).to_excel(writer, sheet_name="KPI Summary")
-        pd.DataFrame(monthly).to_excel(writer, index=False, sheet_name="Monthly Trend")
-        pd.DataFrame(expense_breakdown_rows).to_excel(writer, index=False, sheet_name="Expense Breakdown")
+        pd.DataFrame([safe_kpis]).T.rename(columns={0: "Value"}).to_excel(writer, sheet_name="KPI Summary")
+        pd.DataFrame(safe_monthly).to_excel(writer, index=False, sheet_name="Monthly Trend")
+        pd.DataFrame(safe_expenses).to_excel(writer, index=False, sheet_name="Expense Breakdown")
     buffer.seek(0)
     return buffer.read()
 
@@ -33,8 +54,8 @@ def dashboard_to_pdf(org_name: str, period_label: str, kpis: dict, monthly: list
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(f"{org_name} — Financial Summary", styles["Title"]))
-    story.append(Paragraph(period_label, styles["Normal"]))
+    story.append(Paragraph(f"{escape(str(org_name))} — Financial Summary", styles["Title"]))
+    story.append(Paragraph(escape(str(period_label)), styles["Normal"]))
     story.append(Spacer(1, 16))
 
     kpi_rows = [
