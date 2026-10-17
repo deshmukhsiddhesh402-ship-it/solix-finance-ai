@@ -22,7 +22,7 @@ def npv_endpoint(req: NpvRequest):
 
 
 class IrrRequest(BaseModel):
-    cash_flows: list[float]
+    cash_flows: list[float] = Field(min_length=1, max_length=500)
 
 
 @router.post("/irr")
