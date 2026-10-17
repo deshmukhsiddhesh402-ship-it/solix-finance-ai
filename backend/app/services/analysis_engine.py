@@ -4,6 +4,39 @@ Valuation, and Scenario Analysis. Pure Python (no numpy/scipy dependency)
 so it's lightweight and easy to unit test.
 """
 from dataclasses import dataclass
+import math
+
+
+# ---------------------------------------------------------------------------
+# NPV / IRR input validation
+# ---------------------------------------------------------------------------
+def _require_finite_number(value: object, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a finite number.")
+    try:
+        finite = math.isfinite(value)
+    except (OverflowError, TypeError):
+        finite = False
+    if not finite:
+        raise ValueError(f"{label} must be a finite number.")
+
+
+def _validated_cash_flows(cash_flows: object) -> list[float]:
+    if not isinstance(cash_flows, list) or not cash_flows:
+        raise ValueError("cash_flows must be a non-empty list.")
+    for index, cash_flow in enumerate(cash_flows):
+        _require_finite_number(cash_flow, f"cash_flows[{index}]")
+    return cash_flows
+
+
+def _npv_at_rate(rate_pct: float, cash_flows: list[float]) -> float:
+    rate = rate_pct / 100
+    try:
+        total = sum(cf / ((1 + rate) ** period) for period, cf in enumerate(cash_flows))
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError("NPV calculation exceeds the supported numeric range.") from exc
+    _require_finite_number(total, "NPV result")
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -12,9 +45,11 @@ from dataclasses import dataclass
 def npv(rate_pct: float, cash_flows: list[float]) -> float:
     """cash_flows[0] is the initial outlay (typically negative), followed by
     period 1, 2, 3... cash inflows/outflows."""
-    r = rate_pct / 100
-    total = sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
-    return round(total, 2)
+    _require_finite_number(rate_pct, "rate_pct")
+    if rate_pct <= -100:
+        raise ValueError("rate_pct must be greater than -100%.")
+    values = _validated_cash_flows(cash_flows)
+    return round(_npv_at_rate(rate_pct, values), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -24,20 +59,34 @@ def irr(cash_flows: list[float], low: float = -99.0, high: float = 1000.0, tol: 
     """Find the discount rate (%) at which NPV == 0, via bisection.
     Returns None if no sign change is found in the search range (no real IRR).
     """
-    def npv_at(rate_pct: float) -> float:
-        r = rate_pct / 100
-        return sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
+    values = _validated_cash_flows(cash_flows)
+    _require_finite_number(low, "low")
+    _require_finite_number(high, "high")
+    _require_finite_number(tol, "tol")
+    if low <= -100:
+        raise ValueError("low must be greater than -100%.")
+    if low >= high:
+        raise ValueError("low must be less than high.")
+    if tol <= 0:
+        raise ValueError("tol must be greater than zero.")
+    if isinstance(max_iter, bool) or not isinstance(max_iter, int) or max_iter <= 0:
+        raise ValueError("max_iter must be a positive integer.")
 
-    f_low, f_high = npv_at(low), npv_at(high)
-    if f_low * f_high > 0:
+    f_low = _npv_at_rate(low, values)
+    f_high = _npv_at_rate(high, values)
+    if f_low == 0:
+        return round(low, 4)
+    if f_high == 0:
+        return round(high, 4)
+    if (f_low > 0) == (f_high > 0):
         return None  # no sign change => bisection can't bracket a root
 
     for _ in range(max_iter):
         mid = (low + high) / 2
-        f_mid = npv_at(mid)
+        f_mid = _npv_at_rate(mid, values)
         if abs(f_mid) < tol:
             return round(mid, 4)
-        if f_low * f_mid < 0:
+        if (f_low > 0) != (f_mid > 0):
             high, f_high = mid, f_mid
         else:
             low, f_low = mid, f_mid
