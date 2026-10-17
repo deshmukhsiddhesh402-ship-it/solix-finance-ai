@@ -2,7 +2,7 @@
 Module 6: Financial Analysis — API layer over analysis_engine.py
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.analysis_engine import (
     npv, irr, cagr, break_even, dcf_valuation, Scenario, scenario_analysis,
@@ -13,7 +13,7 @@ router = APIRouter()
 
 class NpvRequest(BaseModel):
     rate_pct: float
-    cash_flows: list[float]
+    cash_flows: list[float] = Field(min_length=1, max_length=500)
 
 
 @router.post("/npv")
@@ -22,7 +22,7 @@ def npv_endpoint(req: NpvRequest):
 
 
 class IrrRequest(BaseModel):
-    cash_flows: list[float]
+    cash_flows: list[float] = Field(min_length=1, max_length=500)
 
 
 @router.post("/irr")
@@ -62,7 +62,7 @@ def break_even_endpoint(req: BreakEvenRequest):
 
 
 class DcfRequest(BaseModel):
-    projected_cash_flows: list[float]
+    projected_cash_flows: list[float] = Field(min_length=1, max_length=100)
     discount_rate_pct: float
     terminal_growth_rate_pct: float
 
@@ -83,7 +83,7 @@ class ScenarioIn(BaseModel):
 
 
 class ScenarioAnalysisRequest(BaseModel):
-    scenarios: list[ScenarioIn]
+    scenarios: list[ScenarioIn] = Field(min_length=1, max_length=100)
 
 
 @router.post("/scenario-analysis")
