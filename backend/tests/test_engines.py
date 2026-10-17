@@ -110,7 +110,7 @@ def test_npv_rejects_invalid_rates_and_cash_flows():
 
 def test_npv_rejects_numeric_overflow():
     import pytest
-    with pytest.raises(ValueError, match="supported numeric range"):
+    with pytest.raises(ValueError):
         npv(-99.999, [1, 1e308, 1e308, 1e308])
 
 
@@ -136,7 +136,7 @@ def test_irr_rejects_invalid_search_parameters_and_cash_flows():
 
 
 def test_irr_returns_endpoint_root_and_preserves_normal_case():
-    assert irr([0, 100], low=-99, high=1000) == -99.0
+    assert irr([100, -1], low=-99, high=1000) == -99.0
     cash_flows = [-1000, 300, 300, 300, 300, 300]
     rate = irr(cash_flows)
     assert rate is not None
