@@ -127,7 +127,8 @@ def create_journal_entry(
 
 
 class TrialBalanceRequest(BaseModel):
-    lines: list[LedgerLineIn]
+    # Keep compute-only financial statement endpoints bounded against oversized payloads.
+    lines: list[LedgerLineIn] = Field(min_length=1, max_length=500)
 
 
 @router.post("/trial-balance")
