@@ -6,7 +6,9 @@ it into overlapping chunks suitable for retrieval. Kept dependency-light:
 pypdf for PDFs, openpyxl for Excel (both already in requirements.txt).
 """
 import io
+import zipfile
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 
 MAX_DOCUMENT_SHEETS = 50
@@ -96,11 +98,24 @@ def extract_text(filename: str, file_bytes: bytes) -> str:
     """Dispatch to the right extractor based on file extension."""
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        return extract_text_from_pdf(file_bytes)
+        from pypdf.errors import PdfReadError, PdfStreamError
+
+        try:
+            return extract_text_from_pdf(file_bytes)
+        except (PdfReadError, PdfStreamError, EOFError) as exc:
+            raise ValueError("Invalid or unreadable PDF document.") from exc
     if lower.endswith((".xlsx", ".xlsm")):
-        return extract_text_from_xlsx(file_bytes)
+        try:
+            return extract_text_from_xlsx(file_bytes)
+        except (zipfile.BadZipFile, InvalidFileException, KeyError) as exc:
+            raise ValueError("Invalid or unreadable Excel document.") from exc
     if lower.endswith(".docx"):
-        return extract_text_from_docx(file_bytes)
+        from docx.opc.exceptions import PackageNotFoundError
+
+        try:
+            return extract_text_from_docx(file_bytes)
+        except (zipfile.BadZipFile, PackageNotFoundError, KeyError) as exc:
+            raise ValueError("Invalid or unreadable Word document.") from exc
     if lower.endswith((".txt", ".csv", ".md")):
         text = file_bytes.decode("utf-8", errors="ignore")
         if len(text) > MAX_DOCUMENT_EXTRACTED_CHARS:
