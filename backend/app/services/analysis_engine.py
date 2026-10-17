@@ -4,6 +4,7 @@ Valuation, and Scenario Analysis. Pure Python (no numpy/scipy dependency)
 so it's lightweight and easy to unit test.
 """
 from dataclasses import dataclass
+import math
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +84,7 @@ def dcf_valuation(
     def require_finite_number(value: object, label: str) -> None:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{label} must be a finite number.")
-        if not __import__("math").isfinite(value):
+        if not math.isfinite(value):
             raise ValueError(f"{label} must be a finite number.")
 
     require_finite_number(discount_rate_pct, "discount_rate_pct")
