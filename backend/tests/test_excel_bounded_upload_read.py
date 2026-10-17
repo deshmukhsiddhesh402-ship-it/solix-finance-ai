@@ -1,7 +1,16 @@
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from app.routers.excel_automation import MAX_UPLOAD_BYTES, _read_bounded_upload
+import pandas as pd
+import pytest
+from fastapi import HTTPException
+
+from app.routers.excel_automation import (
+    MAX_ROWS,
+    MAX_UPLOAD_BYTES,
+    _read_bounded_upload,
+    _read_upload_to_df,
+)
 
 
 def test_excel_upload_read_is_limited_to_maximum_plus_one_byte():
@@ -22,15 +31,6 @@ def test_excel_upload_read_uses_configured_limit():
 
     upload.read.assert_awaited_once_with(129)
     assert data == b"small file"
-
-
-from unittest.mock import patch
-
-import pandas as pd
-import pytest
-from fastapi import HTTPException
-
-from app.routers.excel_automation import MAX_ROWS, _read_upload_to_df
 
 
 def test_xlsx_parser_caps_rows_before_dataframe_validation():
