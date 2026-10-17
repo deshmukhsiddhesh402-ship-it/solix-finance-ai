@@ -34,6 +34,8 @@ COPILOT_SYSTEM_PROMPT = (
 
 ALLOWED_COPILOT_TOOLS = {"filter_transactions", "compare_periods", "predict_cash_flow", "gst_summary"}
 MAX_COPILOT_MONTHS_AHEAD = 24
+# Bound rows materialized for an AI request; refuse oversized ledgers rather than silently truncating financial results.
+MAX_COPILOT_LEDGER_LINES = 10_000
 
 TOOLS = [
     {
@@ -94,9 +96,19 @@ def _load_entries_for_copilot(db: Session, org_id, months_back: int = 12):
             JournalEntry.entry_date >= start,
         )
     )
+    rows = query.limit(MAX_COPILOT_LEDGER_LINES + 1).all()
+    if len(rows) > MAX_COPILOT_LEDGER_LINES:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "This organization's ledger history is too large for a single Copilot request. "
+                "Narrow the reporting period or use a summarized report."
+            ),
+        )
     return [
         {"date": row[0], "account_name": row[1], "account_type": row[2], "debit": float(row[3]), "credit": float(row[4])}
-        for row in query.all()
+        for row in rows
     ]
 
 
