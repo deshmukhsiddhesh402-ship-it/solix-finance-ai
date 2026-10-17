@@ -52,6 +52,11 @@ def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
     return session_org_id == org_id
 
 
+async def _read_bounded_upload(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    """Read at most max_bytes + 1 so oversized uploads never enter memory in full."""
+    return await file.read(max_bytes + 1)
+
+
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -65,7 +70,7 @@ async def upload_document(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
-    file_bytes = await file.read()
+    file_bytes = await _read_bounded_upload(file)
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.")
     try:
