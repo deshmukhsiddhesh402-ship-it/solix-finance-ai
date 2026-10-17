@@ -80,10 +80,25 @@ def dcf_valuation(
     discount_rate_pct: float,
     terminal_growth_rate_pct: float,
 ) -> dict:
+    def require_finite_number(value: object, label: str) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{label} must be a finite number.")
+        if not __import__("math").isfinite(value):
+            raise ValueError(f"{label} must be a finite number.")
+
+    require_finite_number(discount_rate_pct, "discount_rate_pct")
+    require_finite_number(terminal_growth_rate_pct, "terminal_growth_rate_pct")
+    if not isinstance(projected_cash_flows, list) or not projected_cash_flows:
+        raise ValueError("projected_cash_flows must be a non-empty list.")
+    for index, cash_flow in enumerate(projected_cash_flows):
+        require_finite_number(cash_flow, f"projected_cash_flows[{index}]")
+
     r = discount_rate_pct / 100
     g = terminal_growth_rate_pct / 100
+    if r <= -1:
+        raise ValueError("discount_rate_pct must be greater than -100%.")
     if r <= g:
-        raise ValueError("Discount rate must exceed terminal growth rate")
+        raise ValueError("Discount rate must exceed terminal growth rate.")
 
     pv_cash_flows = [cf / ((1 + r) ** (t + 1)) for t, cf in enumerate(projected_cash_flows)]
     sum_pv_cash_flows = sum(pv_cash_flows)
