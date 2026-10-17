@@ -2,7 +2,7 @@
 Module 3: Indian Tax — API layer over tax_engine.py
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.tax_engine import (
     calculate_gst, GstInvoiceLine, gstr3b_summary, calculate_tds,
@@ -20,7 +20,10 @@ class GstRequest(BaseModel):
 
 @router.post("/gst/calculate")
 def gst_calculate(req: GstRequest):
-    return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    try:
+        return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
 
 
 class GstInvoiceLineIn(BaseModel):
@@ -30,14 +33,17 @@ class GstInvoiceLineIn(BaseModel):
 
 
 class Gstr3bRequest(BaseModel):
-    lines: list[GstInvoiceLineIn]
+    lines: list[GstInvoiceLineIn] = Field(min_length=1, max_length=500)
     input_tax_credit: float = 0.0
 
 
 @router.post("/gst/gstr3b-summary")
 def gst_gstr3b(req: Gstr3bRequest):
-    lines = [GstInvoiceLine(**l.dict()) for l in req.lines]
-    return gstr3b_summary(lines, req.input_tax_credit)
+    try:
+        lines = [GstInvoiceLine(**l.dict()) for l in req.lines]
+        return gstr3b_summary(lines, req.input_tax_credit)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
 
 
 class TdsRequest(BaseModel):
@@ -61,4 +67,7 @@ class IncomeTaxRequest(BaseModel):
 
 @router.post("/income-tax/new-regime")
 def income_tax_new_regime(req: IncomeTaxRequest):
-    return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    try:
+        return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
