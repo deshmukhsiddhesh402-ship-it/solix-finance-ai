@@ -152,8 +152,10 @@ def straight_line_depreciation(cost: float, salvage: float, useful_life_years: i
 
 def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[dict]:
     """Written Down Value (reducing balance) method — common under Indian Companies Act."""
-    if not all(math.isfinite(v) for v in (cost, rate_pct)):
-        raise ValueError("cost and rate_pct must be finite.")
+    if (not isinstance(cost, (int, float)) or isinstance(cost, bool) or
+            not isinstance(rate_pct, (int, float)) or isinstance(rate_pct, bool) or
+            not math.isfinite(cost) or not math.isfinite(rate_pct)):
+        raise ValueError("cost and rate_pct must be finite numbers.")
     if cost < 0 or rate_pct <= 0 or rate_pct > 100:
         raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
     if isinstance(years, bool) or not isinstance(years, int) or years < 1:
