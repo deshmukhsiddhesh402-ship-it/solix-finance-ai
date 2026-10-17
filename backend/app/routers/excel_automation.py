@@ -78,8 +78,8 @@ def _safe_excel_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Sanitize untrusted cell values and column labels without mutating the session."""
     safe_df = df.copy()
     safe_df.columns = [_safe_excel_text(column) for column in safe_df.columns]
-    for column in safe_df.columns:
-        safe_df[column] = safe_df[column].map(_safe_excel_text)
+    for position in range(len(safe_df.columns)):
+        safe_df.iloc[:, position] = safe_df.iloc[:, position].map(_safe_excel_text)
     return safe_df
 
 def _validate_excel_archive(file_bytes: bytes) -> None:
