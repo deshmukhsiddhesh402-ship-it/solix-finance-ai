@@ -87,13 +87,18 @@ def _validate_dataframe_shape(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+async def _read_bounded_upload(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    """Read at most max_bytes + 1 so oversized uploads never enter memory in full."""
+    return await file.read(max_bytes + 1)
+
+
 def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
     lower = filename.lower()
     if lower.endswith(".csv"):
         df = pd.read_csv(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
     elif lower.endswith((".xlsx", ".xlsm")):
         _validate_excel_archive(file_bytes)
-        df = pd.read_excel(io.BytesIO(file_bytes))
+        df = pd.read_excel(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
     else:
         raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
     return _validate_dataframe_shape(df)
@@ -115,7 +120,7 @@ async def auto_clean(
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
+    file_bytes = await _read_bounded_upload(file)
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
     df = _read_upload_to_df(file.filename or "", file_bytes)
