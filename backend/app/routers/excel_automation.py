@@ -65,6 +65,23 @@ def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
     return session
 
 
+def _safe_excel_text(value):
+    """Keep user-controlled spreadsheet strings literal in downloaded XLSX files."""
+    if not isinstance(value, str):
+        return value
+    if value.lstrip()[:1] in {"=", "+", "-", "@", "\\t", "\\r", "\\n"}:
+        return "'" + value
+    return value
+
+
+def _safe_excel_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Sanitize untrusted cell values and column labels without mutating the session."""
+    safe_df = df.copy()
+    safe_df.columns = [_safe_excel_text(column) for column in safe_df.columns]
+    for column in safe_df.columns:
+        safe_df[column] = safe_df[column].map(_safe_excel_text)
+    return safe_df
+
 def _validate_excel_archive(file_bytes: bytes) -> None:
     """Reject ZIP-based spreadsheets with excessive archive expansion/entries."""
     try:
@@ -157,9 +174,12 @@ def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str 
     if df is None:
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
 
+    # Uploaded spreadsheet text is untrusted: neutralize formula-like values
+    # and headers before the cleaned workbook is handed back to the user.
+    safe_df = _safe_excel_dataframe(df)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Cleaned Data")
+        safe_df.to_excel(writer, index=False, sheet_name="Cleaned Data")
     buffer.seek(0)
 
     return StreamingResponse(
