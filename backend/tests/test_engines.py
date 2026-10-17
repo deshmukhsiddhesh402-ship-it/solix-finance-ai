@@ -96,3 +96,36 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+def test_dcf_rejects_empty_cash_flows():
+    import pytest
+    with pytest.raises(ValueError, match="non-empty list"):
+        dcf_valuation([], discount_rate_pct=10, terminal_growth_rate_pct=3)
+
+
+def test_dcf_rejects_non_finite_rates_and_cash_flows():
+    import math
+    import pytest
+    for rate in (math.nan, math.inf, -math.inf, True, "10"):
+        with pytest.raises(ValueError):
+            dcf_valuation([100, 110], discount_rate_pct=rate, terminal_growth_rate_pct=3)
+    for cash_flows in ([100, math.nan], [100, math.inf], [True, 110], ["100", 110]):
+        with pytest.raises(ValueError):
+            dcf_valuation(cash_flows, discount_rate_pct=10, terminal_growth_rate_pct=3)
+
+
+def test_dcf_rejects_discount_rate_at_or_below_negative_100_percent():
+    import pytest
+    with pytest.raises(ValueError, match="greater than -100%"):
+        dcf_valuation([100], discount_rate_pct=-100, terminal_growth_rate_pct=-110)
+
+
+def test_dcf_preserves_valid_valuation_result():
+    result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
+    assert result["enterprise_value"] > 0
+    assert set(result) == {
+        "pv_of_forecast_cash_flows",
+        "terminal_value",
+        "pv_of_terminal_value",
+        "enterprise_value",
+    }
