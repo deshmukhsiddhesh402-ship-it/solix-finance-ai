@@ -22,3 +22,25 @@ def test_excel_upload_read_uses_configured_limit():
 
     upload.read.assert_awaited_once_with(129)
     assert data == b"small file"
+
+
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
+from fastapi import HTTPException
+
+from app.routers.excel_automation import MAX_ROWS, _read_upload_to_df
+
+
+def test_xlsx_parser_caps_rows_before_dataframe_validation():
+    oversized = pd.DataFrame({"value": range(MAX_ROWS + 1)})
+    with patch("app.routers.excel_automation._validate_excel_archive") as validate_archive, patch(
+        "app.routers.excel_automation.pd.read_excel", return_value=oversized
+    ) as read_excel:
+        with pytest.raises(HTTPException) as exc:
+            _read_upload_to_df("ledger.xlsx", b"fake-xlsx")
+
+    assert exc.value.status_code == 413
+    validate_archive.assert_called_once()
+    assert read_excel.call_args.kwargs["nrows"] == MAX_ROWS + 1
