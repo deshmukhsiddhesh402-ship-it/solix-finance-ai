@@ -1,5 +1,5 @@
 """Module: OCR & Invoice Processing — tenant-scoped API."""
-import json, re, uuid, io, time
+import json, re, uuid, io, math, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -30,11 +30,19 @@ def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
 
 def _purge_expired_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
-    expired = [
-        session_id
-        for session_id, session in _EXTRACTED_INVOICES.items()
-        if current - session.get("created_at", current) > OCR_SESSION_TTL_SECONDS
-    ]
+    expired = []
+    for session_id, session in _EXTRACTED_INVOICES.items():
+        created_at = session.get("created_at") if isinstance(session, dict) else None
+        try:
+            valid_timestamp = (
+                not isinstance(created_at, bool)
+                and isinstance(created_at, (int, float))
+                and math.isfinite(created_at)
+            )
+        except (OverflowError, TypeError, ValueError):
+            valid_timestamp = False
+        if not valid_timestamp or current - created_at > OCR_SESSION_TTL_SECONDS:
+            expired.append(session_id)
     for session_id in expired:
         _EXTRACTED_INVOICES.pop(session_id, None)
 
