@@ -257,6 +257,7 @@ def test_chat_upload_limit_is_bounded():
 
 def test_chat_keyword_session_rejects_cross_user_access():
     from fastapi import HTTPException
+    import time
     import app.routers.chat as chat
 
     sid = "55555555-5555-4555-8555-555555555555"
@@ -265,6 +266,7 @@ def test_chat_keyword_session_rejects_cross_user_access():
         "index": {},
         "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
         "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": time.time(),
     }
     try:
         with pytest.raises(HTTPException) as exc:
