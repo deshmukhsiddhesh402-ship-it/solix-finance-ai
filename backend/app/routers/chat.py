@@ -1,6 +1,7 @@
 """Module 7: AI Chat — tenant-scoped document upload + RAG."""
 import uuid
 import time
+import math
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -25,10 +26,18 @@ _SEMANTIC_SESSIONS: dict[str, dict] = {}
 def _purge_expired_chat_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
     for store in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS):
-        expired = [
-            sid for sid, session in store.items()
-            if current - session.get("created_at", current) >= CHAT_SESSION_TTL_SECONDS
-        ]
+        expired = []
+        for sid, session in store.items():
+            created_at = session.get("created_at")
+            # Fail closed for malformed in-memory entries: sessions without a
+            # valid timestamp must not bypass the TTL indefinitely.
+            if (
+                isinstance(created_at, bool)
+                or not isinstance(created_at, (int, float))
+                or not math.isfinite(created_at)
+                or current - created_at >= CHAT_SESSION_TTL_SECONDS
+            ):
+                expired.append(sid)
         for sid in expired:
             store.pop(sid, None)
 
