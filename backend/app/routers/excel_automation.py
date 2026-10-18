@@ -7,6 +7,7 @@ Fine for a single-user demo; production should use Redis or object storage
 (S3/GCS) for the intermediate file instead.
 """
 import io
+import math
 import uuid
 import zipfile
 import pandas as pd
@@ -33,10 +34,19 @@ _CLEANED_FILES: dict[str, dict] = {}
 
 def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
-    expired = [
-        sid for sid, session in _CLEANED_FILES.items()
-        if current - session.get("created_at", current) >= CLEANED_SESSION_TTL_SECONDS
-    ]
+    expired = []
+    for sid, session in _CLEANED_FILES.items():
+        created_at = session.get("created_at") if isinstance(session, dict) else None
+        try:
+            valid_timestamp = (
+                not isinstance(created_at, bool)
+                and isinstance(created_at, (int, float))
+                and math.isfinite(created_at)
+            )
+        except (OverflowError, TypeError, ValueError):
+            valid_timestamp = False
+        if not valid_timestamp or current - created_at >= CLEANED_SESSION_TTL_SECONDS:
+            expired.append(sid)
     for sid in expired:
         _CLEANED_FILES.pop(sid, None)
 

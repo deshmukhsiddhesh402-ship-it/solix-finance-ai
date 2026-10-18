@@ -165,6 +165,7 @@ def test_ocr_session_rejects_cross_user_access():
         "invoice": {"total_amount": 100},
         "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
         "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": ocr.time.time(),
     }
     try:
         with pytest.raises(HTTPException) as exc:
@@ -232,6 +233,7 @@ def test_excel_session_rejects_cross_user_access():
         "df": None,
         "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
         "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": excel.time.time(),
     }
     try:
         with pytest.raises(HTTPException) as exc:
