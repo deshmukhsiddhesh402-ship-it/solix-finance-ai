@@ -118,11 +118,15 @@ def test_session_is_usable_requires_keyword_index_for_tfidf():
         "user_id": "user-1",
         "filename": "report.txt",
         "created_at": 100.0,
-        "index": {},
+        "index": {"chunks": ["one"], "vectors": [{}], "idf": {}},
     }
     assert chat._session_is_usable(valid_keyword, semantic=False)
     assert not chat._session_is_usable(
         {key: value for key, value in valid_keyword.items() if key != "index"},
+        semantic=False,
+    )
+    assert not chat._session_is_usable(
+        {**valid_keyword, "index": {"chunks": ["one"], "vectors": [], "idf": {}}},
         semantic=False,
     )
 
