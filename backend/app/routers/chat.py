@@ -89,8 +89,22 @@ def _session_is_usable(session: object, *, semantic: bool) -> bool:
         return False
     if not _valid_session_timestamp(session.get("created_at")):
         return False
-    if not semantic and not isinstance(session.get("index"), dict):
-        return False
+    if not semantic:
+        index = session.get("index")
+        if not isinstance(index, dict):
+            return False
+        chunks = index.get("chunks")
+        vectors = index.get("vectors")
+        idf = index.get("idf")
+        if (
+            not isinstance(chunks, list)
+            or not isinstance(vectors, list)
+            or not isinstance(idf, dict)
+            or len(chunks) != len(vectors)
+            or any(not isinstance(chunk, str) for chunk in chunks)
+            or any(not isinstance(vector, dict) for vector in vectors)
+        ):
+            return False
     return True
 
 
