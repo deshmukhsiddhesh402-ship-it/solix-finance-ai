@@ -106,7 +106,7 @@ async def _read_upload_limited(file: UploadFile) -> bytes:
 def _validated_upload_filename(filename: object) -> str:
     if not isinstance(filename, str) or not filename.strip():
         raise HTTPException(400, detail="Uploaded file must have a filename.")
-    safe_name = filename.replace("\\\\", "/").rsplit("/", 1)[-1].strip()
+    safe_name = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
     if (
         not safe_name
         or len(safe_name) > 255
