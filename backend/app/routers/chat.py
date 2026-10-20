@@ -82,6 +82,18 @@ def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
     return session_org_id == org_id
 
 
+def _session_is_usable(session: object, *, semantic: bool) -> bool:
+    if not isinstance(session, dict):
+        return False
+    if not all(isinstance(session.get(key), str) and session.get(key) for key in ("org_id", "user_id", "filename")):
+        return False
+    if not _valid_session_timestamp(session.get("created_at")):
+        return False
+    if not semantic and not isinstance(session.get("index"), dict):
+        return False
+    return True
+
+
 async def _read_upload_limited(file: UploadFile) -> bytes:
     # Read at most one byte beyond the configured limit so oversized uploads
     # are rejected without first buffering an unbounded request body in memory.
@@ -165,6 +177,9 @@ def ask_question(
 
     if str(session_uuid) in _SEMANTIC_SESSIONS:
         session = _SEMANTIC_SESSIONS[str(session_uuid)]
+        if not _session_is_usable(session, semantic=True):
+            _SEMANTIC_SESSIONS.pop(str(session_uuid), None)
+            raise HTTPException(404, detail="Session is malformed or expired. Upload the document again.")
         if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
@@ -179,6 +194,9 @@ def ask_question(
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
     elif str(session_uuid) in _TFIDF_SESSIONS:
         session = _TFIDF_SESSIONS[str(session_uuid)]
+        if not _session_is_usable(session, semantic=False):
+            _TFIDF_SESSIONS.pop(str(session_uuid), None)
+            raise HTTPException(404, detail="Session is malformed or expired. Upload the document again.")
         if not _authorized_session_org(session["org_id"], str(org_uuid)):
             raise HTTPException(403, detail="Document does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
