@@ -125,3 +125,20 @@ def test_session_is_usable_requires_keyword_index_for_tfidf():
         {key: value for key, value in valid_keyword.items() if key != "index"},
         semantic=False,
     )
+
+
+def test_validated_upload_filename_strips_path_components():
+    assert chat._validated_upload_filename("C:\\fakepath\\annual-report.pdf") == "annual-report.pdf"
+    assert chat._validated_upload_filename("/tmp/annual-report.pdf") == "annual-report.pdf"
+
+
+def test_validated_upload_filename_rejects_missing_or_invalid_names():
+    from fastapi import HTTPException
+
+    for filename in (None, "", "   ", "x" * 256, "bad\nname.pdf"):
+        try:
+            chat._validated_upload_filename(filename)
+        except HTTPException as exc:
+            assert exc.status_code == 400
+        else:
+            raise AssertionError(f"Expected invalid filename to be rejected: {filename!r}")
