@@ -101,8 +101,17 @@ def _session_is_usable(session: object, *, semantic: bool) -> bool:
             or not isinstance(vectors, list)
             or not isinstance(idf, dict)
             or len(chunks) != len(vectors)
-            or any(not isinstance(chunk, str) for chunk in chunks)
+            or any(not isinstance(chunk, str) or not chunk for chunk in chunks)
             or any(not isinstance(vector, dict) for vector in vectors)
+            or any(
+                not isinstance(term, str) or not _valid_session_timestamp(weight)
+                for term, weight in idf.items()
+            )
+            or any(
+                not isinstance(term, str) or not _valid_session_timestamp(weight)
+                for vector in vectors
+                for term, weight in vector.items()
+            )
         ):
             return False
     return True
