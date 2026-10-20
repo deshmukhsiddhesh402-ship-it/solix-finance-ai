@@ -64,7 +64,7 @@ def test_store_chat_session_ignores_malformed_timestamps_during_eviction(monkeyp
     monkeypatch.setattr(chat, "MAX_CHAT_SESSIONS", 3)
     monkeypatch.setattr(chat, "_purge_expired_chat_sessions", lambda: None)
 
-    chat._store_chat_session(_TFIDF_SESSIONS, "new-session", {"created_at": 300.0})
+    chat._store_chat_session(chat._TFIDF_SESSIONS, "new-session", {"created_at": 300.0})
 
     assert "malformed" in tfidf_sessions
     assert "oldest-valid" not in tfidf_sessions
