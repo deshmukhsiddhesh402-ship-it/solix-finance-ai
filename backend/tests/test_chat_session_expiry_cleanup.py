@@ -53,9 +53,10 @@ def test_purge_expired_chat_sessions_removes_entries_without_valid_timestamps(mo
     assert semantic_sessions == {}
 
 
-def test_store_chat_session_ignores_malformed_timestamps_during_eviction(monkeypatch):
+def test_store_chat_session_discards_malformed_entries_before_eviction(monkeypatch):
     tfidf_sessions = {
-        "malformed": {"created_at": "not-a-timestamp"},
+        "malformed-timestamp": {"created_at": "not-a-timestamp"},
+        "malformed-entry": "not-a-session-dict",
         "oldest-valid": {"created_at": 100.0},
         "newest-valid": {"created_at": 200.0},
     }
@@ -67,6 +68,6 @@ def test_store_chat_session_ignores_malformed_timestamps_during_eviction(monkeyp
 
     chat._store_chat_session(chat._TFIDF_SESSIONS, "new-session", {"created_at": 300.0})
 
-    assert "malformed" in tfidf_sessions
-    assert "oldest-valid" not in tfidf_sessions
-    assert set(tfidf_sessions) == {"malformed", "newest-valid", "new-session"}
+    assert "malformed-timestamp" not in tfidf_sessions
+    assert "malformed-entry" not in tfidf_sessions
+    assert set(tfidf_sessions) == {"oldest-valid", "newest-valid", "new-session"}
