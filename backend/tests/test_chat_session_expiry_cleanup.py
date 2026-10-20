@@ -94,3 +94,34 @@ def test_read_upload_limited_rejects_oversized_file_without_unbounded_read():
         raise AssertionError("Oversized upload should be rejected.")
 
     assert upload.requested_size == chat.MAX_UPLOAD_BYTES + 1
+
+
+def test_session_is_usable_rejects_missing_authorization_fields():
+    valid_semantic = {
+        "org_id": "org-1",
+        "user_id": "user-1",
+        "filename": "report.pdf",
+        "created_at": 100.0,
+    }
+    assert chat._session_is_usable(valid_semantic, semantic=True)
+    assert not chat._session_is_usable(
+        {"filename": "report.pdf", "created_at": 100.0}, semantic=True
+    )
+    assert not chat._session_is_usable(
+        {**valid_semantic, "created_at": "invalid"}, semantic=True
+    )
+
+
+def test_session_is_usable_requires_keyword_index_for_tfidf():
+    valid_keyword = {
+        "org_id": "org-1",
+        "user_id": "user-1",
+        "filename": "report.txt",
+        "created_at": 100.0,
+        "index": {},
+    }
+    assert chat._session_is_usable(valid_keyword, semantic=False)
+    assert not chat._session_is_usable(
+        {key: value for key, value in valid_keyword.items() if key != "index"},
+        semantic=False,
+    )
