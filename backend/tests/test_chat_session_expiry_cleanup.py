@@ -71,3 +71,25 @@ def test_store_chat_session_discards_malformed_entries_before_eviction(monkeypat
     assert "malformed-timestamp" not in tfidf_sessions
     assert "malformed-entry" not in tfidf_sessions
     assert set(tfidf_sessions) == {"oldest-valid", "newest-valid", "new-session"}
+
+
+def test_read_upload_limited_rejects_oversized_file_without_unbounded_read():
+    import asyncio
+    from fastapi import HTTPException
+
+    class FakeUpload:
+        requested_size = None
+
+        async def read(self, size=-1):
+            self.requested_size = size
+            return b"x" * size
+
+    upload = FakeUpload()
+    try:
+        asyncio.run(chat._read_upload_limited(upload))
+    except HTTPException as exc:
+        assert exc.status_code == 413
+    else:
+        raise AssertionError("Oversized upload should be rejected.")
+
+    assert upload.requested_size == chat.MAX_UPLOAD_BYTES + 1
