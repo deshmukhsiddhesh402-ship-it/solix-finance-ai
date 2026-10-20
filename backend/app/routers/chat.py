@@ -56,9 +56,18 @@ def _store_chat_session(store: dict[str, dict], session_id: str, session: dict) 
             for target in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS)
             for sid, data in target.items()
         ]
-        if all_sessions:
+        valid_sessions = []
+        for sid, data, target in all_sessions:
+            created_at = data.get("created_at")
+            if (
+                not isinstance(created_at, bool)
+                and isinstance(created_at, (int, float))
+                and math.isfinite(created_at)
+            ):
+                valid_sessions.append((sid, data, target))
+        if valid_sessions:
             oldest_sid, _, oldest_store = min(
-                all_sessions, key=lambda item: item[1].get("created_at", 0)
+                valid_sessions, key=lambda item: item[1]["created_at"]
             )
             oldest_store.pop(oldest_sid, None)
     store[session_id] = session
