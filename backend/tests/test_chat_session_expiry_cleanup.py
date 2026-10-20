@@ -129,6 +129,13 @@ def test_session_is_usable_requires_keyword_index_for_tfidf():
         {**valid_keyword, "index": {"chunks": ["one"], "vectors": [], "idf": {}}},
         semantic=False,
     )
+    assert not chat._session_is_usable(
+        {
+            **valid_keyword,
+            "index": {"chunks": ["one"], "vectors": [{"term": "nan"}], "idf": {}},
+        },
+        semantic=False,
+    )
 
 
 def test_validated_upload_filename_strips_path_components():
