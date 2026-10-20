@@ -37,6 +37,7 @@ def test_purge_expired_chat_sessions_removes_entries_without_valid_timestamps(mo
     tfidf_sessions = {
         "missing-timestamp": {"filename": "legacy.txt"},
         "non-finite-timestamp": {"created_at": float("nan")},
+        "oversized-integer-timestamp": {"created_at": 10**1000},
         "valid-session": {"created_at": 150.0},
     }
     semantic_sessions = {
