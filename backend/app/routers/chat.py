@@ -23,6 +23,16 @@ _TFIDF_SESSIONS: dict[str, dict] = {}
 # session_id -> {filename, org_id, user_id}
 _SEMANTIC_SESSIONS: dict[str, dict] = {}
 
+
+def _valid_session_timestamp(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError):
+        return False
+
+
 def _purge_expired_chat_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
     for store in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS):
@@ -37,9 +47,7 @@ def _purge_expired_chat_sessions(now: float | None = None) -> None:
             # Fail closed for malformed in-memory entries: sessions without a
             # valid timestamp must not bypass the TTL indefinitely.
             if (
-                isinstance(created_at, bool)
-                or not isinstance(created_at, (int, float))
-                or not math.isfinite(created_at)
+                not _valid_session_timestamp(created_at)
                 or current - created_at >= CHAT_SESSION_TTL_SECONDS
             ):
                 expired.append(sid)
@@ -48,12 +56,7 @@ def _purge_expired_chat_sessions(now: float | None = None) -> None:
 
 def _store_chat_session(store: dict[str, dict], session_id: str, session: dict) -> None:
     _purge_expired_chat_sessions()
-    if (
-        not isinstance(session, dict)
-        or isinstance(session.get("created_at"), bool)
-        or not isinstance(session.get("created_at"), (int, float))
-        or not math.isfinite(session["created_at"])
-    ):
+    if not isinstance(session, dict) or not _valid_session_timestamp(session.get("created_at")):
         raise ValueError("Chat sessions require a finite numeric created_at timestamp.")
 
     all_stores = (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS)
@@ -61,11 +64,7 @@ def _store_chat_session(store: dict[str, dict], session_id: str, session: dict) 
     for target in all_stores:
         for sid, data in list(target.items()):
             created_at = data.get("created_at") if isinstance(data, dict) else None
-            if (
-                isinstance(created_at, bool)
-                or not isinstance(created_at, (int, float))
-                or not math.isfinite(created_at)
-            ):
+            if not _valid_session_timestamp(created_at):
                 # Malformed entries must not crash eviction or consume capacity.
                 target.pop(sid, None)
                 continue
