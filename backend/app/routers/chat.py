@@ -48,27 +48,35 @@ def _purge_expired_chat_sessions(now: float | None = None) -> None:
 
 def _store_chat_session(store: dict[str, dict], session_id: str, session: dict) -> None:
     _purge_expired_chat_sessions()
-    total = len(_TFIDF_SESSIONS) + len(_SEMANTIC_SESSIONS)
-    if total >= MAX_CHAT_SESSIONS:
-        all_sessions = [
-            (sid, data, target)
-            for target in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS)
-            for sid, data in target.items()
-        ]
-        valid_sessions = []
-        for sid, data, target in all_sessions:
-            created_at = data.get("created_at")
+    if (
+        not isinstance(session, dict)
+        or isinstance(session.get("created_at"), bool)
+        or not isinstance(session.get("created_at"), (int, float))
+        or not math.isfinite(session["created_at"])
+    ):
+        raise ValueError("Chat sessions require a finite numeric created_at timestamp.")
+
+    all_stores = (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS)
+    valid_sessions = []
+    for target in all_stores:
+        for sid, data in list(target.items()):
+            created_at = data.get("created_at") if isinstance(data, dict) else None
             if (
-                not isinstance(created_at, bool)
-                and isinstance(created_at, (int, float))
-                and math.isfinite(created_at)
+                isinstance(created_at, bool)
+                or not isinstance(created_at, (int, float))
+                or not math.isfinite(created_at)
             ):
-                valid_sessions.append((sid, data, target))
-        if valid_sessions:
-            oldest_sid, _, oldest_store = min(
-                valid_sessions, key=lambda item: item[1]["created_at"]
-            )
-            oldest_store.pop(oldest_sid, None)
+                # Malformed entries must not crash eviction or consume capacity.
+                target.pop(sid, None)
+                continue
+            valid_sessions.append((sid, data, target))
+
+    total = sum(len(target) for target in all_stores)
+    if total >= MAX_CHAT_SESSIONS and valid_sessions:
+        oldest_sid, _, oldest_store = min(
+            valid_sessions, key=lambda item: item[1]["created_at"]
+        )
+        oldest_store.pop(oldest_sid, None)
     store[session_id] = session
 
 def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
