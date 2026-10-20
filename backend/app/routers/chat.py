@@ -28,6 +28,11 @@ def _purge_expired_chat_sessions(now: float | None = None) -> None:
     for store in (_TFIDF_SESSIONS, _SEMANTIC_SESSIONS):
         expired = []
         for sid, session in store.items():
+            # In-memory state can be malformed after unexpected writes or
+            # legacy code paths; discard non-mapping entries without crashing.
+            if not isinstance(session, dict):
+                expired.append(sid)
+                continue
             created_at = session.get("created_at")
             # Fail closed for malformed in-memory entries: sessions without a
             # valid timestamp must not bypass the TTL indefinitely.
