@@ -41,6 +41,7 @@ def test_purge_expired_chat_sessions_removes_entries_without_valid_timestamps(mo
     }
     semantic_sessions = {
         "invalid-timestamp": {"created_at": "not-a-timestamp"},
+        "non-dict-session": "malformed-entry",
     }
     monkeypatch.setattr(chat, "_TFIDF_SESSIONS", tfidf_sessions)
     monkeypatch.setattr(chat, "_SEMANTIC_SESSIONS", semantic_sessions)
