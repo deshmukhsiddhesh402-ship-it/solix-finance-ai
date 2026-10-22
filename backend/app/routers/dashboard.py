@@ -1,4 +1,4 @@
-""Module: Live Financial Dashboard — tenant-scoped API layer."""
+"""Module: Live Financial Dashboard — tenant-scoped API layer."""
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
