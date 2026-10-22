@@ -1,4 +1,4 @@
-"""Module: Live Financial Dashboard — tenant-scoped API layer."""
+""Module: Live Financial Dashboard — tenant-scoped API layer."""
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -13,6 +13,7 @@ from app.services.report_export_engine import dashboard_to_excel, dashboard_to_p
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_DASHBOARD_RANGE_DAYS = 3660
 
 
 def _load_entries(db: Session, start_date: date, end_date: date, org_id: uuid.UUID):
@@ -38,6 +39,11 @@ def _date_range(start_date: date | None, end_date: date | None):
     start = start_date or (end - timedelta(days=180))
     if start > end:
         raise HTTPException(400, detail="start_date must be on or before end_date.")
+    if (end - start).days > MAX_DASHBOARD_RANGE_DAYS:
+        raise HTTPException(
+            400,
+            detail=f"Date range cannot exceed {MAX_DASHBOARD_RANGE_DAYS} days.",
+        )
     return start, end
 
 
