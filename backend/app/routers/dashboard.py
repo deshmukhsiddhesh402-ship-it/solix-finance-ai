@@ -13,6 +13,16 @@ from app.services.report_export_engine import dashboard_to_excel, dashboard_to_p
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_DASHBOARD_ENTRIES = 10000
+
+
+def _enforce_entry_limit(rows):
+    if len(rows) > MAX_DASHBOARD_ENTRIES:
+        raise HTTPException(
+            413,
+            detail=f"Dashboard result cannot exceed {MAX_DASHBOARD_ENTRIES} ledger lines.",
+        )
+    return rows
 
 
 def _load_entries(db: Session, start_date: date, end_date: date, org_id: uuid.UUID):
@@ -26,11 +36,12 @@ def _load_entries(db: Session, start_date: date, end_date: date, org_id: uuid.UU
         .filter(and_(JournalEntry.entry_date >= start_date, JournalEntry.entry_date <= end_date))
         .filter(JournalEntry.org_id == org_id, ChartOfAccount.org_id == org_id)
     )
-    return [
+    rows = [
         {"date": row[0], "account_name": row[1], "account_type": row[2],
          "debit": float(row[3]), "credit": float(row[4])}
         for row in query.all()
     ]
+    return _enforce_entry_limit(rows)
 
 
 def _date_range(start_date: date | None, end_date: date | None):
