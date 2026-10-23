@@ -35,6 +35,7 @@ def _load_entries(db: Session, start_date: date, end_date: date, org_id: uuid.UU
         .join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
         .filter(and_(JournalEntry.entry_date >= start_date, JournalEntry.entry_date <= end_date))
         .filter(JournalEntry.org_id == org_id, ChartOfAccount.org_id == org_id)
+        .limit(MAX_DASHBOARD_ENTRIES + 1)
     )
     rows = [
         {"date": row[0], "account_name": row[1], "account_type": row[2],
