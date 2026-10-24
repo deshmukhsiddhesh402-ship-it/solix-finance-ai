@@ -1,5 +1,4 @@
 """Regression tests for organization-scoped RBAC authorization."""
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -21,19 +20,25 @@ class _FakeQuery:
         self.criteria = criteria
         return self
 
+    def all(self):
+        if self.model is not OrgMembership:
+            return []
+        # Model the database's AND semantics for user_id + org_id filters.
+        return [
+            membership
+            for membership in self.memberships
+            if all(
+                (criterion.left.name == "user_id" and criterion.right.value == membership.user_id)
+                or (criterion.left.name == "org_id" and criterion.right.value == membership.org_id)
+                for criterion in self.criteria
+            )
+        ]
+
     def first(self):
         if self.model is User:
             return self.user
-        if self.model is OrgMembership:
-            # Model the database's AND semantics for user_id + org_id filters.
-            for membership in self.memberships:
-                if all(
-                    criterion.left.name == "user_id" and criterion.right.value == membership.user_id
-                    or criterion.left.name == "org_id" and criterion.right.value == membership.org_id
-                    for criterion in self.criteria
-                ):
-                    return membership
-        return None
+        matches = self.all()
+        return matches[0] if matches else None
 
 
 class _FakeDB:
@@ -43,22 +48,6 @@ class _FakeDB:
 
     def query(self, model):
         return _FakeQuery(model, self.user, self.memberships)
-
-
-def _authorize(monkeypatch, *, requested_org, memberships, resource="reports", action="view"):
-    user_id = uuid4()
-    user = User(id=user_id, email="member@example.com", org_id=uuid4(), role="owner")
-    monkeypatch.setattr(
-        enterprise,
-        "decode_access_token",
-        lambda token: {"sub": str(user_id)} if token == "valid-token" else None,
-    )
-    dependency = enterprise.require_permission(resource, action)
-    return dependency(
-        org_id=str(requested_org),
-        authorization="Bearer valid-token",
-        db=_FakeDB(user, memberships),
-    )
 
 
 def test_membership_in_another_organization_does_not_authorize_access(monkeypatch):
@@ -129,3 +118,26 @@ def test_missing_or_invalid_bearer_token_fails_before_database_access(monkeypatc
         with pytest.raises(HTTPException) as exc:
             dependency(org_id=str(org_id), authorization=authorization, db=db)
         assert exc.value.status_code == 401
+
+
+
+def test_duplicate_memberships_fail_closed_instead_of_selecting_arbitrary_role(monkeypatch):
+    user_id = uuid4()
+    org_id = uuid4()
+    user = User(id=user_id, email="member@example.com", org_id=org_id, role="owner")
+    memberships = [
+        OrgMembership(user_id=user_id, org_id=org_id, role="admin"),
+        OrgMembership(user_id=user_id, org_id=org_id, role="auditor"),
+    ]
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise.require_permission("api_keys", "delete")
+
+    with pytest.raises(HTTPException) as exc:
+        dependency(
+            org_id=str(org_id),
+            authorization="Bearer valid-token",
+            db=_FakeDB(user, memberships),
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Organization membership is missing or ambiguous."
