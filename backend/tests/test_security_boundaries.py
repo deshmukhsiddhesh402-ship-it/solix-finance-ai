@@ -811,3 +811,39 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_tax_api_rejects_non_finite_and_out_of_range_gst_inputs():
+    from app.routers.tax import GstRequest, GstInvoiceLineIn
+
+    with pytest.raises(ValidationError):
+        GstRequest(taxable_value=float("inf"), gst_rate_pct=18, is_interstate=False)
+    with pytest.raises(ValidationError):
+        GstRequest(taxable_value=100, gst_rate_pct=101, is_interstate=False)
+    with pytest.raises(ValidationError):
+        GstInvoiceLineIn(taxable_value=-1, gst_rate_pct=18, is_interstate=False)
+
+
+def test_tax_api_bounds_gstr3b_payload_and_credit():
+    from app.routers.tax import Gstr3bRequest
+
+    with pytest.raises(ValidationError):
+        Gstr3bRequest(lines=[{}] * 501)
+    with pytest.raises(ValidationError):
+        Gstr3bRequest(lines=[], input_tax_credit=float("nan"))
+    with pytest.raises(ValidationError):
+        Gstr3bRequest(lines=[], input_tax_credit=-1)
+
+
+def test_tax_api_rejects_invalid_tds_and_income_tax_inputs():
+    from app.routers.tax import TdsRequest, IncomeTaxRequest
+
+    with pytest.raises(ValidationError):
+        TdsRequest(amount_paid=float("inf"), section="194J")
+    with pytest.raises(ValidationError):
+        TdsRequest(amount_paid=1000, section="x" * 11)
+    with pytest.raises(ValidationError):
+        IncomeTaxRequest(gross_salary=-1)
+    with pytest.raises(ValidationError):
+        IncomeTaxRequest(gross_salary=500000, other_income=float("nan"))
