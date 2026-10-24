@@ -227,7 +227,8 @@ class InventoryTxnIn(BaseModel):
 
 
 class InventoryValuationRequest(BaseModel):
-    txns: list[InventoryTxnIn]
+    # Inventory valuation is quadratic for some methods; keep request work bounded.
+    txns: list[InventoryTxnIn] = Field(min_length=1, max_length=1000)
     method: Literal["FIFO", "LIFO", "WAVG"]
 
 
