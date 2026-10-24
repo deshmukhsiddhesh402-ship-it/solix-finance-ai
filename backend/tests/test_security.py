@@ -473,3 +473,53 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
 def test_rejects_unsafe_jwt_algorithm():
     with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
         Settings(JWT_ALGORITHM="none")
+
+
+def test_environment_mode_rejects_unknown_value():
+    with pytest.raises(ValidationError, match="ENV must be one of"):
+        Settings(ENV="production-ish")
+
+
+def test_development_otp_delivery_is_disabled_by_default(monkeypatch):
+    from app.core.config import settings
+    from app.core.security import send_otp_via_email_or_sms
+
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "ALLOW_DEV_OTP", False)
+    with pytest.raises(RuntimeError, match="OTP delivery provider is not configured"):
+        send_otp_via_email_or_sms("dev@example.com", "123456")
+
+
+def test_development_otp_delivery_requires_explicit_opt_in(monkeypatch):
+    from app.core.config import settings
+    from app.core.security import send_otp_via_email_or_sms
+
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "ALLOW_DEV_OTP", True)
+    assert send_otp_via_email_or_sms("dev@example.com", "123456") is None
+
+
+def test_otp_request_does_not_disclose_code_without_explicit_opt_in(monkeypatch):
+    import app.routers.auth as auth_router
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "ALLOW_DEV_OTP", False)
+    monkeypatch.setattr(auth_router, "generate_otp", lambda email: "123456")
+    monkeypatch.setattr(auth_router, "send_otp_via_email_or_sms", lambda email, otp: None)
+
+    response = auth_router.request_otp(auth_router.OtpRequestBody(email="dev@example.com"))
+    assert "dev_otp" not in response
+
+
+def test_otp_request_discloses_code_only_with_explicit_local_opt_in(monkeypatch):
+    import app.routers.auth as auth_router
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "ALLOW_DEV_OTP", True)
+    monkeypatch.setattr(auth_router, "generate_otp", lambda email: "123456")
+    monkeypatch.setattr(auth_router, "send_otp_via_email_or_sms", lambda email, otp: None)
+
+    response = auth_router.request_otp(auth_router.OtpRequestBody(email="dev@example.com"))
+    assert response["dev_otp"] == "123456"
