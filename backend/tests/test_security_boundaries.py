@@ -811,3 +811,35 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_bank_reconciliation_rejects_non_finite_or_non_positive_amounts():
+    from app.routers.banking import BankLineIn, BookLineIn
+
+    base = {"id": "line-1", "txn_date": "2026-10-24", "description": "Payment", "txn_type": "debit"}
+    with pytest.raises(ValidationError):
+        BankLineIn(**base, amount=float("nan"))
+    with pytest.raises(ValidationError):
+        BankLineIn(**base, amount=float("inf"))
+    with pytest.raises(ValidationError):
+        BookLineIn(**base, amount=0)
+
+
+def test_bank_reconciliation_bounds_payload_and_date_window():
+    from app.routers.banking import ReconcileRequest
+
+    with pytest.raises(ValidationError):
+        ReconcileRequest(bank_lines=[{}] * 501, book_lines=[])
+    with pytest.raises(ValidationError):
+        ReconcileRequest(bank_lines=[], book_lines=[], date_window_days=32)
+    with pytest.raises(ValidationError):
+        ReconcileRequest(bank_lines=[], book_lines=[], balance_as_per_bank=float("inf"))
+
+
+def test_bank_reconciliation_rejects_duplicate_line_ids():
+    from app.routers.banking import ReconcileRequest
+
+    line = {"id": "duplicate", "txn_date": "2026-10-24", "description": "Payment", "amount": 10, "txn_type": "debit"}
+    with pytest.raises(ValidationError, match="duplicate line IDs"):
+        ReconcileRequest(bank_lines=[line, line], book_lines=[])
