@@ -811,3 +811,22 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_accounting_report_request_bounds_ledger_lines():
+    from app.routers.accounting import TrialBalanceRequest
+
+    with pytest.raises(ValidationError):
+        TrialBalanceRequest(lines=[{
+            "account_name": "Cash", "account_type": "asset", "debit": 1, "credit": 0
+        }] * 501)
+
+
+def test_inventory_valuation_request_bounds_transactions():
+    from app.routers.accounting import InventoryValuationRequest
+
+    with pytest.raises(ValidationError):
+        InventoryValuationRequest(txns=[{
+            "txn_type": "purchase", "quantity": 1, "unit_cost": 10
+        }] * 501, method="FIFO")
