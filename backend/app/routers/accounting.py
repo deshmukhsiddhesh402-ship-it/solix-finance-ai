@@ -127,7 +127,7 @@ def create_journal_entry(
 
 
 class TrialBalanceRequest(BaseModel):
-    lines: list[LedgerLineIn]
+    lines: list[LedgerLineIn] = Field(max_length=500)
 
 
 @router.post("/trial-balance")
@@ -227,7 +227,7 @@ class InventoryTxnIn(BaseModel):
 
 
 class InventoryValuationRequest(BaseModel):
-    txns: list[InventoryTxnIn]
+    txns: list[InventoryTxnIn] = Field(max_length=500)
     method: Literal["FIFO", "LIFO", "WAVG"]
 
 
