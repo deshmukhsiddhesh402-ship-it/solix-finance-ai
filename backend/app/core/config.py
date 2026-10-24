@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
-    ENV: str = "development"
+    ENV: str = ""
+    ALLOW_DEV_OTP: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     DATABASE_URL: str = "postgresql://solix:solix@localhost:5432/solix_finance_ai"
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -22,6 +23,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_production_secrets(self):
+        if self.ENV.strip().lower() not in {"development", "dev", "test", "staging", "prod", "production"}:
+            raise ValueError("ENV must be one of development, dev, test, staging, prod, or production.")
         if self.ENV.strip().lower() in {"prod", "production"}:
             if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:
                 raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")

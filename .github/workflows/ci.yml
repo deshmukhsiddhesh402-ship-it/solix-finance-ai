@@ -17,6 +17,8 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      ENV: test
     timeout-minutes: 15
     defaults:
       run:

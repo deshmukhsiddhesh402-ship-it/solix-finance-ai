@@ -92,7 +92,7 @@ def verify_otp(email: str, otp: str) -> bool:
 
 def send_otp_via_email_or_sms(email: str, otp: str) -> None:
     """No delivery provider is configured yet; never log or expose OTPs here."""
-    if settings.ENV.strip().lower() in {"development", "dev"}:
+    if settings.ENV.strip().lower() in {"development", "dev"} and settings.ALLOW_DEV_OTP:
         return
     raise RuntimeError("OTP delivery provider is not configured.")
 
