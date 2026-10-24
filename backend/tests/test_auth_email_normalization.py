@@ -46,12 +46,16 @@ def test_otp_verification_uses_normalized_email_for_account_lookup(monkeypatch):
                 captured["lookup_email"] = criteria[0].right.value
             return self
 
+        def all(self):
+            if self.model is OrgMembership:
+                return [OrgMembership(user_id=user_id, org_id=org_id, role="admin")]
+            return []
+
         def first(self):
             if self.model is User:
                 return user
-            if self.model is OrgMembership:
-                return object()
-            return None
+            matches = self.all()
+            return matches[0] if matches else None
 
     class FakeDB:
         def query(self, model):
