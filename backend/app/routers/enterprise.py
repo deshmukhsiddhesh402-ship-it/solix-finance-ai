@@ -68,11 +68,17 @@ def require_permission(resource: str, action: str):
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
             raise HTTPException(403, detail="User not found.")
-        membership = db.query(OrgMembership).filter(
-            OrgMembership.user_id == user.id, OrgMembership.org_id == org_uuid
-        ).first()
-        if not membership:
-            raise HTTPException(403, detail="You are not a member of this organization.")
+        # Never choose an arbitrary role if a drifted database contains duplicate
+        # memberships. The schema has a unique constraint, but authorization must
+        # still fail closed if deployed data/schema does not match that invariant.
+        memberships = db.query(OrgMembership).filter(
+            OrgMembership.user_id == user_uuid, OrgMembership.org_id == org_uuid
+        ).all()
+        if len(memberships) != 1:
+            raise HTTPException(403, detail="Organization membership is missing or ambiguous.")
+        membership = memberships[0]
+        if membership.user_id != user_uuid or membership.org_id != org_uuid:
+            raise HTTPException(403, detail="Organization membership scope is invalid.")
         if not has_permission(membership.role, resource, action):
             raise HTTPException(403, detail=f"Your role ({membership.role}) cannot {action} {resource}.")
         return str(user.id)
