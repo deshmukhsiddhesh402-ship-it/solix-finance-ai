@@ -472,7 +472,7 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
 
 def test_rejects_unsafe_jwt_algorithm():
     with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
-        Settings(JWT_ALGORITHM="none")
+        Settings(ENV="test", JWT_ALGORITHM="none")
 
 
 def test_environment_mode_rejects_unknown_value():
@@ -523,3 +523,8 @@ def test_otp_request_discloses_code_only_with_explicit_local_opt_in(monkeypatch)
 
     response = auth_router.request_otp(auth_router.OtpRequestBody(email="dev@example.com"))
     assert response["dev_otp"] == "123456"
+
+
+def test_environment_mode_is_required():
+    with pytest.raises(ValidationError, match="ENV must be one of"):
+        Settings(ENV="")
