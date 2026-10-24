@@ -18,6 +18,20 @@ from app.services.accounting_engine import (
 router = APIRouter()
 
 
+def unique_account_code(account_name: str, occupied_codes: set[str]) -> str:
+    """Keep the legacy short code when free; add a bounded suffix on collision."""
+    base = account_name[:10].upper()
+    if base not in occupied_codes:
+        return base
+    suffix = 1
+    while True:
+        suffix_text = f"-{suffix}"
+        candidate = f"{base[:20 - len(suffix_text)]}{suffix_text}"
+        if candidate not in occupied_codes:
+            return candidate
+        suffix += 1
+
+
 class LedgerLineIn(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
@@ -89,6 +103,14 @@ def create_journal_entry(
     db.add(entry)
     db.flush()
 
+    # Account codes are unique per organization in schema.sql. The legacy
+    # first-10-character code can collide for distinct account names, so
+    # track occupied codes and allocate a deterministic suffix when needed.
+    occupied_codes = {
+        row[0] for row in db.query(ChartOfAccount.code)
+        .filter(ChartOfAccount.org_id == org_uuid).all()
+    }
+
     for line in lines:
         account = (
             db.query(ChartOfAccount)
@@ -98,12 +120,14 @@ def create_journal_entry(
         if account and account.account_type != line.account_type:
             raise HTTPException(422, detail="Account name already exists with a different account type.")
         if not account:
+            account_code = unique_account_code(line.account_name, occupied_codes)
             account = ChartOfAccount(
-                org_id=org_uuid, code=line.account_name[:10].upper(),
+                org_id=org_uuid, code=account_code,
                 name=line.account_name, account_type=line.account_type,
             )
             db.add(account)
             db.flush()
+            occupied_codes.add(account_code)
         db.add(JournalLine(
             journal_id=entry.id, account_id=account.id, debit=line.debit, credit=line.credit,
             gst_rate_pct=line.gst_rate_pct, gst_type=line.gst_type, gst_taxable_value=line.gst_taxable_value,
