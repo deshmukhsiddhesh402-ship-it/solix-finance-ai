@@ -87,14 +87,18 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
         db.refresh(user)
 
     else:
-        # Fail closed if a legacy user points at a tenant without a matching membership.
-        membership = (
+        # Fail closed if tenant membership is missing, duplicated, or inconsistent.
+        # A legacy schema/data drift must not let login select an arbitrary role.
+        memberships = (
             db.query(OrgMembership)
             .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
-            .first()
+            .all()
         )
-        if membership is None:
-            raise HTTPException(403, detail="User tenant membership is not configured.")
+        if len(memberships) != 1:
+            raise HTTPException(403, detail="User tenant membership is missing or ambiguous.")
+        membership = memberships[0]
+        if membership.user_id != user.id or membership.org_id != user.org_id:
+            raise HTTPException(403, detail="User tenant membership scope is invalid.")
 
     token = create_access_token(subject=str(user.id))
     return {
