@@ -1,3 +1,12 @@
+"""Regression tests for collision-safe chart-of-account code generation."""
+import sys
+from pathlib import Path
+
+# Ensure the backend package is importable regardless of pytest's import mode.
+BACKEND_ROOT = str(Path(__file__).resolve().parents[1])
+if BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, BACKEND_ROOT)
+
 from app.routers.accounting import unique_account_code
 
 
