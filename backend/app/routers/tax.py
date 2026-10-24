@@ -2,7 +2,7 @@
 Module 3: Indian Tax — API layer over tax_engine.py
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.tax_engine import (
     calculate_gst, GstInvoiceLine, gstr3b_summary, calculate_tds,
@@ -13,8 +13,8 @@ router = APIRouter()
 
 
 class GstRequest(BaseModel):
-    taxable_value: float
-    gst_rate_pct: float
+    taxable_value: float = Field(ge=0, allow_inf_nan=False)
+    gst_rate_pct: float = Field(ge=0, le=100, allow_inf_nan=False)
     is_interstate: bool
 
 
@@ -24,14 +24,14 @@ def gst_calculate(req: GstRequest):
 
 
 class GstInvoiceLineIn(BaseModel):
-    taxable_value: float
-    gst_rate_pct: float
+    taxable_value: float = Field(ge=0, allow_inf_nan=False)
+    gst_rate_pct: float = Field(ge=0, le=100, allow_inf_nan=False)
     is_interstate: bool
 
 
 class Gstr3bRequest(BaseModel):
-    lines: list[GstInvoiceLineIn]
-    input_tax_credit: float = 0.0
+    lines: list[GstInvoiceLineIn] = Field(max_length=500)
+    input_tax_credit: float = Field(default=0.0, ge=0, allow_inf_nan=False)
 
 
 @router.post("/gst/gstr3b-summary")
@@ -41,8 +41,8 @@ def gst_gstr3b(req: Gstr3bRequest):
 
 
 class TdsRequest(BaseModel):
-    amount_paid: float
-    section: str
+    amount_paid: float = Field(ge=0, allow_inf_nan=False)
+    section: str = Field(min_length=1, max_length=10)
     has_pan: bool = True
 
 
@@ -55,8 +55,8 @@ def tds_calculate(req: TdsRequest):
 
 
 class IncomeTaxRequest(BaseModel):
-    gross_salary: float
-    other_income: float = 0.0
+    gross_salary: float = Field(ge=0, allow_inf_nan=False)
+    other_income: float = Field(default=0.0, ge=0, allow_inf_nan=False)
 
 
 @router.post("/income-tax/new-regime")
