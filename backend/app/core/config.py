@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
-    ENV: str = "development"
+    ENV: str = ""
     ALLOW_DEV_OTP: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     DATABASE_URL: str = "postgresql://solix:solix@localhost:5432/solix_finance_ai"
