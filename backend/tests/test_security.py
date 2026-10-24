@@ -60,7 +60,7 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
     """A legacy user with org_id but no matching membership must not receive a JWT."""
     from uuid import uuid4
     from fastapi import HTTPException
-    from app.models.auth_user import User
+    from app.models.auth_user import OrgMembership, User
     import app.routers.auth as auth_router
 
     user = User(
@@ -83,6 +83,11 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
             if self.model is User:
                 return user
             return None
+
+        def all(self):
+            if self.model is OrgMembership:
+                return []
+            return []
 
     class FakeDB:
         def query(self, model):
