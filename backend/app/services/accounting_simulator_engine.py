@@ -126,3 +126,61 @@ def build_trial_balance(ledger: dict[str, dict]) -> dict:
         "total_credit": total_credit,
         "is_balanced": total_debit == total_credit,
     }
+
+
+def build_t_account(total_debit: Decimal | int | float | str,
+                    total_credit: Decimal | int | float | str) -> dict:
+    """Return T-account totals and balancing entries using conventional To/By sides.
+
+    A debit balance is carried down on the credit side and brought down on the debit
+    side; a credit balance follows the opposite convention.
+    """
+    debit = money(total_debit, "total debit")
+    credit = money(total_credit, "total credit")
+    if debit > credit:
+        balance = debit - credit
+        side = "debit"
+        balance_c_d_side = "credit"
+        balance_b_d_side = "debit"
+    elif credit > debit:
+        balance = credit - debit
+        side = "credit"
+        balance_c_d_side = "debit"
+        balance_b_d_side = "credit"
+    else:
+        balance = ZERO
+        side = "zero"
+        balance_c_d_side = None
+        balance_b_d_side = None
+    return {
+        "total_debit": debit,
+        "total_credit": credit,
+        "balance": balance,
+        "balance_side": side,
+        "balance_c_d_side": balance_c_d_side,
+        "balance_b_d_side": balance_b_d_side,
+    }
+
+
+def validate_educational_narration(narration: str,
+                                  required_keywords: Iterable[str] = ()) -> dict:
+    """Apply the reference simulator's narration style to learning exercises only.
+
+    This deliberately does not run as part of validate_journal_entry(), so legitimate
+    business entries are not rejected merely for not starting with 'Being'.
+    """
+    errors = []
+    if not isinstance(narration, str) or not narration.strip():
+        return {"is_valid": False, "errors": ["Narration is required."]}
+    normalized = narration.strip()
+    if not normalized.lower().startswith("being "):
+        errors.append("Narration must begin with 'Being '.")
+    if len(normalized.split()) < 5:
+        errors.append("Narration must contain at least five words.")
+    lowered = normalized.casefold()
+    for keyword in required_keywords:
+        if not isinstance(keyword, str) or not keyword.strip():
+            continue
+        if keyword.strip().casefold() not in lowered:
+            errors.append(f"Narration must mention '{keyword.strip()}'.")
+    return {"is_valid": not errors, "errors": errors}
