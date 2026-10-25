@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const MAX_REQUEST_BYTES = 100_000;
 
 const ACTION_TO_PATH: Record<string, string> = {
   "journal-entry": "/api/accounting-simulator/practice/journal-entry",
@@ -16,14 +17,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ detail: "Unsupported simulator action." }, { status: 400 });
   }
 
-  const declaredLength = Number(req.headers.get("content-length") || "0");
-  if (declaredLength > 100_000) {
-    return NextResponse.json({ detail: "Request is too large for practice mode." }, { status: 413 });
+  let rawBody: string;
+  try {
+    const body = await req.arrayBuffer();
+    if (body.byteLength > MAX_REQUEST_BYTES) {
+      return NextResponse.json({ detail: "Request is too large for practice mode." }, { status: 413 });
+    }
+    rawBody = new TextDecoder().decode(body);
+  } catch {
+    return NextResponse.json({ detail: "Request body could not be read." }, { status: 400 });
   }
 
   let payload: unknown;
   try {
-    payload = await req.json();
+    payload = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ detail: "Request body must be valid JSON." }, { status: 400 });
   }
