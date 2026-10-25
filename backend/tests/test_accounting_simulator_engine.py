@@ -201,3 +201,51 @@ def test_cash_book_rejects_invalid_transactions(receipts, payments):
     with pytest.raises(ValueError):
         build_cash_book("0.00", receipts=receipts, payments=payments)
 
+
+def test_accounting_cycle_connects_journal_ledger_and_trial_balance():
+    from app.services.accounting_simulator_engine import build_accounting_cycle
+
+    entries = [
+        JournalEntry((
+            JournalLine("Cash", debit="5000.00"),
+            JournalLine("Owner Capital", credit="5000.00"),
+        )),
+        JournalEntry((
+            JournalLine("Office Rent", debit="750.00"),
+            JournalLine("Cash", credit="750.00"),
+        )),
+        JournalEntry((
+            JournalLine("Stationery Expense", debit="125.50"),
+            JournalLine("Cash", credit="125.50"),
+        )),
+    ]
+    result = build_accounting_cycle(entries)
+    assert result["journal_entry_count"] == 3
+    assert result["is_balanced"] is True
+    assert result["ledger"]["Cash"]["balance"] == Decimal("4124.50")
+    assert result["ledger"]["Cash"]["balance_side"] == "debit"
+    assert result["trial_balance"]["total_debit"] == Decimal("5000.00")
+    assert result["trial_balance"]["total_credit"] == Decimal("5000.00")
+
+
+def test_accounting_cycle_rejects_unbalanced_journal_entry():
+    from app.services.accounting_simulator_engine import build_accounting_cycle
+
+    with pytest.raises(ValueError, match="unbalanced"):
+        build_accounting_cycle([
+            JournalEntry((
+                JournalLine("Cash", debit="100.00"),
+                JournalLine("Capital", credit="99.00"),
+            ))
+        ])
+
+
+def test_accounting_cycle_accepts_empty_practice_set_as_balanced():
+    from app.services.accounting_simulator_engine import build_accounting_cycle
+
+    result = build_accounting_cycle([])
+    assert result["journal_entry_count"] == 0
+    assert result["ledger"] == {}
+    assert result["trial_balance"]["is_balanced"] is True
+    assert result["trial_balance"]["total_debit"] == Decimal("0.00")
+
