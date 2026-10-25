@@ -156,3 +156,48 @@ def test_narration_style_does_not_block_general_journal_validation():
         JournalLine("Cash", credit="100.00"),
     ), narration="Rent paid")
     assert validate_journal_entry(entry)["is_balanced"] is True
+
+
+def test_cash_book_calculates_closing_balance_exactly():
+    from app.services.accounting_simulator_engine import build_cash_book
+
+    result = build_cash_book(
+        "1000.00",
+        receipts=[
+            {"description": "Cash sales", "amount": "250.50"},
+            {"description": "Owner contribution", "amount": "100.00"},
+        ],
+        payments=[{"description": "Office supplies", "amount": "75.25"}],
+    )
+    assert result["total_receipts"] == Decimal("350.50")
+    assert result["total_payments"] == Decimal("75.25")
+    assert result["closing_balance"] == Decimal("1275.25")
+
+
+def test_cash_book_rejects_payment_overdraft():
+    from app.services.accounting_simulator_engine import build_cash_book
+
+    with pytest.raises(ValueError, match="cash cannot be negative"):
+        build_cash_book(
+            "100.00",
+            receipts=[],
+            payments=[{"description": "Payment", "amount": "100.01"}],
+        )
+
+
+@pytest.mark.parametrize(
+    "receipts,payments",
+    [
+        ([{"description": "", "amount": "10.00"}], []),
+        ([{"description": "Sales", "amount": "0.00"}], []),
+        ([{"description": "Sales", "amount": "1.001"}], []),
+        ([], [{"description": "Supplies", "amount": "-1.00"}]),
+        ([{"description": "Sales", "amount": "10.00"}], ["invalid"]),
+    ],
+)
+def test_cash_book_rejects_invalid_transactions(receipts, payments):
+    from app.services.accounting_simulator_engine import build_cash_book
+
+    with pytest.raises(ValueError):
+        build_cash_book("0.00", receipts=receipts, payments=payments)
+
