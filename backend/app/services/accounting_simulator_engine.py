@@ -236,3 +236,32 @@ def _cash_book_rows(transactions: Iterable[dict], label: str) -> list[dict]:
         raise ValueError(f"{label}s must be an iterable of transactions.") from None
     return rows
 
+
+def build_accounting_cycle(entries: Iterable[JournalEntry]) -> dict:
+    """Run the simulator's deterministic journal → ledger → trial-balance cycle.
+
+    This helper is for practice and reconciliation. It does not persist entries or
+    replace the application's existing posting workflow.
+    """
+    if entries is None:
+        raise ValueError("entries must be an iterable of journal entries.")
+    normalized_entries = []
+    try:
+        for entry in entries:
+            validate_journal_entry(entry)
+            normalized_entries.append(entry)
+    except TypeError:
+        raise ValueError("entries must be an iterable of journal entries.") from None
+    ledger = build_general_ledger(normalized_entries)
+    trial_balance = build_trial_balance(ledger)
+    if not trial_balance["is_balanced"]:
+        # This should be unreachable when every journal entry is validated; keep
+        # the invariant explicit so future changes cannot silently return a mismatch.
+        raise ValueError("Accounting cycle produced an unbalanced trial balance.")
+    return {
+        "journal_entry_count": len(normalized_entries),
+        "ledger": ledger,
+        "trial_balance": trial_balance,
+        "is_balanced": trial_balance["is_balanced"],
+    }
+
