@@ -18,14 +18,14 @@ from app.services.accounting_simulator_engine import (
 
 def test_balanced_compound_entry_uses_exact_paisa_precision():
     entry = JournalEntry((
-        JournalLine("Rent Expense", debit="1180.00"),
-        JournalLine("Cash", credit="1000.00"),
+        JournalLine("Rent Expense", debit="1000.00"),
         JournalLine("GST Input Credit", debit="180.00"),
+        JournalLine("Cash", credit="1180.00"),
     ))
     result = validate_journal_entry(entry)
     assert result["is_balanced"] is True
-    assert result["total_debit"] == Decimal("1360.00")
-    assert result["total_credit"] == Decimal("1000.00")
+    assert result["total_debit"] == Decimal("1180.00")
+    assert result["total_credit"] == Decimal("1180.00")
 
 
 def test_balanced_compound_entry_with_multiple_credit_lines():
