@@ -184,3 +184,55 @@ def validate_educational_narration(narration: str,
         if keyword.strip().casefold() not in lowered:
             errors.append(f"Narration must mention '{keyword.strip()}'.")
     return {"is_valid": not errors, "errors": errors}
+
+
+def build_cash_book(
+    opening_balance: Decimal | int | float | str,
+    receipts: Iterable[dict],
+    payments: Iterable[dict],
+) -> dict:
+    """Build a simple cash book and reject invalid transactions or cash overdrafts.
+
+    Each transaction is a mapping with a non-empty description and positive amount.
+    This is an educational calculation helper, not a persisted accounting record.
+    """
+    opening = money(opening_balance, "opening balance")
+    receipt_rows = _cash_book_rows(receipts, "receipt")
+    payment_rows = _cash_book_rows(payments, "payment")
+    total_receipts = sum((row["amount"] for row in receipt_rows), ZERO)
+    total_payments = sum((row["amount"] for row in payment_rows), ZERO)
+    available_cash = opening + total_receipts
+    if total_payments > available_cash:
+        raise ValueError(
+            "Cash payments exceed opening balance plus receipts; cash cannot be negative."
+        )
+    return {
+        "opening_balance": opening,
+        "receipts": receipt_rows,
+        "payments": payment_rows,
+        "total_receipts": total_receipts,
+        "total_payments": total_payments,
+        "closing_balance": available_cash - total_payments,
+    }
+
+
+def _cash_book_rows(transactions: Iterable[dict], label: str) -> list[dict]:
+    """Validate and normalize simple cash-book transactions."""
+    if transactions is None:
+        raise ValueError(f"{label}s must be an iterable of transactions.")
+    rows = []
+    try:
+        for transaction in transactions:
+            if not isinstance(transaction, dict):
+                raise ValueError(f"Each {label} must be a transaction mapping.")
+            description = transaction.get("description")
+            if not isinstance(description, str) or not description.strip():
+                raise ValueError(f"Each {label} must have a non-empty description.")
+            amount = money(transaction.get("amount"), f"{label} amount")
+            if amount <= ZERO:
+                raise ValueError(f"Each {label} amount must be greater than zero.")
+            rows.append({"description": description.strip(), "amount": amount})
+    except TypeError:
+        raise ValueError(f"{label}s must be an iterable of transactions.") from None
+    return rows
+
