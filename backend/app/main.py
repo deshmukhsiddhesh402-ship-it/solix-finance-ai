@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.core.db import SessionLocal
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import excel_ai, accounting, tax, banking, analysis, chat, excel_automation, learning, auth, invoice_ocr, dashboard, copilot, enterprise, billing
+from app.routers import excel_ai, accounting, tax, banking, analysis, chat, excel_automation, learning, auth, invoice_ocr, dashboard, copilot, enterprise, billing, accounting_simulator
 from app.core.config import settings
 
 app = FastAPI(
@@ -39,6 +39,7 @@ async def security_headers(request, call_next):
 
 app.include_router(excel_ai.router, prefix="/api/excel-ai", tags=["AI Excel Assistant"])
 app.include_router(accounting.router, prefix="/api/accounting", tags=["Accounting"])
+app.include_router(accounting_simulator.router, prefix="/api/accounting-simulator", tags=["Accounting Simulator Practice"])
 app.include_router(tax.router, prefix="/api/tax", tags=["Indian Tax"])
 app.include_router(banking.router, prefix="/api/banking", tags=["Banking"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["Financial Analysis"])
