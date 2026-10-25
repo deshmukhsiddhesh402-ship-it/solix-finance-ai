@@ -109,3 +109,50 @@ def test_large_amounts_remain_exact_to_paisa():
     ))
     result = validate_journal_entry(entry)
     assert result["total_debit"] == Decimal("1000000000.01")
+
+
+@pytest.mark.parametrize(
+    "debit,credit,expected_side,c_d_side,b_d_side,expected_balance",
+    [
+        ("150.00", "100.00", "debit", "credit", "debit", Decimal("50.00")),
+        ("100.00", "150.00", "credit", "debit", "credit", Decimal("50.00")),
+        ("100.00", "100.00", "zero", None, None, Decimal("0.00")),
+    ],
+)
+def test_t_account_balancing_conventions(
+    debit, credit, expected_side, c_d_side, b_d_side, expected_balance
+):
+    from app.services.accounting_simulator_engine import build_t_account
+
+    result = build_t_account(debit, credit)
+    assert result["balance_side"] == expected_side
+    assert result["balance_c_d_side"] == c_d_side
+    assert result["balance_b_d_side"] == b_d_side
+    assert result["balance"] == expected_balance
+
+
+def test_educational_narration_validator_checks_prefix_words_and_keywords():
+    from app.services.accounting_simulator_engine import validate_educational_narration
+
+    good = validate_educational_narration(
+        "Being monthly rent paid in cash",
+        required_keywords=("rent", "cash"),
+    )
+    assert good["is_valid"] is True
+    assert good["errors"] == []
+
+    bad = validate_educational_narration(
+        "Paid rent today", required_keywords=("rent", "cash")
+    )
+    assert bad["is_valid"] is False
+    assert any("Being" in error for error in bad["errors"])
+    assert any("five words" in error for error in bad["errors"])
+    assert any("cash" in error for error in bad["errors"])
+
+
+def test_narration_style_does_not_block_general_journal_validation():
+    entry = JournalEntry((
+        JournalLine("Rent Expense", debit="100.00"),
+        JournalLine("Cash", credit="100.00"),
+    ), narration="Rent paid")
+    assert validate_journal_entry(entry)["is_balanced"] is True
