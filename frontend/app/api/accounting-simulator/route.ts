@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
     if (body.byteLength > MAX_REQUEST_BYTES) {
       return NextResponse.json({ detail: "Request is too large for practice mode." }, { status: 413 });
     }
-    rawBody = new TextDecoder().decode(body);
+    rawBody = new TextDecoder("utf-8", { fatal: true }).decode(body);
   } catch {
-    return NextResponse.json({ detail: "Request body could not be read." }, { status: 400 });
+    return NextResponse.json({ detail: "Request body must be valid UTF-8 JSON." }, { status: 400 });
   }
 
   let payload: unknown;

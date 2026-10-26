@@ -12,4 +12,8 @@ describe("accounting simulator proxy request boundary", () => {
     expect(Number.isInteger(MAX_REQUEST_BYTES)).toBe(true);
     expect(MAX_REQUEST_BYTES).toBeGreaterThan(0);
   });
+
+  it("uses fatal UTF-8 decoding so malformed bytes do not become replacement characters", () => {
+    expect(() => new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array([0xc3, 0x28]))).toThrow();
+  });
 });
