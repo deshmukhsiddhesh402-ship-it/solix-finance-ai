@@ -88,13 +88,14 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
 
     else:
         # Fail closed if a legacy user points at a tenant without a matching membership.
-        membership = (
-            db.query(OrgMembership)
-            .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
-            .first()
+        from app.services.tenant_membership import require_exactly_one_membership
+        membership = require_exactly_one_membership(
+            db.query(OrgMembership).filter(
+                OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id
+            ),
+            missing_detail="User tenant membership is not configured.",
+            ambiguous_detail="User tenant membership is ambiguous; access is denied.",
         )
-        if membership is None:
-            raise HTTPException(403, detail="User tenant membership is not configured.")
 
     token = create_access_token(subject=str(user.id))
     return {
