@@ -68,11 +68,14 @@ def require_permission(resource: str, action: str):
         user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
             raise HTTPException(403, detail="User not found.")
-        membership = db.query(OrgMembership).filter(
-            OrgMembership.user_id == user.id, OrgMembership.org_id == org_uuid
-        ).first()
-        if not membership:
-            raise HTTPException(403, detail="You are not a member of this organization.")
+        from app.services.tenant_membership import require_exactly_one_membership
+        membership = require_exactly_one_membership(
+            db.query(OrgMembership).filter(
+                OrgMembership.user_id == user.id, OrgMembership.org_id == org_uuid
+            ),
+            missing_detail="You are not a member of this organization.",
+            ambiguous_detail="Organization membership is ambiguous; access is denied.",
+        )
         if not has_permission(membership.role, resource, action):
             raise HTTPException(403, detail=f"Your role ({membership.role}) cannot {action} {resource}.")
         return str(user.id)
@@ -104,8 +107,12 @@ def add_membership(
     if not target_user:
         raise HTTPException(404, detail="User not found.")
 
-    existing = db.query(OrgMembership).filter(OrgMembership.user_id == target_user.id, OrgMembership.org_id == org_uuid).first()
-    if existing:
+    existing_rows = db.query(OrgMembership).filter(
+        OrgMembership.user_id == target_user.id, OrgMembership.org_id == org_uuid
+    ).limit(2).all()
+    if len(existing_rows) > 1:
+        raise HTTPException(409, detail="Duplicate organization memberships exist; resolve them before changing membership.")
+    if existing_rows:
         raise HTTPException(409, detail="User is already a member of this organization.")
     membership = OrgMembership(user_id=target_user.id, org_id=org_uuid, role=req.role)
     db.add(membership)
