@@ -4,7 +4,7 @@ belong to several organizations with a different role in each), audit
 logs, API keys, scheduled reports, and notifications.
 """
 import uuid
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Boolean, JSON, func
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Boolean, JSON, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -16,6 +16,9 @@ class OrgMembership(Base):
     multi-company support real: the same user can be Admin in one company
     and Auditor in another, rather than one global role per user."""
     __tablename__ = "org_memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "org_id", name="uq_org_memberships_user_org"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
