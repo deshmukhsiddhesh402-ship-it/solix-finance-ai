@@ -76,6 +76,9 @@ def require_permission(resource: str, action: str):
             missing_detail="You are not a member of this organization.",
             ambiguous_detail="Organization membership is ambiguous; access is denied.",
         )
+        # Defense in depth: verify the returned row matches the requested tenant.
+        if membership.user_id != user.id or membership.org_id != org_uuid:
+            raise HTTPException(403, detail="Organization membership does not match the requested tenant.")
         if not has_permission(membership.role, resource, action):
             raise HTTPException(403, detail=f"Your role ({membership.role}) cannot {action} {resource}.")
         return str(user.id)
