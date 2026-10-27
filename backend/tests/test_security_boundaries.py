@@ -890,3 +890,15 @@ def test_excel_merge_rejects_expired_cleaned_sessions():
         assert sid not in excel._CLEANED_FILES
     finally:
         excel._CLEANED_FILES.pop(sid, None)
+
+
+
+def test_excel_merge_request_bounds_session_count():
+    from pydantic import ValidationError
+    from app.routers.excel_automation import MergeRequest
+
+    with pytest.raises(ValidationError):
+        MergeRequest(session_ids=[])
+    with pytest.raises(ValidationError):
+        MergeRequest(session_ids=["11111111-1111-4111-8111-111111111111"] * 101)
+    assert len(MergeRequest(session_ids=["11111111-1111-4111-8111-111111111111"]).session_ids) == 1
