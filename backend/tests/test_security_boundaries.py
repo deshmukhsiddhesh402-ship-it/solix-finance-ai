@@ -861,3 +861,32 @@ def test_chat_keyword_session_rejects_cross_organization_access():
         assert "organization" in exc.value.detail
     finally:
         chat._TFIDF_SESSIONS.pop(sid, None)
+
+
+
+def test_excel_merge_rejects_expired_cleaned_sessions():
+    import time
+    import pandas as pd
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+
+    sid = "99999999-9999-4999-8999-999999999999"
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    user_id = "11111111-1111-4111-8111-111111111111"
+    excel._CLEANED_FILES[sid] = {
+        "df": pd.DataFrame({"amount": [100]}),
+        "org_id": org_id,
+        "user_id": user_id,
+        "created_at": time.time() - excel.CLEANED_SESSION_TTL_SECONDS - 1,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            excel.merge_cleaned_sessions(
+                excel.MergeRequest(session_ids=[sid]),
+                org_id=org_id,
+                user_id=user_id,
+            )
+        assert exc.value.status_code == 404
+        assert sid not in excel._CLEANED_FILES
+    finally:
+        excel._CLEANED_FILES.pop(sid, None)
