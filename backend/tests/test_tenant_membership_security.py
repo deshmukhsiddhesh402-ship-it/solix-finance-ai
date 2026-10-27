@@ -122,3 +122,58 @@ def test_permission_dependency_denies_duplicate_memberships(monkeypatch):
 
     assert exc.value.status_code == 403
     assert "ambiguous" in exc.value.detail
+
+def test_permission_dependency_denies_user_without_membership_in_requested_org(monkeypatch):
+    """A valid user token must not authorize access to an unrelated organization."""
+    from uuid import uuid4
+    import app.routers.enterprise as enterprise_router
+    from app.models.auth_user import User
+
+    user_id, requested_org_id = uuid4(), uuid4()
+    user = User(
+        id=user_id,
+        org_id=uuid4(),  # Legacy/default organization is not sufficient authorization.
+        email="cross-tenant-check@example.com",
+        full_name="Cross Tenant Check",
+        auth_provider="otp",
+        role="owner",
+    )
+
+    class Query:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            return user if self.model is User else None
+
+        def limit(self, value):
+            assert value == 2
+            return self
+
+        def all(self):
+            # No OrgMembership exists for the requested organization.
+            return []
+
+    class DB:
+        def query(self, model):
+            return Query(model)
+
+    monkeypatch.setattr(
+        enterprise_router, "decode_access_token",
+        lambda token: {"sub": str(user_id)},
+    )
+    dependency = enterprise_router.require_permission("reports", "view")
+
+    with pytest.raises(HTTPException) as exc:
+        dependency(
+            org_id=str(requested_org_id),
+            authorization="Bearer valid-looking-token",
+            db=DB(),
+        )
+
+    assert exc.value.status_code == 403
+    assert "not a member" in exc.value.detail
+
