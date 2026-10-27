@@ -1,4 +1,11 @@
 """Regression tests for API-key generation, verification, and display masking."""
+from pathlib import Path
+import sys
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from app.services.api_key_engine import (
     API_KEY_PREFIX,
     generate_api_key,
