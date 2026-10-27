@@ -1,7 +1,7 @@
 -- Enforce one membership per user and organization without deleting data.
 -- This intentionally aborts if duplicates exist; operators must review and
 -- resolve those rows explicitly before rerunning the migration.
-DO $
+DO $migration$
 BEGIN
     IF EXISTS (
         SELECT 1
@@ -22,7 +22,7 @@ BEGIN
             'Duplicate org_memberships found; review and resolve duplicates before applying migration 004.';
     END IF;
 END
-$;
+$migration$;
 
 ALTER TABLE org_memberships
     ALTER COLUMN user_id SET NOT NULL,
