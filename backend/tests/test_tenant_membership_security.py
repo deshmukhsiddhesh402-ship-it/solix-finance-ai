@@ -72,3 +72,53 @@ def test_membership_model_declares_user_organization_uniqueness():
     ]
     assert len(constraints) == 1
     assert {column.name for column in constraints[0].columns} == {"user_id", "org_id"}
+
+
+def test_permission_dependency_denies_duplicate_memberships(monkeypatch):
+    from uuid import uuid4
+    import app.routers.enterprise as enterprise_router
+    from app.models.auth_user import User
+
+    user_id, org_id = uuid4(), uuid4()
+    user = User(
+        id=user_id,
+        org_id=org_id,
+        email="tenant-check@example.com",
+        full_name="Tenant Check",
+        auth_provider="otp",
+        role="owner",
+    )
+    duplicate_rows = [
+        OrgMembership(user_id=user_id, org_id=org_id, role="admin"),
+        OrgMembership(user_id=user_id, org_id=org_id, role="auditor"),
+    ]
+
+    class Query:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            return user if self.model is User else None
+
+        def limit(self, value):
+            assert value == 2
+            return self
+
+        def all(self):
+            return duplicate_rows if self.model is OrgMembership else []
+
+    class DB:
+        def query(self, model):
+            return Query(model)
+
+    monkeypatch.setattr(enterprise_router, "decode_access_token", lambda token: {"sub": str(user_id)})
+    dependency = enterprise_router.require_permission("api_keys", "view")
+
+    with pytest.raises(HTTPException) as exc:
+        dependency(org_id=str(org_id), authorization="Bearer test-token", db=DB())
+
+    assert exc.value.status_code == 403
+    assert "ambiguous" in exc.value.detail
