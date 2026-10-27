@@ -176,6 +176,7 @@ class MergeRequest(BaseModel):
 @router.post("/merge")
 def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id: str = Depends(require_permission("reports", "create"))):
     """Merge previously-cleaned sessions (by concatenation) into one dataset."""
+    _purge_expired_cleaned_sessions()
     dfs = []
     try:
         org_uuid = uuid.UUID(str(org_id))
