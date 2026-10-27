@@ -1,7 +1,6 @@
 """Regression tests for tenant membership fail-closed behavior."""
 from pathlib import Path
 import sys
-from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
