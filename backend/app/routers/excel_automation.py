@@ -13,7 +13,7 @@ import pandas as pd
 import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.routers.enterprise import require_permission
 from app.services.excel_automation_engine import (
@@ -170,12 +170,13 @@ def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str 
 
 
 class MergeRequest(BaseModel):
-    session_ids: list[str]
+    session_ids: list[str] = Field(min_length=1, max_length=100)
 
 
 @router.post("/merge")
 def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id: str = Depends(require_permission("reports", "create"))):
     """Merge previously-cleaned sessions (by concatenation) into one dataset."""
+    _purge_expired_cleaned_sessions()
     dfs = []
     try:
         org_uuid = uuid.UUID(str(org_id))

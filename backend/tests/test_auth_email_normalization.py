@@ -49,9 +49,15 @@ def test_otp_verification_uses_normalized_email_for_account_lookup(monkeypatch):
         def first(self):
             if self.model is User:
                 return user
-            if self.model is OrgMembership:
-                return object()
             return None
+
+        def limit(self, value):
+            return self
+
+        def all(self):
+            if self.model is OrgMembership:
+                return [object()]
+            return []
 
     class FakeDB:
         def query(self, model):

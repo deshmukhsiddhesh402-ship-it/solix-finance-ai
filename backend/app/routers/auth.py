@@ -37,7 +37,7 @@ def request_otp(req: OtpRequestBody):
         raise HTTPException(503, detail="OTP delivery is not configured.") from exc
 
     response = {"message": "If the address is eligible, an OTP will be sent."}
-    if settings.ENV.strip().lower() in {"development", "dev"}:
+    if settings.ENV.strip().lower() in {"development", "dev"} and settings.ALLOW_DEV_OTP:
         response["dev_otp"] = otp
     return response
 
@@ -88,13 +88,14 @@ def verify_otp_endpoint(req: OtpVerifyBody, db: Session = Depends(get_db)):
 
     else:
         # Fail closed if a legacy user points at a tenant without a matching membership.
-        membership = (
-            db.query(OrgMembership)
-            .filter(OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id)
-            .first()
+        from app.services.tenant_membership import require_exactly_one_membership
+        membership = require_exactly_one_membership(
+            db.query(OrgMembership).filter(
+                OrgMembership.user_id == user.id, OrgMembership.org_id == user.org_id
+            ),
+            missing_detail="User tenant membership is not configured.",
+            ambiguous_detail="User tenant membership is ambiguous; access is denied.",
         )
-        if membership is None:
-            raise HTTPException(403, detail="User tenant membership is not configured.")
 
     token = create_access_token(subject=str(user.id))
     return {

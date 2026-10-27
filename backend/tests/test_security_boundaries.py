@@ -811,3 +811,94 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_ocr_session_rejects_cross_organization_access():
+    from fastapi import HTTPException
+    import app.routers.invoice_ocr as ocr
+
+    sid = "77777777-7777-4777-8777-777777777777"
+    ocr._EXTRACTED_INVOICES[sid] = {
+        "invoice": {"total_amount": 100},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": 1_900_000_000,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            ocr._get_session(
+                sid,
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "11111111-1111-4111-8111-111111111111",
+            )
+        assert exc.value.status_code == 403
+        assert "organization" in exc.value.detail
+    finally:
+        ocr._EXTRACTED_INVOICES.pop(sid, None)
+
+
+def test_chat_keyword_session_rejects_cross_organization_access():
+    from fastapi import HTTPException
+    import app.routers.chat as chat
+
+    sid = "88888888-8888-4888-8888-888888888888"
+    chat._TFIDF_SESSIONS[sid] = {
+        "filename": "tenant-private.txt",
+        "index": {},
+        "org_id": "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22",
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": 1_900_000_000,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            chat.ask_question(
+                chat.AskRequest(session_id=sid, question="summarize"),
+                org_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                user_id="11111111-1111-4111-8111-111111111111",
+            )
+        assert exc.value.status_code == 403
+        assert "organization" in exc.value.detail
+    finally:
+        chat._TFIDF_SESSIONS.pop(sid, None)
+
+
+
+def test_excel_merge_rejects_expired_cleaned_sessions():
+    import time
+    import pandas as pd
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+
+    sid = "99999999-9999-4999-8999-999999999999"
+    org_id = "6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22"
+    user_id = "11111111-1111-4111-8111-111111111111"
+    excel._CLEANED_FILES[sid] = {
+        "df": pd.DataFrame({"amount": [100]}),
+        "org_id": org_id,
+        "user_id": user_id,
+        "created_at": time.time() - excel.CLEANED_SESSION_TTL_SECONDS - 1,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            excel.merge_cleaned_sessions(
+                excel.MergeRequest(session_ids=[sid]),
+                org_id=org_id,
+                user_id=user_id,
+            )
+        assert exc.value.status_code == 404
+        assert sid not in excel._CLEANED_FILES
+    finally:
+        excel._CLEANED_FILES.pop(sid, None)
+
+
+
+def test_excel_merge_request_bounds_session_count():
+    from pydantic import ValidationError
+    from app.routers.excel_automation import MergeRequest
+
+    with pytest.raises(ValidationError):
+        MergeRequest(session_ids=[])
+    with pytest.raises(ValidationError):
+        MergeRequest(session_ids=["11111111-1111-4111-8111-111111111111"] * 101)
+    assert len(MergeRequest(session_ids=["11111111-1111-4111-8111-111111111111"]).session_ids) == 1

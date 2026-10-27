@@ -194,11 +194,11 @@ CREATE INDEX idx_doc_chunks_embedding ON document_chunks USING ivfflat (embeddin
 -- ---------------------------------------------------------------------
 CREATE TABLE org_memberships (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
-    org_id      UUID REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     role        VARCHAR(20) NOT NULL DEFAULT 'accountant', -- admin, accountant, auditor
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (user_id, org_id)
+    CONSTRAINT uq_org_memberships_user_org UNIQUE (user_id, org_id)
 );
 
 CREATE TABLE audit_logs (
