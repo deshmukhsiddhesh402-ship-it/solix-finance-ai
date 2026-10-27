@@ -84,6 +84,14 @@ def test_otp_verify_rejects_existing_user_without_tenant_membership(monkeypatch)
                 return user
             return None
 
+        def limit(self, value):
+            self.limit_value = value
+            return self
+
+        def all(self):
+            # This test models a user with no organization membership.
+            return []
+
     class FakeDB:
         def query(self, model):
             return FakeQuery(model)
