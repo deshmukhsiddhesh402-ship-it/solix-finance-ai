@@ -17,6 +17,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ detail: "Unsupported simulator action." }, { status: 400 });
   }
 
+  const contentType = req.headers.get("content-type") || "";
+  if (!/^application\\/json(?:\\s*;|\\s*$)/i.test(contentType)) {
+    return NextResponse.json({ detail: "Request content type must be application/json." }, { status: 415 });
+  }
+
   let rawBody: string;
   try {
     const body = await req.arrayBuffer();
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
+    const response = await fetch(BACKEND_URL + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
