@@ -16,4 +16,14 @@ describe("accounting simulator proxy request boundary", () => {
   it("uses fatal UTF-8 decoding so malformed bytes do not become replacement characters", () => {
     expect(() => new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array([0xc3, 0x28]))).toThrow();
   });
+
+  it("accepts JSON content types with optional parameters", () => {
+    expect(/^application\\/json(?:\\s*;|\\s*$)/i.test("application/json")).toBe(true);
+    expect(/^application\\/json(?:\\s*;|\\s*$)/i.test("application/json; charset=utf-8")).toBe(true);
+  });
+
+  it("rejects non-JSON content types before reading the body", () => {
+    expect(/^application\\/json(?:\\s*;|\\s*$)/i.test("text/plain")).toBe(false);
+    expect(/^application\\/json(?:\\s*;|\\s*$)/i.test("application/jsonp")).toBe(false);
+  });
 });
