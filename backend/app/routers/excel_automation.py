@@ -13,7 +13,7 @@ import pandas as pd
 import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.routers.enterprise import require_permission
 from app.services.excel_automation_engine import (
@@ -170,7 +170,7 @@ def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str 
 
 
 class MergeRequest(BaseModel):
-    session_ids: list[str]
+    session_ids: list[str] = Field(min_length=1, max_length=100)
 
 
 @router.post("/merge")
