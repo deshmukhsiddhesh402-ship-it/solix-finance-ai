@@ -1,5 +1,6 @@
 """Regression tests for bounded API-key listing."""
 
+from inspect import signature
 from pathlib import Path
 import sys
 from uuid import uuid4
@@ -45,9 +46,14 @@ class FakeDB:
 def test_api_key_listing_applies_default_limit_and_ordering():
     org_id = uuid4()
     query = FakeQuery()
-    response = list_api_keys(org_id=str(org_id), db=FakeDB(query), _user=str(uuid4()))
+    limit_parameter = signature(list_api_keys).parameters["limit"].default
+    default_limit = limit_parameter.default
+    response = list_api_keys(
+        org_id=str(org_id), limit=default_limit, db=FakeDB(query), _user=str(uuid4())
+    )
 
     assert response == {"keys": []}
+    assert default_limit == 50
     assert query.limit_value == 50
     assert query.ordered
 
