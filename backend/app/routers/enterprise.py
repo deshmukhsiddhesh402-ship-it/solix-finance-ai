@@ -208,13 +208,21 @@ def create_api_key(
 
 @router.get("/api-keys")
 def list_api_keys(
-    org_id: str = Query(...), db: Session = Depends(get_db),
+    org_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
     _user: str = Depends(require_permission("api_keys", "view")),
 ):
     from app.models.enterprise import ApiKey
 
     org_uuid = _parse_uuid(org_id, "organization identifier")
-    rows = db.query(ApiKey).filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False).all()  # noqa: E712
+    rows = (
+        db.query(ApiKey)
+        .filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False)  # noqa: E712
+        .order_by(ApiKey.created_at.desc())
+        .limit(limit)
+        .all()
+    )
     return {"keys": [
         {"id": str(r.id), "name": r.name, "masked_key": r.key_prefix_display,
          "created_at": r.created_at.isoformat() if r.created_at else None,
