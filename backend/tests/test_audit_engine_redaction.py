@@ -61,20 +61,22 @@ def test_private_keys_cookies_and_bearer_values_are_redacted():
         None,
         {
             "private_key": "private-material",
+            "privateKey": "camel-private-material",
             "cookie": "session=secret",
             "bearer": "bearer-secret",
         },
     )
-    for field in ("private_key", "cookie", "bearer"):
+    for field in ("private_key", "privateKey", "cookie", "bearer"):
         assert changes[field]["after"] == "[REDACTED]"
 
 
 def test_sensitive_fields_inside_tuples_are_redacted_recursively():
     changes = diff_fields(
         None,
-        {"metadata": ({"session_token": "secret-session"}, {"private_key": "private-material"})},
+        {"metadata": ({"session_token": "secret-session"}, {"private_key": "private-material", "privateKey": "camel-private-material"})},
     )
     nested = changes["metadata"]["after"]
     assert isinstance(nested, tuple)
     assert nested[0]["session_token"] == "[REDACTED]"
     assert nested[1]["private_key"] == "[REDACTED]"
+    assert nested[1]["privateKey"] == "[REDACTED]"
