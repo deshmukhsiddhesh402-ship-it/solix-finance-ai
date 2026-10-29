@@ -26,6 +26,7 @@ import pandas as pd
 GSTIN_PATTERN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
 
 GSTIN_CHECKSUM_CODEPOINTS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+MAX_PDF_PAGE_PIXELS = 25_000_000
 
 
 def is_valid_gstin_format(gstin: str) -> bool:
@@ -72,7 +73,21 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -
     zoom = dpi / 72  # PDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
     try:
-        for page in list(doc)[:max_pages]:
+        for page_number, page in enumerate(doc):
+            if page_number >= max_pages:
+                break
+            width_px = page.rect.width * zoom
+            height_px = page.rect.height * zoom
+            pixel_count = width_px * height_px
+            if (
+                not math.isfinite(width_px)
+                or not math.isfinite(height_px)
+                or width_px <= 0
+                or height_px <= 0
+                or not math.isfinite(pixel_count)
+                or pixel_count > MAX_PDF_PAGE_PIXELS
+            ):
+                raise ValueError("PDF page dimensions exceed the safe rasterization limit.")
             pix = page.get_pixmap(matrix=matrix)
             images.append(pix.tobytes("png"))
         return images
