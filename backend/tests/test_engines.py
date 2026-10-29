@@ -102,3 +102,9 @@ def test_wdv_schedule_rejects_excessive_years():
     import pytest
     with pytest.raises(ValueError, match="between 1 and 100"):
         wdv_depreciation_schedule(cost=100000, rate_pct=20, years=101)
+
+
+def test_straight_line_depreciation_rejects_excessive_years():
+    import pytest
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        straight_line_depreciation(cost=100000, salvage=10000, useful_life_years=101)
