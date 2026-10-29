@@ -10,8 +10,8 @@ from app.services.invoice_ocr_engine import invoice_to_journal_lines
 
 
 @pytest.mark.parametrize("invoice", [
-    {"taxable_value": [], "total_amount": 0},
-    {"taxable_value": 100, "cgst_amount": {}, "total_amount": 100},
+    {"taxable_value": [100], "total_amount": 0},
+    {"taxable_value": 100, "cgst_amount": {"bad": 1}, "total_amount": 100},
     None,
 ])
 def test_invoice_journal_conversion_rejects_malformed_amount_data(invoice):
