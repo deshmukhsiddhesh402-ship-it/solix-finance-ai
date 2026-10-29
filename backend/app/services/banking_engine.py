@@ -43,17 +43,17 @@ def reconcile(
     # Track unmatched objects by identity rather than repeatedly building a
     # potentially huge candidates list. With thousands of same-day transactions,
     # the old list comprehension could allocate millions of references at once.
-    unmatched_book_ids = {id(line) for line in book_lines}
-    matched_bank_ids = set()
+    unmatched_book_indices = set(range(len(book_lines)))
+    matched_bank_indices = set()
     matched = []
 
-    for bl in bank_lines:
+    for bank_index, bl in enumerate(bank_lines):
         # A bank credit corresponds to a book credit (money received);
         # a bank debit corresponds to a book debit (money paid out).
-        best = None
+        best_index = None
         best_day_gap = None
-        for bk in book_lines:
-            if id(bk) not in unmatched_book_ids or bk.txn_type != bl.txn_type:
+        for book_index, bk in enumerate(book_lines):
+            if book_index not in unmatched_book_indices or bk.txn_type != bl.txn_type:
                 continue
             if abs(bk.amount - bl.amount) >= 0.01:
                 continue
@@ -62,20 +62,21 @@ def reconcile(
                 continue
             # Strictly less preserves the original first-match tie behavior.
             if best_day_gap is None or day_gap < best_day_gap:
-                best = bk
+                best_index = book_index
                 best_day_gap = day_gap
 
-        if best is not None:
+        if best_index is not None:
+            best = book_lines[best_index]
             matched.append({
                 "bank_id": bl.id, "book_id": best.id, "amount": bl.amount,
                 "txn_type": bl.txn_type, "bank_date": bl.txn_date.isoformat(),
                 "book_date": best.txn_date.isoformat(),
             })
-            matched_bank_ids.add(id(bl))
-            unmatched_book_ids.remove(id(best))
+            matched_bank_indices.add(bank_index)
+            unmatched_book_indices.remove(best_index)
 
-    unmatched_bank = [line for line in bank_lines if id(line) not in matched_bank_ids]
-    unmatched_book = [line for line in book_lines if id(line) in unmatched_book_ids]
+    unmatched_bank = [line for index, line in enumerate(bank_lines) if index not in matched_bank_indices]
+    unmatched_book = [line for index, line in enumerate(book_lines) if index in unmatched_book_indices]
 
     # Classify remaining unmatched book lines.
     outstanding_cheques = [b for b in unmatched_book if b.txn_type == "debit"]
