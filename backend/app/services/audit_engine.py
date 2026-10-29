@@ -36,8 +36,7 @@ def _audit_value(field_name: str, value):
     if isinstance(value, dict):
         return {key: _audit_value(str(key), nested) for key, nested in value.items()}
     if isinstance(value, list):
-        return [_audit_value("", item) if not isinstance(item, dict)
-                else _audit_value("", item) for item in value]
+        return [_audit_value("", item) for item in value]
     return value
 
 
