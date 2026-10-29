@@ -22,6 +22,24 @@ class AuditEntry:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+_SENSITIVE_FIELD_MARKERS = (
+    "password", "secret", "token", "api_key", "apikey",
+    "authorization", "credential", "otp",
+)
+
+
+def _audit_value(field_name: str, value):
+    """Redact sensitive fields recursively before values enter audit diffs."""
+    normalized = str(field_name).casefold().replace("-", "_")
+    if any(marker in normalized for marker in _SENSITIVE_FIELD_MARKERS):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {key: _audit_value(str(key), nested) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_audit_value("", item) for item in value]
+    return value
+
+
 def diff_fields(before: dict | None, after: dict | None) -> dict:
     """Compute field-level changes between two snapshots of a record.
     - before=None means a new record was created (all fields are "added").
@@ -33,9 +51,15 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
     if before is None and after is None:
         return {}
     if before is None:
-        return {k: {"before": None, "after": v} for k, v in (after or {}).items()}
+        return {
+            k: {"before": None, "after": _audit_value(k, v)}
+            for k, v in (after or {}).items()
+        }
     if after is None:
-        return {k: {"before": v, "after": None} for k, v in (before or {}).items()}
+        return {
+            k: {"before": _audit_value(k, v), "after": None}
+            for k, v in (before or {}).items()
+        }
 
     changed = {}
     all_keys = set(before) | set(after)
@@ -43,7 +67,10 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
         old_val = before.get(key)
         new_val = after.get(key)
         if old_val != new_val:
-            changed[key] = {"before": old_val, "after": new_val}
+            changed[key] = {
+                "before": _audit_value(key, old_val),
+                "after": _audit_value(key, new_val),
+            }
     return changed
 
 
