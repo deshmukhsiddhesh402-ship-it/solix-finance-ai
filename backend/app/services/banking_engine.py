@@ -106,6 +106,14 @@ def reconcile(
     total_deposits_not_credited = sum(b.amount for b in deposits_not_credited)
     total_bank_only_credits = sum(b.amount for b in bank_only_items if b.txn_type == "credit")
     total_bank_only_debits = sum(b.amount for b in bank_only_items if b.txn_type == "debit")
+    for total, label in (
+        (total_outstanding_cheques, "outstanding cheque total"),
+        (total_deposits_not_credited, "deposits-not-credited total"),
+        (total_bank_only_credits, "bank-only credit total"),
+        (total_bank_only_debits, "bank-only debit total"),
+    ):
+        if not math.isfinite(total):
+            raise ValueError(f"Reconciliation {label} must be finite.")
 
     return {
         "matched_count": len(matched),
@@ -149,4 +157,7 @@ def reconciled_balance(
             raise ValueError(f"{label} must be a finite number.")
     if outstanding_cheques_total < 0 or deposits_not_credited_total < 0:
         raise ValueError("Reconciliation adjustment totals cannot be negative.")
-    return round(balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total, 2)
+    result = balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total
+    if not math.isfinite(result):
+        raise ValueError("Reconciled balance must be finite.")
+    return round(result, 2)
