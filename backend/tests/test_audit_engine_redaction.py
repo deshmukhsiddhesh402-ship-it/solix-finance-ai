@@ -41,6 +41,7 @@ def test_sensitive_fields_are_redacted_on_create_and_delete():
 def test_unchanged_sensitive_fields_are_not_added_to_diff():
     assert diff_fields({"secret": "same"}, {"secret": "same"}) == {}
 
+
 def test_nested_sensitive_fields_are_redacted_recursively():
     changes = diff_fields(
         {"metadata": {"api_key": "old-key", "profile": [{"clientSecret": "old-secret"}]}},
@@ -53,3 +54,27 @@ def test_nested_sensitive_fields_are_redacted_recursively():
     assert after["api_key"] == "[REDACTED]"
     assert before["profile"][0]["clientSecret"] == "[REDACTED]"
     assert after["profile"][0]["clientSecret"] == "[REDACTED]"
+
+
+def test_private_keys_cookies_and_bearer_values_are_redacted():
+    changes = diff_fields(
+        None,
+        {
+            "private_key": "private-material",
+            "cookie": "session=secret",
+            "bearer": "bearer-secret",
+        },
+    )
+    for field in ("private_key", "cookie", "bearer"):
+        assert changes[field]["after"] == "[REDACTED]"
+
+
+def test_sensitive_fields_inside_tuples_are_redacted_recursively():
+    changes = diff_fields(
+        None,
+        {"metadata": ({"session_token": "secret-session"}, {"private_key": "private-material"})},
+    )
+    nested = changes["metadata"]["after"]
+    assert isinstance(nested, tuple)
+    assert nested[0]["session_token"] == "[REDACTED]"
+    assert nested[1]["private_key"] == "[REDACTED]"
