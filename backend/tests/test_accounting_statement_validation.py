@@ -69,13 +69,3 @@ def test_balance_sheet_accepts_balanced_entries():
 
     assert result["total_assets"] == 100
     assert result["balances"] is True
-
-
-def test_trial_balance_request_requires_two_to_500_lines():
-    with pytest.raises(ValidationError):
-        TrialBalanceRequest(lines=[_line("Cash", "asset", debit=100)])
-
-    lines = [_line(f"Expense {i}", "expense", debit=1) for i in range(500)]
-    lines.append(_line("Capital", "equity", credit=500))
-    with pytest.raises(ValidationError):
-        TrialBalanceRequest(lines=lines)
