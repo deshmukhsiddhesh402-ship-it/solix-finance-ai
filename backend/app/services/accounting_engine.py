@@ -185,6 +185,12 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
     """
     if method not in {"FIFO", "LIFO", "WAVG"}:
         raise ValueError("Unsupported inventory valuation method.")
+    if not isinstance(txns, list):
+        raise ValueError("Inventory transactions must be a list.")
+    if len(txns) > 1000:
+        raise ValueError("Inventory valuation is limited to 1000 transactions.")
+    if any(not isinstance(txn, InventoryTxn) for txn in txns):
+        raise ValueError("Inventory transactions must be InventoryTxn objects.")
 
     lots = []  # list of [qty, unit_cost] — order matters for FIFO/LIFO
     cogs = 0.0
@@ -192,8 +198,11 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
     for txn in txns:
         if txn.txn_type not in {"purchase", "sale"}:
             raise ValueError("Inventory transaction type must be purchase or sale.")
-        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
-            raise ValueError("Inventory quantity and unit cost must be finite.")
+        if any(
+            not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
+            for value in (txn.quantity, txn.unit_cost)
+        ):
+            raise ValueError("Inventory quantity and unit cost must be finite numbers.")
         if txn.quantity <= 0 or txn.unit_cost < 0:
             raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
 
