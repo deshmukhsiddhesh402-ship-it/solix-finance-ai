@@ -49,9 +49,25 @@ class GstInvoiceLine:
 def gstr3b_summary(lines: list[GstInvoiceLine], input_tax_credit: float = 0.0) -> dict:
     """Aggregate outward supplies into a GSTR-3B-style summary with ITC set-off."""
     _require_finite_non_negative(input_tax_credit, "input_tax_credit")
-    total_taxable = sum(l.taxable_value for l in lines)
-    total_tax = sum(calculate_gst(l.taxable_value, l.gst_rate_pct, l.is_interstate)["total_tax"] for l in lines)
+    if not isinstance(lines, list):
+        raise ValueError("lines must be a list of GST invoice lines.")
+
+    total_taxable = 0.0
+    total_tax = 0.0
+    for line in lines:
+        if not isinstance(line, GstInvoiceLine):
+            raise ValueError("Each GST summary line must be a GstInvoiceLine.")
+        calculated = calculate_gst(
+            line.taxable_value, line.gst_rate_pct, line.is_interstate
+        )
+        total_taxable += line.taxable_value
+        total_tax += calculated["total_tax"]
+        if not math.isfinite(total_taxable) or not math.isfinite(total_tax):
+            raise ValueError("GST summary totals exceed the supported numeric range.")
+
     net_payable = max(0.0, round(total_tax - input_tax_credit, 2))
+    if not math.isfinite(net_payable):
+        raise ValueError("Net GST payable must be finite.")
     return {
         "total_taxable_value": round(total_taxable, 2),
         "total_output_tax": round(total_tax, 2),
