@@ -55,7 +55,7 @@ def reconcile(
         for book_index, bk in enumerate(book_lines):
             if book_index not in unmatched_book_indices or bk.txn_type != bl.txn_type:
                 continue
-            if abs(bk.amount - bl.amount) >= 0.01:
+            if not abs(bk.amount - bl.amount) < 0.01:
                 continue
             day_gap = abs((bk.txn_date - bl.txn_date).days)
             if day_gap > date_window_days:
