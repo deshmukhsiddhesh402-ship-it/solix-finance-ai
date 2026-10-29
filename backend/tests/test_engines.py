@@ -96,3 +96,9 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+
+def test_wdv_schedule_rejects_excessive_years():
+    import pytest
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        wdv_depreciation_schedule(cost=100000, rate_pct=20, years=101)
