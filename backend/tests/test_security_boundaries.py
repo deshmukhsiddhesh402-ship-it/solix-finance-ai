@@ -837,7 +837,7 @@ def test_enterprise_permission_denies_user_without_requested_org_membership(monk
                 }
                 assert actual == {
                     "user_id": user_id,
-                    "org_id": uuid.UUID("22222222-2222-4222-8222-222222222222"),
+                    "org_id": UUID("22222222-2222-4222-8222-222222222222"),
                 }
             return self
 
