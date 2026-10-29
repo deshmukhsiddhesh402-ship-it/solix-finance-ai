@@ -29,10 +29,15 @@ _SENSITIVE_FIELD_MARKERS = (
 
 
 def _audit_value(field_name: str, value):
-    """Avoid persisting credentials and authentication secrets in audit diffs."""
-    normalized = field_name.casefold().replace("-", "_")
+    """Redact sensitive fields recursively before values enter audit diffs."""
+    normalized = str(field_name).casefold().replace("-", "_")
     if any(marker in normalized for marker in _SENSITIVE_FIELD_MARKERS):
         return "[REDACTED]"
+    if isinstance(value, dict):
+        return {key: _audit_value(str(key), nested) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_audit_value("", item) if not isinstance(item, dict)
+                else _audit_value("", item) for item in value]
     return value
 
 
