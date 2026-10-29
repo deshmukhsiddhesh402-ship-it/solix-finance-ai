@@ -125,11 +125,17 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
         Cr Vendor (Accounts Payable) (total amount)
     Rounds to 2dp and asserts the entry balances before returning it.
     """
-    taxable = round(float(invoice.get("taxable_value") or 0), 2)
-    cgst = round(float(invoice.get("cgst_amount") or 0), 2)
-    sgst = round(float(invoice.get("sgst_amount") or 0), 2)
-    igst = round(float(invoice.get("igst_amount") or 0), 2)
-    total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+    if not isinstance(invoice, dict):
+        raise ValueError("Invoice data must be an object.")
+
+    try:
+        taxable = round(float(invoice.get("taxable_value") or 0), 2)
+        cgst = round(float(invoice.get("cgst_amount") or 0), 2)
+        sgst = round(float(invoice.get("sgst_amount") or 0), 2)
+        igst = round(float(invoice.get("igst_amount") or 0), 2)
+        total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Invoice amounts must be numeric values.") from exc
 
     values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
     if not all(math.isfinite(v) for v in values.values()):
