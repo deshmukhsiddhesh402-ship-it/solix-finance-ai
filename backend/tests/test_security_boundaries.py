@@ -811,3 +811,29 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+def test_excel_merge_rejects_expired_session():
+    from fastapi import HTTPException
+    import app.routers.excel_automation as excel
+
+    session_id = "77777777-7777-4777-8777-777777777777"
+    org_id = "22222222-2222-4222-8222-222222222222"
+    user_id = "11111111-1111-4111-8111-111111111111"
+    excel._CLEANED_FILES[session_id] = {
+        "df": None,
+        "org_id": org_id,
+        "user_id": user_id,
+        "created_at": 100,
+    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            excel.merge_cleaned_sessions(
+                excel.MergeRequest(session_ids=[session_id]),
+                org_id=org_id,
+                user_id=user_id,
+            )
+        assert exc.value.status_code == 404
+        assert session_id not in excel._CLEANED_FILES
+    finally:
+        excel._CLEANED_FILES.pop(session_id, None)
