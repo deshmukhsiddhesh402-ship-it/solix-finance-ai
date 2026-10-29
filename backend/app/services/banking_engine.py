@@ -16,6 +16,14 @@ from datetime import date, timedelta
 from typing import Literal
 
 
+def _is_finite_number(value: int | float) -> bool:
+    """Check numeric finiteness without leaking OverflowError for huge integers."""
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 @dataclass
 class BankLine:
     id: str
@@ -52,7 +60,7 @@ def _validate_lines(lines: list, label: str, *, bank_side: bool) -> None:
             raise ValueError(f"{label} transaction dates must be dates.")
         if not isinstance(line.description, str) or len(line.description) > 1000:
             raise ValueError(f"{label} descriptions must be strings of at most 1000 characters.")
-        if not isinstance(line.amount, (int, float)) or isinstance(line.amount, bool) or not math.isfinite(line.amount):
+        if not isinstance(line.amount, (int, float)) or isinstance(line.amount, bool) or not _is_finite_number(line.amount):
             raise ValueError(f"{label} amounts must be finite numbers.")
         if line.amount < 0:
             raise ValueError(f"{label} amounts cannot be negative.")
@@ -112,7 +120,7 @@ def reconcile(
         (total_bank_only_credits, "bank-only credit total"),
         (total_bank_only_debits, "bank-only debit total"),
     ):
-        if not math.isfinite(total):
+        if not _is_finite_number(total):
             raise ValueError(f"Reconciliation {label} must be finite.")
 
     return {
@@ -153,11 +161,11 @@ def reconciled_balance(
         (outstanding_cheques_total, "outstanding_cheques_total"),
         (deposits_not_credited_total, "deposits_not_credited_total"),
     ):
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not _is_finite_number(value):
             raise ValueError(f"{label} must be a finite number.")
     if outstanding_cheques_total < 0 or deposits_not_credited_total < 0:
         raise ValueError("Reconciliation adjustment totals cannot be negative.")
     result = balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total
-    if not math.isfinite(result):
+    if not _is_finite_number(result):
         raise ValueError("Reconciled balance must be finite.")
     return round(result, 2)

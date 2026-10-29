@@ -19,3 +19,16 @@ def test_reconcile_rejects_overflowing_unmatched_book_total():
 def test_reconciled_balance_rejects_overflowing_result():
     with pytest.raises(ValueError, match="Reconciled balance must be finite"):
         reconciled_balance(1e308, 1e308, 1e308)
+
+
+def test_reconcile_rejects_integer_too_large_for_float_conversion():
+    huge_integer = 10 ** 10000
+    lines = [BookLine("huge", date(2026, 10, 29), "Huge amount", huge_integer, "debit")]
+
+    with pytest.raises(ValueError, match="amounts must be finite numbers"):
+        reconcile([], lines)
+
+
+def test_reconciled_balance_rejects_integer_too_large_for_float_conversion():
+    with pytest.raises(ValueError, match="balance_as_per_bank must be a finite number"):
+        reconciled_balance(10 ** 10000, 0, 0)
