@@ -80,7 +80,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         raise HTTPException(400, detail="Invoice file content does not match its file type.")
     if extension == "pdf":
         try:
-            images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
+            images = pdf_pages_to_images(file_bytes, max_pages=1)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
