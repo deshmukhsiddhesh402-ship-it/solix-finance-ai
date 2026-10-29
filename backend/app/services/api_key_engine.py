@@ -6,6 +6,7 @@ its SHA-256 hash is stored, so a database breach doesn't leak usable keys.
 """
 import secrets
 import hashlib
+import re
 
 API_KEY_PREFIX = "solix_"
 
@@ -24,7 +25,11 @@ def hash_api_key(plaintext_key: str) -> str:
 
 
 def verify_api_key(plaintext_key: str, stored_hash: str) -> bool:
-    """Constant-time comparison to avoid timing-attack leakage of the hash."""
+    """Fail closed for malformed keys/hashes and compare valid digests in constant time."""
+    if not isinstance(plaintext_key, str) or not plaintext_key.startswith(API_KEY_PREFIX):
+        return False
+    if not isinstance(stored_hash, str) or re.fullmatch(r"[0-9a-f]{64}", stored_hash) is None:
+        return False
     return secrets.compare_digest(hash_api_key(plaintext_key), stored_hash)
 
 
