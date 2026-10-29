@@ -828,6 +828,17 @@ def test_enterprise_permission_denies_user_without_requested_org_membership(monk
             self.model = model
 
         def filter(self, *criteria):
+            if self.model.__name__ == "OrgMembership":
+                actual = {
+                    criterion.left.key: criterion.right.value
+                    for criterion in criteria
+                    if hasattr(criterion, "left") and hasattr(criterion.left, "key")
+                    and hasattr(criterion, "right") and hasattr(criterion.right, "value")
+                }
+                assert actual == {
+                    "user_id": user_id,
+                    "org_id": uuid.UUID("22222222-2222-4222-8222-222222222222"),
+                }
             return self
 
         def first(self):
@@ -864,6 +875,14 @@ def test_enterprise_permission_enforces_membership_role_not_global_user_role(mon
             self.model = model
 
         def filter(self, *criteria):
+            if self.model is OrgMembership:
+                actual = {
+                    criterion.left.key: criterion.right.value
+                    for criterion in criteria
+                    if hasattr(criterion, "left") and hasattr(criterion.left, "key")
+                    and hasattr(criterion, "right") and hasattr(criterion.right, "value")
+                }
+                assert actual == {"user_id": user_id, "org_id": org_id}
             return self
 
         def first(self):
