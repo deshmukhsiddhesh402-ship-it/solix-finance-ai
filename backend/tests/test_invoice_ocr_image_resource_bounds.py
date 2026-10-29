@@ -1,8 +1,6 @@
 """Regression tests for decoded image pixel limits."""
 import os
 import sys
-from contextlib import nullcontext
-
 import pytest
 from fastapi import HTTPException
 
