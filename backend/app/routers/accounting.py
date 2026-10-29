@@ -127,7 +127,8 @@ def create_journal_entry(
 
 
 class TrialBalanceRequest(BaseModel):
-    lines: list[LedgerLineIn]
+    # These stateless calculation endpoints accept caller-supplied data; cap work per request.
+    lines: list[LedgerLineIn] = Field(max_length=500)
 
 
 @router.post("/trial-balance")
@@ -227,7 +228,8 @@ class InventoryTxnIn(BaseModel):
 
 
 class InventoryValuationRequest(BaseModel):
-    txns: list[InventoryTxnIn]
+    # Bound inventory costing work; FIFO/LIFO may process lots iteratively.
+    txns: list[InventoryTxnIn] = Field(max_length=1000)
     method: Literal["FIFO", "LIFO", "WAVG"]
 
 
