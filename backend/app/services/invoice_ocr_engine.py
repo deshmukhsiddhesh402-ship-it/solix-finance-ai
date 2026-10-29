@@ -125,11 +125,28 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
         Cr Vendor (Accounts Payable) (total amount)
     Rounds to 2dp and asserts the entry balances before returning it.
     """
-    taxable = round(float(invoice.get("taxable_value") or 0), 2)
-    cgst = round(float(invoice.get("cgst_amount") or 0), 2)
-    sgst = round(float(invoice.get("sgst_amount") or 0), 2)
-    igst = round(float(invoice.get("igst_amount") or 0), 2)
-    total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+    if not isinstance(invoice, dict):
+        raise ValueError("Invoice data must be an object.")
+
+    def parse_amount(field_name: str, default: float = 0.0) -> float:
+        raw_value = invoice.get(field_name)
+        if raw_value is None or raw_value == "":
+            return default
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float, str)):
+            raise ValueError(f"{field_name} must be a numeric value.")
+        try:
+            parsed = float(raw_value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{field_name} must be a numeric value.") from exc
+        if not math.isfinite(parsed):
+            raise ValueError(f"{field_name} must be finite.")
+        return round(parsed, 2)
+
+    taxable = parse_amount("taxable_value")
+    cgst = parse_amount("cgst_amount")
+    sgst = parse_amount("sgst_amount")
+    igst = parse_amount("igst_amount")
+    total = parse_amount("total_amount", round(taxable + cgst + sgst + igst, 2))
 
     values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
     if not all(math.isfinite(v) for v in values.values()):
