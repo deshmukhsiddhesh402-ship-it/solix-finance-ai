@@ -20,7 +20,10 @@ class GstRequest(BaseModel):
 
 @router.post("/gst/calculate")
 def gst_calculate(req: GstRequest):
-    return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    try:
+        return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
 
 
 class GstInvoiceLineIn(BaseModel):
@@ -61,4 +64,7 @@ class IncomeTaxRequest(BaseModel):
 
 @router.post("/income-tax/new-regime")
 def income_tax_new_regime(req: IncomeTaxRequest):
-    return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    try:
+        return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
