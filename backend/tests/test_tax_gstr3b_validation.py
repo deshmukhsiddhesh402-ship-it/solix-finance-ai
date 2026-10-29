@@ -16,8 +16,8 @@ def test_gstr3b_summary_rejects_non_invoice_line_objects():
 
 def test_gstr3b_summary_rejects_non_finite_aggregate():
     lines = [
-        GstInvoiceLine(taxable_value=8e307, gst_rate_pct=0, is_interstate=True),
-        GstInvoiceLine(taxable_value=8e307, gst_rate_pct=0, is_interstate=True),
+        GstInvoiceLine(taxable_value=9e307, gst_rate_pct=0, is_interstate=True),
+        GstInvoiceLine(taxable_value=9e307, gst_rate_pct=0, is_interstate=True),
     ]
 
     with pytest.raises(ValueError, match="numeric range"):
