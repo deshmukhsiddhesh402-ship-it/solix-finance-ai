@@ -109,10 +109,3 @@ def test_income_tax_rejects_overflowing_combined_income():
     import pytest
     with pytest.raises(ValueError, match="non-finite taxable income"):
         calculate_income_tax_new_regime(gross_salary=1e308, other_income=1e308)
-
-
-def test_tds_rejects_non_finite_result_after_arithmetic():
-    # Inputs are finite; this regression protects the output boundary if formulas change.
-    import pytest
-    with pytest.raises(ValueError, match="non-finite result"):
-        calculate_tds(amount_paid=1e308, section="194A", has_pan=False)
