@@ -127,7 +127,8 @@ def create_journal_entry(
 
 
 class TrialBalanceRequest(BaseModel):
-    lines: list[LedgerLineIn]
+    # Bound work per request and require enough lines for a meaningful ledger.
+    lines: list[LedgerLineIn] = Field(min_length=2, max_length=500)
 
 
 @router.post("/trial-balance")
@@ -143,6 +144,8 @@ def trial_balance(req: TrialBalanceRequest):
 def profit_and_loss(req: TrialBalanceRequest):
     lines = [LedgerLine(**l.dict()) for l in req.lines]
     tb = build_trial_balance(lines)
+    if not tb["is_balanced"]:
+        raise HTTPException(422, detail="Books do not balance — profit and loss cannot be prepared from unbalanced entries.")
     return build_profit_and_loss(tb["rows"])
 
 
@@ -150,6 +153,8 @@ def profit_and_loss(req: TrialBalanceRequest):
 def balance_sheet(req: TrialBalanceRequest):
     lines = [LedgerLine(**l.dict()) for l in req.lines]
     tb = build_trial_balance(lines)
+    if not tb["is_balanced"]:
+        raise HTTPException(422, detail="Books do not balance — balance sheet cannot be prepared from unbalanced entries.")
     pnl = build_profit_and_loss(tb["rows"])
     return build_balance_sheet(tb["rows"], pnl["net_profit"])
 
