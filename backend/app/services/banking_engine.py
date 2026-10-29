@@ -12,7 +12,7 @@ surfaced as either:
 """
 from dataclasses import dataclass, field
 import math
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 
@@ -56,15 +56,15 @@ def _validate_lines(lines: list, label: str, *, bank_side: bool) -> None:
         if line.id in seen_ids:
             raise ValueError(f"{label} line identifiers must be unique.")
         seen_ids.add(line.id)
-        if not isinstance(line.txn_date, date):
-            raise ValueError(f"{label} transaction dates must be dates.")
+        if not isinstance(line.txn_date, date) or isinstance(line.txn_date, datetime):
+            raise ValueError(f"{label} transaction dates must be dates, not datetimes.")
         if not isinstance(line.description, str) or len(line.description) > 1000:
             raise ValueError(f"{label} descriptions must be strings of at most 1000 characters.")
         if not isinstance(line.amount, (int, float)) or isinstance(line.amount, bool) or not _is_finite_number(line.amount):
             raise ValueError(f"{label} amounts must be finite numbers.")
         if line.amount < 0:
             raise ValueError(f"{label} amounts cannot be negative.")
-        if line.txn_type not in {"credit", "debit"}:
+        if not isinstance(line.txn_type, str) or line.txn_type not in {"credit", "debit"}:
             raise ValueError(f"{label} transaction type must be credit or debit.")
         if bank_side and (not isinstance(line.mode, str) or len(line.mode) > 40):
             raise ValueError("Bank transaction mode must be a string of at most 40 characters.")

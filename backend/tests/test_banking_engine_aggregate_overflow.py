@@ -32,3 +32,17 @@ def test_reconcile_rejects_integer_too_large_for_float_conversion():
 def test_reconciled_balance_rejects_integer_too_large_for_float_conversion():
     with pytest.raises(ValueError, match="balance_as_per_bank must be a finite number"):
         reconciled_balance(10 ** 10000, 0, 0)
+
+
+def test_reconcile_rejects_datetime_instead_of_date():
+    from datetime import datetime
+
+    line = BookLine("datetime", datetime(2026, 10, 29, 12, 0), "Payment", 10, "debit")
+    with pytest.raises(ValueError, match="dates, not datetimes"):
+        reconcile([], [line])
+
+
+def test_reconcile_rejects_unhashable_transaction_type():
+    line = BookLine("bad-type", date(2026, 10, 29), "Payment", 10, [])
+    with pytest.raises(ValueError, match="transaction type must be credit or debit"):
+        reconcile([], [line])
