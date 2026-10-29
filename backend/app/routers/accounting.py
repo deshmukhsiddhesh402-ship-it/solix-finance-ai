@@ -180,7 +180,7 @@ def ratios(req: RatiosRequest):
 class StraightLineRequest(BaseModel):
     cost: float = Field(ge=0)
     salvage: float = Field(ge=0)
-    useful_life_years: int = Field(ge=1)
+    useful_life_years: int = Field(ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_inputs(self):
