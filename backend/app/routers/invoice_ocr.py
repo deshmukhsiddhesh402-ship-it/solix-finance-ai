@@ -69,7 +69,9 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
+    # Read at most one byte beyond the limit so oversized uploads are rejected
+    # without buffering an attacker-controlled file in full.
+    file_bytes = await file.read(MAX_INVOICE_BYTES + 1)
     lower = (file.filename or "").lower()
     if len(file_bytes) > MAX_INVOICE_BYTES:
         raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
