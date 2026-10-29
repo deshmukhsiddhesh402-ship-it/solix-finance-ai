@@ -3,6 +3,7 @@ import json, re, uuid, io, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from PIL import Image, UnidentifiedImageError
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
@@ -14,6 +15,7 @@ OCR_SESSION_TTL_SECONDS = 30 * 60
 IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
 MAX_PDF_PAGES = 20
+MAX_IMAGE_PIXELS = 25_000_000
 
 def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     """Reject extension/content mismatches before invoking PDF/image processing."""
@@ -26,6 +28,20 @@ def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     }
     checker = signatures.get(extension)
     return bool(checker and checker(file_bytes))
+
+
+def _validate_image_dimensions(file_bytes: bytes) -> None:
+    """Reject image payloads that would require excessive decoded pixel memory."""
+    try:
+        with Image.open(io.BytesIO(file_bytes)) as image:
+            width, height = image.size
+            if width <= 0 or height <= 0 or width * height > MAX_IMAGE_PIXELS:
+                raise HTTPException(413, detail="Invoice image dimensions exceed the safe processing limit.")
+            image.verify()
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise HTTPException(400, detail="Invoice image is invalid or unreadable.") from exc
 
 
 def _purge_expired_sessions(now: float | None = None) -> None:
@@ -78,6 +94,8 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
     if not _has_expected_file_signature(file_bytes, extension):
         raise HTTPException(400, detail="Invoice file content does not match its file type.")
+    if extension != "pdf":
+        _validate_image_dimensions(file_bytes)
     if extension == "pdf":
         try:
             images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
