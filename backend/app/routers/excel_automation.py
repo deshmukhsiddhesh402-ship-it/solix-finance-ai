@@ -182,6 +182,8 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+    # Enforce session TTL before any merge lookup, not only on upload/download.
+    _purge_expired_cleaned_sessions()
     for sid in req.session_ids:
         try:
             session_uuid = uuid.UUID(str(sid))
