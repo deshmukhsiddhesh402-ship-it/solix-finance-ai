@@ -24,7 +24,8 @@ class AuditEntry:
 
 _SENSITIVE_FIELD_MARKERS = (
     "password", "secret", "token", "api_key", "apikey",
-    "authorization", "credential", "otp",
+    "authorization", "credential", "otp", "private_key",
+    "cookie", "bearer", "privatekey",
 )
 
 
@@ -37,6 +38,8 @@ def _audit_value(field_name: str, value):
         return {key: _audit_value(str(key), nested) for key, nested in value.items()}
     if isinstance(value, list):
         return [_audit_value("", item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_audit_value("", item) for item in value)
     return value
 
 
