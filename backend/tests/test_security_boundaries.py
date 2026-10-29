@@ -811,3 +811,73 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+def test_enterprise_permission_denies_user_without_requested_org_membership(monkeypatch):
+    from uuid import UUID
+    from fastapi import HTTPException
+    from app.routers import enterprise
+    from app.models.auth_user import User
+
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    user = User(id=user_id, email="member@example.com", role="admin")
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    dependency = enterprise.require_permission("journal_entry", "view")
+    with pytest.raises(HTTPException) as exc:
+        dependency(org_id="22222222-2222-4222-8222-222222222222",
+                   authorization="Bearer valid-test-token", db=FakeDB())
+    assert exc.value.status_code == 403
+
+
+def test_enterprise_permission_enforces_membership_role_not_global_user_role(monkeypatch):
+    from uuid import UUID
+    from fastapi import HTTPException
+    from app.routers import enterprise
+    from app.models.auth_user import User
+    from app.models.enterprise import OrgMembership
+
+    user_id = UUID("11111111-1111-4111-8111-111111111111")
+    org_id = UUID("22222222-2222-4222-8222-222222222222")
+    user = User(id=user_id, email="member@example.com", role="admin")
+    membership = OrgMembership(user_id=user_id, org_id=org_id, role="auditor")
+    monkeypatch.setattr(enterprise, "decode_access_token", lambda token: {"sub": str(user_id)})
+
+    class FakeQuery:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            if self.model is User:
+                return user
+            if self.model is OrgMembership:
+                return membership
+            return None
+
+    class FakeDB:
+        def query(self, model):
+            return FakeQuery(model)
+
+    dependency = enterprise.require_permission("journal_entry", "create")
+    with pytest.raises(HTTPException) as exc:
+        dependency(org_id=str(org_id), authorization="Bearer valid-test-token", db=FakeDB())
+    assert exc.value.status_code == 403
