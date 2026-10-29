@@ -25,7 +25,7 @@ class AuditEntry:
 _SENSITIVE_FIELD_MARKERS = (
     "password", "secret", "token", "api_key", "apikey",
     "authorization", "credential", "otp", "private_key",
-    "cookie", "bearer",
+    "cookie", "bearer", "privatekey",
 )
 
 
