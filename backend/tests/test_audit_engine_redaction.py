@@ -40,3 +40,16 @@ def test_sensitive_fields_are_redacted_on_create_and_delete():
 
 def test_unchanged_sensitive_fields_are_not_added_to_diff():
     assert diff_fields({"secret": "same"}, {"secret": "same"}) == {}
+
+def test_nested_sensitive_fields_are_redacted_recursively():
+    changes = diff_fields(
+        {"metadata": {"api_key": "old-key", "profile": [{"clientSecret": "old-secret"}]}},
+        {"metadata": {"api_key": "new-key", "profile": [{"clientSecret": "new-secret"}]}},
+    )
+
+    before = changes["metadata"]["before"]
+    after = changes["metadata"]["after"]
+    assert before["api_key"] == "[REDACTED]"
+    assert after["api_key"] == "[REDACTED]"
+    assert before["profile"][0]["clientSecret"] == "[REDACTED]"
+    assert after["profile"][0]["clientSecret"] == "[REDACTED]"
