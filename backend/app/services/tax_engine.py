@@ -20,6 +20,15 @@ def _require_rate(value: float, label: str) -> None:
         raise ValueError(f"{label} must be a finite percentage between 0 and 100.")
 
 
+def _require_finite_results(result: dict, label: str) -> dict:
+    """Fail closed if arithmetic overflows after valid inputs are accepted."""
+    for field, value in result.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise ValueError(f"{label} produced a non-finite result for {field}.")
+    return result
+
+
 
 # ---------------------------------------------------------------------------
 # GST
@@ -32,11 +41,13 @@ def calculate_gst(taxable_value: float, gst_rate_pct: float, is_interstate: bool
         raise ValueError("is_interstate must be a boolean.")
     total_tax = round(taxable_value * (gst_rate_pct / 100), 2)
     if is_interstate:
-        return {"taxable_value": taxable_value, "igst": total_tax, "cgst": 0.0,
-                "sgst": 0.0, "total_tax": total_tax, "invoice_total": round(taxable_value + total_tax, 2)}
-    half = round(total_tax / 2, 2)
-    return {"taxable_value": taxable_value, "igst": 0.0, "cgst": half, "sgst": half,
-            "total_tax": half * 2, "invoice_total": round(taxable_value + half * 2, 2)}
+        result = {"taxable_value": taxable_value, "igst": total_tax, "cgst": 0.0,
+                  "sgst": 0.0, "total_tax": total_tax, "invoice_total": round(taxable_value + total_tax, 2)}
+    else:
+        half = round(total_tax / 2, 2)
+        result = {"taxable_value": taxable_value, "igst": 0.0, "cgst": half, "sgst": half,
+                  "total_tax": half * 2, "invoice_total": round(taxable_value + half * 2, 2)}
+    return _require_finite_results(result, "GST calculation")
 
 
 @dataclass
@@ -89,10 +100,11 @@ def calculate_tds(amount_paid: float, section: str, has_pan: bool = True) -> dic
         raise ValueError(f"Section {section} requires slab-based calculation, not flat rate.")
     effective_rate = 20.0 if not has_pan else rate
     tds_amount = round(amount_paid * (effective_rate / 100), 2)
-    return {
+    result = {
         "section": section, "amount_paid": amount_paid, "rate_applied_pct": effective_rate,
         "tds_amount": tds_amount, "net_payment": round(amount_paid - tds_amount, 2),
     }
+    return _require_finite_results(result, "TDS calculation")
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +132,8 @@ def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0
     _require_finite_non_negative(other_income, "other_income")
 
     taxable_income = max(0.0, gross_salary - STANDARD_DEDUCTION_NEW_REGIME) + other_income
+    if not math.isfinite(taxable_income):
+        raise ValueError("Income-tax calculation produced a non-finite taxable income.")
 
     tax = 0.0
     lower_bound = 0
@@ -139,7 +153,7 @@ def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0
     cess = round(tax * (CESS_PCT / 100), 2)
     total_tax = round(tax + cess, 2)
 
-    return {
+    result = {
         "taxable_income": round(taxable_income, 2),
         "tax_before_cess": round(tax, 2),
         "rebate_87a_applied": rebate_applied,
@@ -147,3 +161,4 @@ def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0
         "total_tax_payable": total_tax,
         "effective_tax_rate_pct": round((total_tax / taxable_income) * 100, 2) if taxable_income else 0.0,
     }
+    return _require_finite_results(result, "Income-tax calculation")
