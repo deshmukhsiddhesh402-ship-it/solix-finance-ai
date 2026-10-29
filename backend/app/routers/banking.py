@@ -37,11 +37,20 @@ def reconcile_endpoint(
 ):
     bank_lines = [BankLine(**l.dict()) for l in req.bank_lines]
     book_lines = [BookLine(**l.dict()) for l in req.book_lines]
-    result = reconcile(bank_lines, book_lines, req.date_window_days)
-    result["reconciliation_statement"] = {
-        "balance_as_per_bank": req.balance_as_per_bank,
-        "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
-        "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
-        "balance_as_per_books": reconciled_balance(req.balance_as_per_bank, result["totals"]["outstanding_cheques"], result["totals"]["deposits_not_credited"]),
-    }
+    try:
+        result = reconcile(bank_lines, book_lines, req.date_window_days)
+        result["reconciliation_statement"] = {
+            "balance_as_per_bank": req.balance_as_per_bank,
+            "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
+            "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
+            "balance_as_per_books": reconciled_balance(
+                req.balance_as_per_bank,
+                result["totals"]["outstanding_cheques"],
+                result["totals"]["deposits_not_credited"],
+            ),
+        }
+    except ValueError as exc:
+        # Invalid reconciliation inputs are client errors, not server failures.
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return result
