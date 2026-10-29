@@ -1,6 +1,4 @@
 """Regression tests for balanced financial-statement inputs and request bounds."""
-from uuid import uuid4
-
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
