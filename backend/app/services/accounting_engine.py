@@ -83,9 +83,18 @@ def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
                 raise ValueError("Trial balance amounts cannot be negative.")
 
 
+def _require_balanced_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
+    """Reject statement calculations from rows whose debit/credit totals disagree."""
+    total_debit = sum(row["debit"] for row in trial_balance_rows)
+    total_credit = sum(row["credit"] for row in trial_balance_rows)
+    if round(total_debit - total_credit, 2) != 0.0:
+        raise ValueError("Financial statements require balanced trial-balance rows.")
+
+
 def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
-    """Derive P&L from trial balance income/expense accounts."""
+    """Derive P&L from balanced trial-balance income/expense accounts."""
     _validate_trial_balance_rows(trial_balance_rows)
+    _require_balanced_trial_balance_rows(trial_balance_rows)
     income = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "income")
     expense = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "expense")
     net_profit = income - expense
@@ -94,8 +103,9 @@ def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
 
 
 def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
-    """Derive Balance Sheet from trial balance asset/liability/equity accounts."""
+    """Derive Balance Sheet from balanced trial-balance asset/liability/equity accounts."""
     _validate_trial_balance_rows(trial_balance_rows)
+    _require_balanced_trial_balance_rows(trial_balance_rows)
     if not isinstance(net_profit, (int, float)) or isinstance(net_profit, bool) or not math.isfinite(net_profit):
         raise ValueError("Net profit must be a finite number.")
     assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
