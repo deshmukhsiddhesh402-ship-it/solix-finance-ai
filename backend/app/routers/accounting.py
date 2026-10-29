@@ -127,8 +127,7 @@ def create_journal_entry(
 
 
 class TrialBalanceRequest(BaseModel):
-    # Bound work per request and require enough lines for a meaningful ledger.
-    lines: list[LedgerLineIn] = Field(min_length=2, max_length=500)
+    lines: list[LedgerLineIn]
 
 
 @router.post("/trial-balance")
