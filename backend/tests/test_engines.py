@@ -96,3 +96,16 @@ def test_break_even_units():
 def test_dcf_enterprise_value_positive():
     result = dcf_valuation([100, 110, 121], discount_rate_pct=10, terminal_growth_rate_pct=3)
     assert result["enterprise_value"] > 0
+
+
+
+def test_gst_rejects_non_finite_invoice_total_after_arithmetic():
+    import pytest
+    with pytest.raises(ValueError, match="non-finite result"):
+        calculate_gst(taxable_value=1e308, gst_rate_pct=100, is_interstate=True)
+
+
+def test_income_tax_rejects_overflowing_combined_income():
+    import pytest
+    with pytest.raises(ValueError, match="non-finite taxable income"):
+        calculate_income_tax_new_regime(gross_salary=1e308, other_income=1e308)
