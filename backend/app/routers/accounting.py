@@ -78,7 +78,7 @@ def create_journal_entry(
     except (TypeError, ValueError) as exc:
         raise HTTPException(422, detail="entry_date must be a valid ISO date (YYYY-MM-DD).") from exc
 
-    lines_dec = [LedgerLine(**l.dict()) for l in lines]
+    lines_dec = [LedgerLine(**l.model_dump(include={"account_name", "account_type", "debit", "credit"})) for l in lines]
     if len(lines_dec) < 2:
         raise HTTPException(422, detail="A journal entry requires at least two lines.")
     tb_check = build_trial_balance(lines_dec)
@@ -132,7 +132,7 @@ class TrialBalanceRequest(BaseModel):
 
 @router.post("/trial-balance")
 def trial_balance(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [LedgerLine(**l.model_dump(include={"account_name", "account_type", "debit", "credit"})) for l in req.lines]
     result = build_trial_balance(lines)
     if not result["is_balanced"]:
         raise HTTPException(422, detail="Books do not balance — check debit/credit entries.")
@@ -141,15 +141,19 @@ def trial_balance(req: TrialBalanceRequest):
 
 @router.post("/profit-and-loss")
 def profit_and_loss(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [LedgerLine(**l.model_dump(include={"account_name", "account_type", "debit", "credit"})) for l in req.lines]
     tb = build_trial_balance(lines)
+    if not tb["is_balanced"]:
+        raise HTTPException(422, detail="Books do not balance — profit and loss cannot be prepared from unbalanced entries.")
     return build_profit_and_loss(tb["rows"])
 
 
 @router.post("/balance-sheet")
 def balance_sheet(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [LedgerLine(**l.model_dump(include={"account_name", "account_type", "debit", "credit"})) for l in req.lines]
     tb = build_trial_balance(lines)
+    if not tb["is_balanced"]:
+        raise HTTPException(422, detail="Books do not balance — balance sheet cannot be prepared from unbalanced entries.")
     pnl = build_profit_and_loss(tb["rows"])
     return build_balance_sheet(tb["rows"], pnl["net_profit"])
 
