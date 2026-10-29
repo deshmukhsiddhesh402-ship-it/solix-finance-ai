@@ -1,7 +1,11 @@
-"""Regression tests for balanced financial-statement inputs and request bounds."""
+"""Regression tests for balanced financial-statement inputs."""
+import os
+import sys
+
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.routers.accounting import (
     LedgerLineIn,
