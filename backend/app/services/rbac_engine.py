@@ -71,7 +71,7 @@ def has_permission(role: str | Role, resource: str, action: str | Action) -> boo
     try:
         role_enum = Role(role) if not isinstance(role, Role) else role
         action_enum = Action(action) if not isinstance(action, Action) else action
-    except ValueError:
+    except (TypeError, ValueError):
         return False
     resource_perms = PERMISSION_MATRIX.get(resource)
     if not resource_perms:
@@ -82,7 +82,7 @@ def has_permission(role: str | Role, resource: str, action: str | Action) -> boo
 def list_permissions(role: str | Role) -> dict[str, list[str]]:
     try:
         role_enum = Role(role) if not isinstance(role, Role) else role
-    except ValueError:
+    except (TypeError, ValueError):
         return {}
     return {
         resource: sorted(a.value for a in perms.get(role_enum, set()))
