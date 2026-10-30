@@ -811,3 +811,12 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_rbac_fails_closed_for_malformed_role_and_action_values():
+    from app.services.rbac_engine import has_permission, list_permissions
+
+    assert has_permission([], "journal_entry", "view") is False
+    assert has_permission("admin", "journal_entry", []) is False
+    assert list_permissions([]) == {}
