@@ -31,6 +31,14 @@ CLEANED_SESSION_TTL_SECONDS = 30 * 60
 
 _CLEANED_FILES: dict[str, dict] = {}
 
+async def _read_bounded_upload(file: UploadFile) -> bytes:
+    """Read at most one byte beyond the upload ceiling before rejecting."""
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
+    return file_bytes
+
+
 def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
     expired = [
@@ -115,9 +123,7 @@ async def auto_clean(
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
+    file_bytes = await _read_bounded_upload(file)
     df = _read_upload_to_df(file.filename or "", file_bytes)
 
     cleaned, clean_report = clean_dataframe(df)
