@@ -68,6 +68,8 @@ PERMISSION_MATRIX: dict[str, dict[Role, set[Action]]] = {
 
 
 def has_permission(role: str | Role, resource: str, action: str | Action) -> bool:
+    if not isinstance(resource, str):
+        return False
     try:
         role_enum = Role(role) if not isinstance(role, Role) else role
         action_enum = Action(action) if not isinstance(action, Action) else action
