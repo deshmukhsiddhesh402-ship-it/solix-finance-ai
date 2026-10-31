@@ -27,6 +27,8 @@ MAX_COLUMNS = 200
 MAX_EXCEL_ZIP_ENTRIES = 200
 MAX_EXCEL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 MAX_CLEANED_SESSIONS = 1000
+MAX_CLEANED_SESSION_BYTES = 64 * 1024 * 1024
+MAX_CLEANED_CACHE_BYTES = 256 * 1024 * 1024
 CLEANED_SESSION_TTL_SECONDS = 30 * 60
 
 _CLEANED_FILES: dict[str, dict] = {}
@@ -40,11 +42,34 @@ def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
     for sid in expired:
         _CLEANED_FILES.pop(sid, None)
 
+def _cleaned_session_memory_bytes(session: dict) -> int:
+    df = session.get("df")
+    if not isinstance(df, pd.DataFrame):
+        raise HTTPException(422, detail="Cleaned session data is invalid.")
+    return int(df.memory_usage(index=True, deep=True).sum())
+
+
 def _store_cleaned_session(session_id: str, session: dict) -> None:
+    session_bytes = _cleaned_session_memory_bytes(session)
+    if session_bytes > MAX_CLEANED_SESSION_BYTES:
+        raise HTTPException(413, detail="Cleaned spreadsheet exceeds the per-session memory limit.")
+
     _purge_expired_cleaned_sessions()
-    if len(_CLEANED_FILES) >= MAX_CLEANED_SESSIONS:
-        oldest = min(_CLEANED_FILES, key=lambda sid: _CLEANED_FILES[sid].get("created_at", 0))
-        _CLEANED_FILES.pop(oldest, None)
+    total_bytes = sum(_cleaned_session_memory_bytes(item) for item in _CLEANED_FILES.values() if item.get("df") is not None)
+    if session_id in _CLEANED_FILES:
+        total_bytes -= _cleaned_session_memory_bytes(_CLEANED_FILES[session_id])
+
+    while _CLEANED_FILES and (
+        len(_CLEANED_FILES) >= MAX_CLEANED_SESSIONS
+        or total_bytes + session_bytes > MAX_CLEANED_CACHE_BYTES
+    ):
+        candidates = [sid for sid in _CLEANED_FILES if sid != session_id]
+        if not candidates:
+            break
+        oldest = min(candidates, key=lambda sid: _CLEANED_FILES[sid].get("created_at", 0))
+        removed = _CLEANED_FILES.pop(oldest)
+        total_bytes -= _cleaned_session_memory_bytes(removed)
+
     _CLEANED_FILES[session_id] = session
 
 def _get_cleaned_session(session_id: str, org_id: str, user_id: str) -> dict:
