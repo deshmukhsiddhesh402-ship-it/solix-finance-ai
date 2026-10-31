@@ -83,7 +83,10 @@ def test_sensitive_fields_inside_tuples_are_redacted_recursively():
 
 
 
-def test_sensitive_fields_inside_sets_are_redacted_recursively():
-    changes = diff_fields(None, {"metadata": {"session_token", "visible-value"}})
+def test_sensitive_fields_inside_sets_of_pairs_are_redacted_recursively():
+    changes = diff_fields(
+        None,
+        {"metadata": {("session_token", "secret-session"), ("display_name", "Visible")}},
+    )
     nested = changes["metadata"]["after"]
-    assert nested == {"[REDACTED]", "visible-value"}
+    assert nested == {("session_token", "[REDACTED]"), ("display_name", "Visible")}
