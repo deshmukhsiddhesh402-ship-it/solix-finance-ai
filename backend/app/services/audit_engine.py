@@ -111,7 +111,7 @@ def build_audit_entry(
         raise ValueError("Audit entity id must be between 1 and 100 characters.")
     if not isinstance(user_id, str) or not 1 <= len(user_id) <= 100:
         raise ValueError("Audit user id must be between 1 and 100 characters.")
-    if org_id is not None and (not isinstance(org_id, str) or len(org_id) > 100):
+    if org_id is not None and (not isinstance(org_id, str) or not 1 <= len(org_id) <= 100):
         raise ValueError("Audit organization id is invalid.")
     changes = diff_fields(before, after) if (before is not None or after is not None) else None
     return AuditEntry(
