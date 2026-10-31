@@ -90,3 +90,14 @@ def test_sensitive_fields_inside_sets_of_pairs_are_redacted_recursively():
     )
     nested = changes["metadata"]["after"]
     assert nested == {("session_token", "[REDACTED]"), ("display_name", "Visible")}
+
+
+
+def test_sensitive_fields_inside_frozensets_of_pairs_are_redacted_recursively():
+    changes = diff_fields(
+        None,
+        {"metadata": frozenset({("refresh_token", "secret-refresh"), ("label", "Visible")})},
+    )
+    nested = changes["metadata"]["after"]
+    assert isinstance(nested, frozenset)
+    assert nested == frozenset({("refresh_token", "[REDACTED]"), ("label", "Visible")})
