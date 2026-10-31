@@ -61,6 +61,11 @@ def _audit_value(field_name: str, value):
 
 
 def diff_fields(before: dict | None, after: dict | None) -> dict:
+    if before is not None and not isinstance(before, dict):
+        raise ValueError("Audit before snapshot must be a dictionary or None.")
+    if after is not None and not isinstance(after, dict):
+        raise ValueError("Audit after snapshot must be a dictionary or None.")
+
     """Compute field-level changes between two snapshots of a record.
     - before=None means a new record was created (all fields are "added").
     - after=None means the record was deleted (all fields are "removed").
