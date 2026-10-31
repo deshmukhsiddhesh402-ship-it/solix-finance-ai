@@ -93,8 +93,8 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
         new_val = after.get(key, missing)
         if old_val != new_val:
             changed[key] = {
-                "before": None if old_val is missing else _audit_value(key, old_val),
-                "after": None if new_val is missing else _audit_value(key, new_val),
+                "before": {"$solix_audit_missing": True} if old_val is missing else _audit_value(key, old_val),
+                "after": {"$solix_audit_missing": True} if new_val is missing else _audit_value(key, new_val),
             }
     return changed
 
