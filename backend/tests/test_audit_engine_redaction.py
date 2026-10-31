@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.services.audit_engine import diff_fields
+from app.services.audit_engine import build_audit_entry, diff_fields
 
 
 def test_changed_sensitive_fields_are_redacted():
@@ -155,3 +155,16 @@ def test_diff_rejects_non_dictionary_snapshots():
         diff_fields([], {"name": "value"})
     with pytest.raises(ValueError, match="after snapshot"):
         diff_fields({"name": "value"}, "not-a-dictionary")
+
+
+def test_audit_entry_rejects_empty_organization_identifier():
+    import pytest
+
+    with pytest.raises(ValueError, match="organization id"):
+        build_audit_entry(
+            user_id="user-1",
+            org_id="",
+            action="create",
+            entity_type="invoice",
+            entity_id="invoice-1",
+        )
