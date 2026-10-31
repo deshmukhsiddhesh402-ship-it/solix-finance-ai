@@ -80,3 +80,10 @@ def test_sensitive_fields_inside_tuples_are_redacted_recursively():
     assert nested[0]["session_token"] == "[REDACTED]"
     assert nested[1]["private_key"] == "[REDACTED]"
     assert nested[1]["privateKey"] == "[REDACTED]"
+
+
+
+def test_sensitive_fields_inside_sets_are_redacted_recursively():
+    changes = diff_fields(None, {"metadata": {"session_token", "visible-value"}})
+    nested = changes["metadata"]["after"]
+    assert nested == {"[REDACTED]", "visible-value"}
