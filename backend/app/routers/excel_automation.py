@@ -183,6 +183,7 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
     seen_session_ids = set()
+    total_rows = 0
     for sid in req.session_ids:
         try:
             session_uuid = uuid.UUID(str(sid))
@@ -199,6 +200,9 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
             raise HTTPException(403, detail=f"Session {sid} does not belong to this organization.")
         if session["user_id"] != str(user_uuid):
             raise HTTPException(403, detail=f"Session {sid} does not belong to this user.")
+        total_rows += len(session["df"])
+        if total_rows > MAX_ROWS:
+            raise HTTPException(413, detail=f"Merged spreadsheet exceeds the {MAX_ROWS:,}-row limit.")
         dfs.append(session["df"])
     if not dfs:
         raise HTTPException(422, detail="No valid sessions provided.")
