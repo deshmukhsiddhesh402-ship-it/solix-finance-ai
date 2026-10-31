@@ -134,3 +134,15 @@ def test_sensitive_key_value_pairs_inside_tuples_and_lists_are_redacted():
     nested = changes["metadata"]["after"]
     assert nested[0] == ("password", "[REDACTED]")
     assert nested[1] == [("api key", "[REDACTED]"), ("label", "Visible")]
+
+
+def test_diff_distinguishes_added_null_and_removed_null_fields():
+    added = diff_fields({}, {"optional_note": None})
+    removed = diff_fields({"optional_note": None}, {})
+
+    assert added == {"optional_note": {"before": None, "after": None}}
+    assert removed == {"optional_note": {"before": None, "after": None}}
+
+
+def test_diff_still_omits_unchanged_explicit_null_fields():
+    assert diff_fields({"optional_note": None}, {"optional_note": None}) == {}
