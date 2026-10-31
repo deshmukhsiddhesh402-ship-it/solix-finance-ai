@@ -40,6 +40,8 @@ def _audit_value(field_name: str, value):
         return [_audit_value("", item) for item in value]
     if isinstance(value, tuple):
         return tuple(_audit_value("", item) for item in value)
+    if isinstance(value, set):
+        return {_audit_value("", item) for item in value}
     return value
 
 
