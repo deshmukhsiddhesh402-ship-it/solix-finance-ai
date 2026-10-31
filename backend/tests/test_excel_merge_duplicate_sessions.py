@@ -1,7 +1,6 @@
 """Regression tests for duplicate session references in Excel merges."""
 import sys
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
