@@ -83,13 +83,14 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
 
     changed = {}
     all_keys = set(before) | set(after)
+    missing = object()
     for key in all_keys:
-        old_val = before.get(key)
-        new_val = after.get(key)
+        old_val = before.get(key, missing)
+        new_val = after.get(key, missing)
         if old_val != new_val:
             changed[key] = {
-                "before": _audit_value(key, old_val),
-                "after": _audit_value(key, new_val),
+                "before": None if old_val is missing else _audit_value(key, old_val),
+                "after": None if new_val is missing else _audit_value(key, new_val),
             }
     return changed
 
