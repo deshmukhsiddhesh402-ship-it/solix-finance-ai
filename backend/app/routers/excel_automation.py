@@ -83,7 +83,7 @@ def _sanitize_excel_formula_values(df: pd.DataFrame) -> pd.DataFrame:
     """Escape untrusted text that spreadsheet applications may treat as formulas."""
     def sanitize(value):
         if isinstance(value, str):
-            significant = value.lstrip(" \\t\\r\\n")
+            significant = value.lstrip()
             if significant.startswith(("=", "+", "-", "@")):
                 return "'" + value
         return value
