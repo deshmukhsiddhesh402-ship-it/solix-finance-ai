@@ -7,6 +7,7 @@ a journal entry that got edited), it computes exactly which fields changed
 — so an auditor reviewing the log sees "amount: 50000 -> 75000" instead of
 just "record was edited".
 """
+import re
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
@@ -31,7 +32,7 @@ _SENSITIVE_FIELD_MARKERS = (
 
 def _audit_value(field_name: str, value):
     """Redact sensitive fields recursively before values enter audit diffs."""
-    normalized = str(field_name).casefold().replace("-", "_")
+    normalized = re.sub(r"[\W_]+", "_", str(field_name).casefold()).strip("_")
     if any(marker in normalized for marker in _SENSITIVE_FIELD_MARKERS):
         return "[REDACTED]"
     if isinstance(value, dict):
