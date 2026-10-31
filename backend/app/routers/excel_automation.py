@@ -93,7 +93,7 @@ def _read_upload_to_df(filename: str, file_bytes: bytes) -> pd.DataFrame:
         df = pd.read_csv(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
     elif lower.endswith((".xlsx", ".xlsm")):
         _validate_excel_archive(file_bytes)
-        df = pd.read_excel(io.BytesIO(file_bytes))
+        df = pd.read_excel(io.BytesIO(file_bytes), nrows=MAX_ROWS + 1)
     else:
         raise HTTPException(400, detail="Only .csv, .xlsx, and .xlsm files are supported.")
     return _validate_dataframe_shape(df)
