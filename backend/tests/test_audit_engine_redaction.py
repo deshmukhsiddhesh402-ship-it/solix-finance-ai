@@ -118,3 +118,19 @@ def test_sensitive_field_names_with_spaces_and_punctuation_are_redacted():
     assert changes["private key"]["after"] == "[REDACTED]"
     assert changes["client.api-key"]["after"] == "[REDACTED]"
     assert changes["display name"]["after"] == "Visible"
+
+
+def test_sensitive_key_value_pairs_inside_tuples_and_lists_are_redacted():
+    changes = diff_fields(
+        None,
+        {
+            "metadata": (
+                ("password", "tuple-secret"),
+                [("api key", "list-secret"), ("label", "Visible")],
+            )
+        },
+    )
+
+    nested = changes["metadata"]["after"]
+    assert nested[0] == ("password", "[REDACTED]")
+    assert nested[1] == [("api key", "[REDACTED]"), ("label", "Visible")]
