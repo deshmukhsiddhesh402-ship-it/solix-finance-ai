@@ -68,6 +68,10 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
     actually changed — unchanged fields are omitted to keep log entries
     readable.
     """
+    if before is not None and not isinstance(before, dict):
+        raise ValueError("Audit before snapshot must be a dictionary or None.")
+    if after is not None and not isinstance(after, dict):
+        raise ValueError("Audit after snapshot must be a dictionary or None.")
     if before is None and after is None:
         return {}
     if before is None:

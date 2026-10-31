@@ -146,3 +146,12 @@ def test_diff_distinguishes_added_null_and_removed_null_fields():
 
 def test_diff_still_omits_unchanged_explicit_null_fields():
     assert diff_fields({"optional_note": None}, {"optional_note": None}) == {}
+
+
+def test_diff_rejects_non_dictionary_snapshots():
+    import pytest
+
+    with pytest.raises(ValueError, match="before snapshot"):
+        diff_fields([], {"name": "value"})
+    with pytest.raises(ValueError, match="after snapshot"):
+        diff_fields({"name": "value"}, "not-a-dictionary")
