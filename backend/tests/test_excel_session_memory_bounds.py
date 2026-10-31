@@ -1,6 +1,7 @@
 """Regression tests for bounded in-memory cleaned spreadsheet sessions."""
 import sys
 from pathlib import Path
+import time
 
 import pandas as pd
 import pytest
@@ -18,7 +19,7 @@ def test_cleaned_session_store_rejects_per_session_memory_over_limit(monkeypatch
     with pytest.raises(HTTPException) as exc:
         excel_automation._store_cleaned_session(
             "session-large",
-            {"df": pd.DataFrame({"description": ["a" * 100]}), "created_at": 1},
+            {"df": pd.DataFrame({"description": ["a" * 100]}), "created_at": time.time()},
         )
 
     assert exc.value.status_code == 413
@@ -36,7 +37,7 @@ def test_cleaned_session_store_evicts_oldest_to_respect_total_memory_budget(monk
     excel_automation._store_cleaned_session("oldest", sample)
     excel_automation._store_cleaned_session(
         "newest",
-        {"df": pd.DataFrame({"amount": [40, 50, 60]}), "created_at": 2},
+        {"df": pd.DataFrame({"amount": [40, 50, 60]}), "created_at": time.time() + 1},
     )
 
     assert "oldest" not in excel_automation._CLEANED_FILES
