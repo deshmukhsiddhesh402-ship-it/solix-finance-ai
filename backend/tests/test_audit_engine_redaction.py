@@ -101,3 +101,20 @@ def test_sensitive_fields_inside_frozensets_of_pairs_are_redacted_recursively():
     nested = changes["metadata"]["after"]
     assert isinstance(nested, frozenset)
     assert nested == frozenset({("refresh_token", "[REDACTED]"), ("label", "Visible")})
+
+
+def test_sensitive_field_names_with_spaces_and_punctuation_are_redacted():
+    changes = diff_fields(
+        None,
+        {
+            "API Key": "api-secret",
+            "private key": "private-secret",
+            "client.api-key": "client-secret",
+            "display name": "Visible",
+        },
+    )
+
+    assert changes["API Key"]["after"] == "[REDACTED]"
+    assert changes["private key"]["after"] == "[REDACTED]"
+    assert changes["client.api-key"]["after"] == "[REDACTED]"
+    assert changes["display name"]["after"] == "Visible"
