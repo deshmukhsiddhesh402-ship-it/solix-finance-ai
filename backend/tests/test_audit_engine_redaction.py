@@ -140,8 +140,8 @@ def test_diff_distinguishes_added_null_and_removed_null_fields():
     added = diff_fields({}, {"optional_note": None})
     removed = diff_fields({"optional_note": None}, {})
 
-    assert added == {"optional_note": {"before": None, "after": None}}
-    assert removed == {"optional_note": {"before": None, "after": None}}
+    assert added == {"optional_note": {"before": {"$solix_audit_missing": True}, "after": None}}
+    assert removed == {"optional_note": {"before": None, "after": {"$solix_audit_missing": True}}}
 
 
 def test_diff_still_omits_unchanged_explicit_null_fields():
