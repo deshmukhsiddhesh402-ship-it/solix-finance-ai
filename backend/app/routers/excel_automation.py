@@ -79,6 +79,18 @@ def _validate_excel_archive(file_bytes: bytes) -> None:
         raise HTTPException(400, detail="Invalid XLSX/XLSM archive.") from exc
 
 
+def _sanitize_excel_formula_values(df: pd.DataFrame) -> pd.DataFrame:
+    """Escape untrusted text that spreadsheet applications may treat as formulas."""
+    def sanitize(value):
+        if isinstance(value, str):
+            significant = value.lstrip()
+            if significant.startswith(("=", "+", "-", "@")):
+                return "'" + value
+        return value
+
+    return df.map(sanitize)
+
+
 def _validate_dataframe_shape(df: pd.DataFrame) -> pd.DataFrame:
     if len(df.index) > MAX_ROWS:
         raise HTTPException(413, detail=f"Spreadsheet exceeds the {MAX_ROWS:,}-row limit.")
@@ -158,8 +170,9 @@ def download_cleaned_file(session_id: str, org_id: str = Query(...), _user: str 
         raise HTTPException(404, detail="Session not found or expired. Re-upload the file.")
 
     buffer = io.BytesIO()
+    export_df = _sanitize_excel_formula_values(df)
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Cleaned Data")
+        export_df.to_excel(writer, index=False, sheet_name="Cleaned Data")
     buffer.seek(0)
 
     return StreamingResponse(
