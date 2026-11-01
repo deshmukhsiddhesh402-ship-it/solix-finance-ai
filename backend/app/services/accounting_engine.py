@@ -107,12 +107,30 @@ def _validate_trial_balance_rows(trial_balance_rows: list[dict]) -> None:
                 raise ValueError("Trial balance amounts cannot be negative.")
 
 
+def _finite_sum(values, label: str) -> float:
+    """Sum financial values while rejecting overflow at the point it occurs."""
+    total = 0.0
+    for value in values:
+        total += value
+        if not math.isfinite(total):
+            raise ValueError(f"{label} must remain finite.")
+    return total
+
+
 def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
     """Derive P&L from trial balance income/expense accounts."""
     _validate_trial_balance_rows(trial_balance_rows)
-    income = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "income")
-    expense = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "expense")
+    income = _finite_sum(
+        (r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "income"),
+        "Profit and loss income total",
+    )
+    expense = _finite_sum(
+        (r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "expense"),
+        "Profit and loss expense total",
+    )
     net_profit = income - expense
+    if not math.isfinite(net_profit):
+        raise ValueError("Profit and loss net profit must remain finite.")
     return {"total_income": round(income, 2), "total_expense": round(expense, 2),
             "net_profit": round(net_profit, 2)}
 
@@ -120,17 +138,32 @@ def build_profit_and_loss(trial_balance_rows: list[dict]) -> dict:
 def build_balance_sheet(trial_balance_rows: list[dict], net_profit: float) -> dict:
     """Derive Balance Sheet from trial balance asset/liability/equity accounts."""
     _validate_trial_balance_rows(trial_balance_rows)
-    if not isinstance(net_profit, (int, float)) or isinstance(net_profit, bool) or not math.isfinite(net_profit):
+    if not _is_finite_number(net_profit):
         raise ValueError("Net profit must be a finite number.")
-    assets = sum(r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset")
-    liabilities = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability")
-    equity = sum(r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity")
-    equity += net_profit  # roll current-year profit into equity
+    assets = _finite_sum(
+        (r["debit"] - r["credit"] for r in trial_balance_rows if r["type"] == "asset"),
+        "Balance sheet asset total",
+    )
+    liabilities = _finite_sum(
+        (r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "liability"),
+        "Balance sheet liability total",
+    )
+    equity = _finite_sum(
+        (r["credit"] - r["debit"] for r in trial_balance_rows if r["type"] == "equity"),
+        "Balance sheet equity total",
+    )
+    equity = _finite_sum((equity, net_profit), "Balance sheet equity including current-year profit")
+    liabilities_and_equity = _finite_sum(
+        (liabilities, equity), "Balance sheet liabilities and equity total"
+    )
+    difference = assets - liabilities_and_equity
+    if not math.isfinite(difference):
+        raise ValueError("Balance sheet difference must remain finite.")
     return {
         "total_assets": round(assets, 2),
         "total_liabilities": round(liabilities, 2),
         "total_equity": round(equity, 2),
-        "balances": round(assets - (liabilities + equity), 2) == 0.0,
+        "balances": round(difference, 2) == 0.0,
     }
 
 
