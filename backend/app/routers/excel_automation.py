@@ -246,6 +246,9 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
         total_rows += len(session["df"])
         if total_rows > MAX_ROWS:
             raise HTTPException(413, detail=f"Merged spreadsheet exceeds the {MAX_ROWS:,}-row limit.")
+        merged_columns.update(session["df"].columns)
+        if len(merged_columns) > MAX_COLUMNS:
+            raise HTTPException(413, detail=f"Merged spreadsheet exceeds the {MAX_COLUMNS}-column limit.")
         dfs.append(session["df"])
     if not dfs:
         raise HTTPException(422, detail="No valid sessions provided.")
