@@ -234,6 +234,7 @@ def merge_cleaned_sessions(req: MergeRequest, org_id: str = Query(...), user_id:
         canonical_session_ids.append((sid, canonical_session_id))
 
     total_rows = 0
+    merged_columns = set()
     for sid, canonical_session_id in canonical_session_ids:
         session = _CLEANED_FILES.get(canonical_session_id)
         if session is None:
