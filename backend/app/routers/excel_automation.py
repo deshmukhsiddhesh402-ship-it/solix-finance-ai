@@ -59,8 +59,8 @@ def _store_cleaned_session(session_id: str, session: dict) -> None:
     if session_id in _CLEANED_FILES:
         total_bytes -= _cleaned_session_memory_bytes(_CLEANED_FILES[session_id])
 
-    while _CLEANED_FILES and (
-        len(_CLEANED_FILES) >= MAX_CLEANED_SESSIONS
+    while (
+        len(_CLEANED_FILES) - int(session_id in _CLEANED_FILES) >= MAX_CLEANED_SESSIONS
         or total_bytes + session_bytes > MAX_CLEANED_CACHE_BYTES
     ):
         candidates = [sid for sid in _CLEANED_FILES if sid != session_id]
