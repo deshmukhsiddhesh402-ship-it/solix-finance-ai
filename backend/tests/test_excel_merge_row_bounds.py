@@ -41,3 +41,36 @@ def test_excel_merge_rejects_aggregate_rows_over_limit(monkeypatch):
 
     assert exc.value.status_code == 413
     assert "row limit" in exc.value.detail
+
+
+def test_excel_merge_rejects_aggregate_columns_over_limit(monkeypatch):
+    org_id = "10000000-0000-4000-8000-000000000001"
+    user_id = "20000000-0000-4000-8000-000000000002"
+    session_ids = [
+        "a0000000-0000-4000-8000-000000000003",
+        "a0000000-0000-4000-8000-000000000004",
+    ]
+    monkeypatch.setattr(excel_automation, "_CLEANED_FILES", {})
+    monkeypatch.setattr(excel_automation, "MAX_COLUMNS", 2)
+    frames = [
+        pd.DataFrame({"amount": [10], "vendor": ["A"]}),
+        pd.DataFrame({"amount": [20], "department": ["B"]}),
+    ]
+    for session_id, frame in zip(session_ids, frames):
+        excel_automation._CLEANED_FILES[session_id] = {
+            "df": frame,
+            "org_id": org_id,
+            "user_id": user_id,
+            "created_at": time.time(),
+        }
+
+    with pytest.raises(HTTPException) as exc:
+        excel_automation.merge_cleaned_sessions(
+            excel_automation.MergeRequest(session_ids=session_ids),
+            org_id=org_id,
+            user_id=user_id,
+        )
+
+    assert exc.value.status_code == 413
+    assert "column limit" in exc.value.detail
+    assert len(excel_automation._CLEANED_FILES) == 2
