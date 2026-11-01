@@ -42,3 +42,34 @@ def test_cleaned_session_store_evicts_oldest_to_respect_total_memory_budget(monk
 
     assert "oldest" not in excel_automation._CLEANED_FILES
     assert "newest" in excel_automation._CLEANED_FILES
+
+
+def test_replacing_cached_session_does_not_evict_another_at_session_limit(monkeypatch):
+    now = time.time()
+    monkeypatch.setattr(
+        excel_automation,
+        "_CLEANED_FILES",
+        {
+            "oldest": {
+                "df": pd.DataFrame({"amount": [10]}),
+                "created_at": now,
+            },
+            "replace-me": {
+                "df": pd.DataFrame({"amount": [20]}),
+                "created_at": now + 1,
+            },
+        },
+    )
+    monkeypatch.setattr(excel_automation, "MAX_CLEANED_SESSIONS", 2)
+    monkeypatch.setattr(excel_automation, "MAX_CLEANED_SESSION_BYTES", 1024 * 1024)
+    monkeypatch.setattr(excel_automation, "MAX_CLEANED_CACHE_BYTES", 1024 * 1024)
+
+    replacement = {
+        "df": pd.DataFrame({"amount": [30]}),
+        "created_at": now + 2,
+    }
+    excel_automation._store_cleaned_session("replace-me", replacement)
+
+    assert "oldest" in excel_automation._CLEANED_FILES
+    assert excel_automation._CLEANED_FILES["replace-me"] is replacement
+    assert len(excel_automation._CLEANED_FILES) == 2
