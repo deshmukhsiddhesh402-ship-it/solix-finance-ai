@@ -249,3 +249,8 @@ def test_accounting_cycle_accepts_empty_practice_set_as_balanced():
     assert result["trial_balance"]["is_balanced"] is True
     assert result["trial_balance"]["total_debit"] == Decimal("0.00")
 
+
+
+def test_money_rejects_values_exceeding_decimal_context_precision():
+    with pytest.raises(ValueError, match="supported decimal precision"):
+        money("123456789012345678901234567890.00")
