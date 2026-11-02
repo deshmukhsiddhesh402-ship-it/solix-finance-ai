@@ -39,8 +39,11 @@ class Gstr3bRequest(BaseModel):
 
 @router.post("/gst/gstr3b-summary")
 def gst_gstr3b(req: Gstr3bRequest):
-    lines = [GstInvoiceLine(**l.dict()) for l in req.lines]
-    return gstr3b_summary(lines, req.input_tax_credit)
+    try:
+        lines = [GstInvoiceLine(**l.dict()) for l in req.lines]
+        return gstr3b_summary(lines, req.input_tax_credit)
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
 
 
 class TdsRequest(BaseModel):
