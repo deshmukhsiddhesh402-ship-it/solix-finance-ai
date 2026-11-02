@@ -32,6 +32,20 @@ def test_readiness_check_returns_503_when_database_is_unavailable():
     session.close.assert_called_once()
 
 
+def test_readiness_check_returns_503_when_session_cannot_be_created():
+    from fastapi import HTTPException
+    from app.main import readiness_check
+
+    with patch("app.main.SessionLocal", side_effect=RuntimeError("session factory unavailable")):
+        try:
+            readiness_check()
+        except HTTPException as exc:
+            assert exc.status_code == 503
+            assert exc.detail == "Database is not ready."
+        else:
+            raise AssertionError("readiness_check should fail closed when a database session cannot be created")
+
+
 def test_security_headers_are_present():
     import asyncio
     from fastapi import Response
