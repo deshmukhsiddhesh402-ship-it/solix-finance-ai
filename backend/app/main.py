@@ -54,7 +54,6 @@ app.include_router(billing.router, prefix="/api/billing", tags=["Subscription Bi
 
 
 @app.get("/api/health", tags=["System"])
-
 def health_check():
     """Simple liveness check used by Docker/Railway health probes."""
     return {"status": "ok", "service": "solix-finance-ai-backend"}
@@ -62,12 +61,14 @@ def health_check():
 
 @app.get("/api/ready", tags=["System"])
 def readiness_check():
-    """Readiness probe: verify the backend can reach its configured database."""
-    db = SessionLocal()
+    """Readiness probe: verify the backend can create a session and reach its database."""
+    db = None
     try:
+        db = SessionLocal()
         db.execute(text("SELECT 1"))
         return {"status": "ready", "service": "solix-finance-ai-backend", "database": "ok"}
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database is not ready.") from exc
     finally:
-        db.close()
+        if db is not None:
+            db.close()
