@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def require_production_secrets(self):
         if self.ENV.strip().lower() in {"prod", "production"}:
-            if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:
+            if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET.strip()) < 32:
                 raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")
             if self.DATABASE_URL == "postgresql://solix:solix@localhost:5432/solix_finance_ai":
                 raise ValueError("Production requires an explicitly configured DATABASE_URL.")
