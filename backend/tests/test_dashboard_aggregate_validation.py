@@ -77,7 +77,7 @@ def test_expense_breakdown_preserves_finite_account_totals():
 
     entries = [
         _entry(account_type="expense", account_name="Rent", debit=100.0, credit=0.0),
-        _entry(account_type="expense", account_name="Rent", debit=50.0),
+        _entry(account_type="expense", account_name="Rent", debit=50.0, credit=0.0),
         _entry(account_type="expense", account_name="Utilities", debit=25.0, credit=0.0),
     ]
     assert expense_breakdown(entries) == [
