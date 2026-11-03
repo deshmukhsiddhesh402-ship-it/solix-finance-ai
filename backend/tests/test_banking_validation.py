@@ -128,3 +128,10 @@ def test_reconciled_balance_rejects_arithmetic_overflow():
 def test_reconcile_rejects_whitespace_padded_line_ids():
     with pytest.raises(ValueError, match="trimmed"):
         reconcile([_bank(id=" bank-1 ")], [])
+
+
+def test_reconcile_rejects_integer_amounts_outside_float_range():
+    with pytest.raises(ValueError, match="finite positive"):
+        reconcile([_bank(amount=10**1000)], [])
+    with pytest.raises(ValueError, match="finite number"):
+        reconciled_balance(10**1000, 0, 0)
