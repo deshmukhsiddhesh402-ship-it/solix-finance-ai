@@ -47,8 +47,11 @@ def _validate_reconciliation_lines(lines, label: str, *, is_bank: bool) -> None:
     for index, line in enumerate(lines):
         if not isinstance(line, BankLine if is_bank else BookLine):
             raise ValueError(f"{label}[{index}] has an invalid line type.")
-        if not isinstance(line.id, str) or not line.id.strip() or len(line.id) > MAX_LINE_ID_LENGTH:
-            raise ValueError(f"{label}[{index}] must have a non-empty ID of at most {MAX_LINE_ID_LENGTH} characters.")
+        if (
+            not isinstance(line.id, str) or not line.id.strip()
+            or line.id != line.id.strip() or len(line.id) > MAX_LINE_ID_LENGTH
+        ):
+            raise ValueError(f"{label}[{index}] must have a trimmed, non-empty ID of at most {MAX_LINE_ID_LENGTH} characters.")
         if line.id in seen_ids:
             raise ValueError(f"{label} contains duplicate line IDs.")
         seen_ids.add(line.id)
@@ -60,7 +63,7 @@ def _validate_reconciliation_lines(lines, label: str, *, is_bank: bool) -> None:
             raise ValueError(f"{label}[{index}] amount must be a finite positive number.")
         if not math.isfinite(line.amount) or line.amount <= 0:
             raise ValueError(f"{label}[{index}] amount must be a finite positive number.")
-        if line.txn_type not in {"credit", "debit"}:
+        if not isinstance(line.txn_type, str) or line.txn_type not in {"credit", "debit"}:
             raise ValueError(f"{label}[{index}] transaction type must be credit or debit.")
         if is_bank and (not isinstance(line.mode, str) or len(line.mode) > 30):
             raise ValueError(f"{label}[{index}] has an invalid payment mode.")
@@ -110,10 +113,23 @@ def reconcile(
     # Remaining unmatched bank lines are bank-only items (charges, interest, etc).
     bank_only_items = list(unmatched_bank)
 
-    total_outstanding_cheques = sum(b.amount for b in outstanding_cheques)
-    total_deposits_not_credited = sum(b.amount for b in deposits_not_credited)
-    total_bank_only_credits = sum(b.amount for b in bank_only_items if b.txn_type == "credit")
-    total_bank_only_debits = sum(b.amount for b in bank_only_items if b.txn_type == "debit")
+    def safe_total(lines, label: str) -> float:
+        try:
+            total = math.fsum(line.amount for line in lines)
+        except OverflowError as exc:
+            raise ValueError(f"{label} total exceeds the supported numeric range.") from exc
+        if not math.isfinite(total):
+            raise ValueError(f"{label} total exceeds the supported numeric range.")
+        return total
+
+    total_outstanding_cheques = safe_total(outstanding_cheques, "Outstanding cheque")
+    total_deposits_not_credited = safe_total(deposits_not_credited, "Deposit")
+    total_bank_only_credits = safe_total(
+        [line for line in bank_only_items if line.txn_type == "credit"], "Bank-only credit"
+    )
+    total_bank_only_debits = safe_total(
+        [line for line in bank_only_items if line.txn_type == "debit"], "Bank-only debit"
+    )
 
     return {
         "matched_count": len(matched),
@@ -156,4 +172,7 @@ def reconciled_balance(
             raise ValueError(f"{name} must be a finite number.")
     if outstanding_cheques_total < 0 or deposits_not_credited_total < 0:
         raise ValueError("Reconciliation adjustment totals cannot be negative.")
-    return round(balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total, 2)
+    result = balance_as_per_bank + deposits_not_credited_total - outstanding_cheques_total
+    if not math.isfinite(result):
+        raise ValueError("Reconciled balance exceeds the supported numeric range.")
+    return round(result, 2)
