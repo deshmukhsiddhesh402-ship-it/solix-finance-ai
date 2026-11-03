@@ -37,3 +37,8 @@ def test_production_accepts_a_valid_https_origin():
 def test_production_rejects_non_origin_or_insecure_cors_values(origin):
     with pytest.raises(ValidationError):
         _production_settings(ALLOWED_ORIGINS=[origin])
+
+@pytest.mark.parametrize("secret", [" " * 40, " short ".ljust(40)])
+def test_production_rejects_jwt_secrets_with_insufficient_non_whitespace_length(secret):
+    with pytest.raises(ValidationError):
+        _production_settings(JWT_SECRET=secret)
