@@ -109,3 +109,22 @@ def test_api_schema_bounds_window_and_keeps_negative_overdraft_balance():
 
     req = ReconcileRequest(bank_lines=[], book_lines=[], balance_as_per_bank=-250.0)
     assert req.balance_as_per_bank == -250.0
+
+
+def test_reconcile_rejects_aggregate_amount_overflow():
+    lines = [
+        _book(id="book-a", amount=1e308),
+        _book(id="book-b", amount=1e308),
+    ]
+    with pytest.raises(ValueError, match="supported numeric range"):
+        reconcile([], lines)
+
+
+def test_reconciled_balance_rejects_arithmetic_overflow():
+    with pytest.raises(ValueError, match="supported numeric range"):
+        reconciled_balance(1e308, 0.0, 1e308)
+
+
+def test_reconcile_rejects_whitespace_padded_line_ids():
+    with pytest.raises(ValueError, match="trimmed"):
+        reconcile([_bank(id=" bank-1 ")], [])
