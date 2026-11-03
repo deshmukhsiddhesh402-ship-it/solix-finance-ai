@@ -47,10 +47,10 @@ def test_monthly_trend_preserves_finite_monthly_totals():
     entries = [
         _entry(date="2026-11-01", credit=125.50),
         _entry(date="2026-11-15", credit=74.50),
-        _entry(account_type="expense", account_name="Rent", date="2026-11-20", debit=50.0),
+        _entry(account_type="expense", account_name="Rent", date="2026-11-20", debit=50.0, credit=0.0),
     ]
     assert monthly_trend(entries) == [
-        {"month": "2026-11", "revenue": 200.0, "expenses": 50.0}
+        {"month": "2026-11", "revenue": 200.0, "expenses": -50.0}
     ]
 
 
@@ -76,9 +76,9 @@ def test_expense_breakdown_preserves_finite_account_totals():
     from app.services.dashboard_engine import expense_breakdown
 
     entries = [
-        _entry(account_type="expense", account_name="Rent", debit=100.0),
+        _entry(account_type="expense", account_name="Rent", debit=100.0, credit=0.0),
         _entry(account_type="expense", account_name="Rent", debit=50.0),
-        _entry(account_type="expense", account_name="Utilities", debit=25.0),
+        _entry(account_type="expense", account_name="Utilities", debit=25.0, credit=0.0),
     ]
     assert expense_breakdown(entries) == [
         {"name": "Rent", "value": 150.0},
@@ -90,7 +90,7 @@ def test_expense_breakdown_rejects_account_aggregate_overflow():
     from app.services.dashboard_engine import expense_breakdown
 
     entries = [
-        _entry(account_type="expense", account_name="Rent", debit=1e308),
+        _entry(account_type="expense", account_name="Rent", debit=1e308, credit=0.0),
         _entry(account_type="expense", account_name="Rent", debit=1e308),
     ]
     with pytest.raises(ValueError, match="supported numeric range"):
