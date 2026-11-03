@@ -142,14 +142,27 @@ def verify_payment(
     return {"message": f"Subscription activated: {req.plan}", "current_period_end": period_end.isoformat()}
 
 
+async def _read_bounded_webhook_body(request: Request, max_bytes: int) -> bytes:
+    """Read a webhook body incrementally, never buffering beyond its byte ceiling."""
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
+        raise ValueError("Webhook body limit must be a positive integer.")
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    async for chunk in request.stream():
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise HTTPException(413, detail="Webhook payload is too large.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     MAX_WEBHOOK_BODY_BYTES = 1_000_000
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(503, detail="Razorpay webhook secret is not configured.")
-    raw_body = await request.body()
-    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
-        raise HTTPException(413, detail="Webhook payload is too large.")
+    raw_body = await _read_bounded_webhook_body(request, MAX_WEBHOOK_BODY_BYTES)
     signature = request.headers.get("X-Razorpay-Signature", "")
     try:
         payload_text = raw_body.decode("utf-8")
