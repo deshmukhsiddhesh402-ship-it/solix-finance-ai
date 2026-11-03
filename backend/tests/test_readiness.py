@@ -46,3 +46,34 @@ def test_security_headers_are_present():
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+
+
+
+def test_security_headers_enable_hsts_only_in_production(monkeypatch):
+    import asyncio
+    from fastapi import Response
+    from app.main import security_headers, settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    async def call_next(_request):
+        return Response(content="ok")
+
+    response = asyncio.run(security_headers(object(), call_next))
+
+    assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+
+def test_security_headers_do_not_enable_hsts_in_development(monkeypatch):
+    import asyncio
+    from fastapi import Response
+    from app.main import security_headers, settings
+
+    monkeypatch.setattr(settings, "ENV", "development")
+
+    async def call_next(_request):
+        return Response(content="ok")
+
+    response = asyncio.run(security_headers(object(), call_next))
+
+    assert "Strict-Transport-Security" not in response.headers
