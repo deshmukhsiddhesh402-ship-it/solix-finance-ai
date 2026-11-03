@@ -15,6 +15,7 @@ rather than silently assumed reliable.
 """
 from collections import defaultdict
 from datetime import date
+import math
 
 
 def _matches_any(name: str, keywords: list[str]) -> bool:
@@ -22,20 +23,41 @@ def _matches_any(name: str, keywords: list[str]) -> bool:
     return any(k in lower for k in keywords)
 
 
+def _safe_sum(values, label: str) -> float:
+    try:
+        total = math.fsum(values)
+    except OverflowError as exc:
+        raise ValueError(f"{label} exceeds the supported numeric range.") from exc
+    if not math.isfinite(total):
+        raise ValueError(f"{label} exceeds the supported numeric range.")
+    return total
+
+
+def _validate_entry_amounts(entries: list[dict]) -> None:
+    for index, entry in enumerate(entries):
+        for field in ("debit", "credit"):
+            value = entry[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"entries[{index}].{field} must be a finite number.")
+
+
 def compute_dashboard_kpis(entries: list[dict]) -> dict:
     """entries: list of {date: date, account_name: str, account_type: str, debit: float, credit: float}"""
-    revenue = sum(e["credit"] - e["debit"] for e in entries if e["account_type"] == "income")
-    expenses = sum(e["debit"] - e["credit"] for e in entries if e["account_type"] == "expense")
+    _validate_entry_amounts(entries)
+    revenue = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "income"), "Revenue total")
+    expenses = _safe_sum((e["debit"] - e["credit"] for e in entries if e["account_type"] == "expense"), "Expense total")
     net_profit = revenue - expenses
+    if not math.isfinite(net_profit):
+        raise ValueError("Net profit exceeds the supported numeric range.")
 
-    cash_position = sum(
+    cash_position = _safe_sum((
         e["debit"] - e["credit"] for e in entries
         if e["account_type"] == "asset" and _matches_any(e["account_name"], ["cash", "bank"])
-    )
-    receivables = sum(
+    ), "Cash position")
+    receivables = _safe_sum((
         e["debit"] - e["credit"] for e in entries
         if e["account_type"] == "asset" and _matches_any(e["account_name"], ["receivable", "debtor"])
-    )
+    ), "Receivables")
 
     # Classify each liability into exactly one bucket (gst / tds / generic payables) so an
     # account like "GST Output Payable" isn't double-counted into both GST liability AND payables.
@@ -54,8 +76,8 @@ def compute_dashboard_kpis(entries: list[dict]) -> dict:
         elif _matches_any(name, ["payable", "creditor"]):
             payables += net
 
-    total_assets = sum(e["debit"] - e["credit"] for e in entries if e["account_type"] == "asset")
-    total_liabilities = sum(e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability")
+    total_assets = _safe_sum((e["debit"] - e["credit"] for e in entries if e["account_type"] == "asset"), "Asset total")
+    total_liabilities = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability"), "Liability total")
     working_capital = total_assets - total_liabilities  # simplification: not split into current vs non-current
 
     profit_margin_pct = round((net_profit / revenue) * 100, 2) if revenue else None
