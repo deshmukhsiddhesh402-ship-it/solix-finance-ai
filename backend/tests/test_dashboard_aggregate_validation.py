@@ -27,6 +27,11 @@ def test_dashboard_kpis_rejects_non_finite_or_boolean_amounts(value):
         compute_dashboard_kpis([_entry(credit=value)])
 
 
+def test_dashboard_kpis_rejects_integer_amount_outside_float_range():
+    with pytest.raises(ValueError, match="finite number"):
+        compute_dashboard_kpis([_entry(credit=10**1000)])
+
+
 def test_dashboard_kpis_rejects_aggregate_overflow():
     entries = [
         _entry(credit=1e308),
