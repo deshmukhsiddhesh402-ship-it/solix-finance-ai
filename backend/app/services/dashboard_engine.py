@@ -93,26 +93,35 @@ def compute_dashboard_kpis(entries: list[dict]) -> dict:
 
 def monthly_trend(entries: list[dict]) -> list[dict]:
     """Group revenue/expenses by calendar month (YYYY-MM), sorted chronologically."""
-    buckets = defaultdict(lambda: {"revenue": 0.0, "expenses": 0.0})
+    _validate_entry_amounts(entries)
+    buckets = defaultdict(lambda: {"revenue": [], "expenses": []})
     for e in entries:
         key = e["date"].strftime("%Y-%m") if isinstance(e["date"], date) else str(e["date"])[:7]
         if e["account_type"] == "income":
-            buckets[key]["revenue"] += e["credit"] - e["debit"]
+            buckets[key]["revenue"].append(e["credit"] - e["debit"])
         elif e["account_type"] == "expense":
-            buckets[key]["expenses"] += e["debit"] - e["credit"]
+            # Preserve the existing trend convention: expenses are credit minus debit.
+            buckets[key]["expenses"].append(e["credit"] - e["debit"])
 
-    return [
-        {"month": k, "revenue": round(v["revenue"], 2), "expenses": round(v["expenses"], 2)}
-        for k, v in sorted(buckets.items())
-    ]
+    result = []
+    for month, values in sorted(buckets.items()):
+        revenue = _safe_sum(values["revenue"], f"{month} revenue")
+        expenses = _safe_sum(values["expenses"], f"{month} expenses")
+        result.append({"month": month, "revenue": round(revenue, 2), "expenses": round(expenses, 2)})
+    return result
 
 
 def expense_breakdown(entries: list[dict]) -> list[dict]:
     """Total expense per account name — feeds the pie chart."""
-    totals = defaultdict(float)
+    _validate_entry_amounts(entries)
+    amounts_by_account = defaultdict(list)
     for e in entries:
         if e["account_type"] == "expense":
-            totals[e["account_name"]] += e["debit"] - e["credit"]
+            amounts_by_account[e["account_name"]].append(e["debit"] - e["credit"])
+    totals = {
+        name: _safe_sum(amounts, f"Expense total for {name!r}")
+        for name, amounts in amounts_by_account.items()
+    }
     return sorted(
         [{"name": k, "value": round(v, 2)} for k, v in totals.items() if v > 0],
         key=lambda x: x["value"], reverse=True,
