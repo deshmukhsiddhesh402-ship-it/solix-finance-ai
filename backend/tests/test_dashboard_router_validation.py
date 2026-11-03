@@ -49,3 +49,23 @@ def test_dashboard_pdf_calculation_skips_unused_expense_breakdown(monkeypatch):
         [{"month": "2026-11"}],
         None,
     )
+
+def test_dashboard_pdf_calculation_maps_invalid_trend_to_422(monkeypatch):
+    monkeypatch.setattr(dashboard, "compute_dashboard_kpis", lambda _entries: {"revenue": 10.0})
+
+    def reject(_entries):
+        raise ValueError("Monthly aggregate exceeds the supported numeric range.")
+
+    monkeypatch.setattr(dashboard, "monthly_trend", reject)
+    monkeypatch.setattr(
+        dashboard,
+        "expense_breakdown",
+        lambda _entries: pytest.fail("PDF export must not calculate expense breakdown."),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        dashboard._calculate_dashboard([], include_breakdown=False)
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail == "Monthly aggregate exceeds the supported numeric range."
+
