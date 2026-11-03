@@ -31,8 +31,18 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires explicit ALLOWED_ORIGINS.")
             for origin in self.ALLOWED_ORIGINS:
                 parsed = urlparse(origin.strip())
-                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                    raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
+                if parsed.scheme != "https" or not parsed.netloc or not parsed.hostname:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTPS origins.")
+                if parsed.username is not None or parsed.password is not None:
+                    raise ValueError("Production ALLOWED_ORIGINS cannot contain URL credentials.")
+                if parsed.path or parsed.query or parsed.fragment:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain only an origin (scheme and host).")
+                try:
+                    port = parsed.port
+                except ValueError as exc:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.") from exc
+                if port is not None and not 1 <= port <= 65535:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.")
                 if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
