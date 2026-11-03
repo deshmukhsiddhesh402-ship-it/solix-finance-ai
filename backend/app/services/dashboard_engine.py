@@ -37,7 +37,11 @@ def _validate_entry_amounts(entries: list[dict]) -> None:
     for index, entry in enumerate(entries):
         for field in ("debit", "credit"):
             value = entry[field]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            try:
+                finite = math.isfinite(value)
+            except (OverflowError, TypeError):
+                finite = False
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not finite:
                 raise ValueError(f"entries[{index}].{field} must be a finite number.")
 
 
