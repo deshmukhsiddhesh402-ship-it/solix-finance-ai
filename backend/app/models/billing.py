@@ -17,7 +17,7 @@ class Subscription(Base):
     plan = Column(String(20), nullable=False, default="trial")  # trial, pro, enterprise
     status = Column(String(20), nullable=False, default="active")  # active, past_due, cancelled
     razorpay_order_id = Column(String(100), nullable=True)
-    razorpay_payment_id = Column(String(100), nullable=True)
+    razorpay_payment_id = Column(String(100), nullable=True, unique=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     ai_chat_uploads_this_month = Column(Integer, nullable=False, default=0)
     invoice_ocr_this_month = Column(Integer, nullable=False, default=0)
