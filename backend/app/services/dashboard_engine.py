@@ -65,24 +65,15 @@ def compute_dashboard_kpis(entries: list[dict]) -> dict:
 
     # Classify each liability into exactly one bucket (gst / tds / generic payables) so an
     # account like "GST Output Payable" isn't double-counted into both GST liability AND payables.
-    gst_liability = 0.0
-    tds_payable = 0.0
-    payables = 0.0
-    for e in entries:
-        if e["account_type"] != "liability":
-            continue
-        name = (e["account_name"] or "").lower()
-        net = e["credit"] - e["debit"]
-        if "gst" in name:
-            gst_liability += net
-        elif "tds" in name:
-            tds_payable += net
-        elif _matches_any(name, ["payable", "creditor"]):
-            payables += net
+    gst_liability = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "gst" in (e["account_name"] or "").lower()), "GST liability")
+    tds_payable = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "tds" in (e["account_name"] or "").lower() and "gst" not in (e["account_name"] or "").lower()), "TDS payable")
+    payables = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "gst" not in (e["account_name"] or "").lower() and "tds" not in (e["account_name"] or "").lower() and _matches_any(e["account_name"], ["payable", "creditor"])), "Payables")
 
     total_assets = _safe_sum((e["debit"] - e["credit"] for e in entries if e["account_type"] == "asset"), "Asset total")
     total_liabilities = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability"), "Liability total")
     working_capital = total_assets - total_liabilities  # simplification: not split into current vs non-current
+    if not math.isfinite(working_capital):
+        raise ValueError("Working capital exceeds the supported numeric range.")
 
     profit_margin_pct = round((net_profit / revenue) * 100, 2) if revenue else None
 
