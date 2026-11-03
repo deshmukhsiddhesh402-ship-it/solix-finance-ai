@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import get_db
 from app.core.config import settings
@@ -138,7 +139,30 @@ def verify_payment(
             current_period_end=period_end,
         )
         db.add(sub)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # The database uniqueness constraint closes the race between concurrent
+        # payment verifications. Re-read after rollback to distinguish an exact
+        # idempotent retry from a payment/tenant conflict.
+        db.rollback()
+        concurrent_payment = (
+            db.query(Subscription)
+            .filter(Subscription.razorpay_payment_id == req.razorpay_payment_id)
+            .first()
+        )
+        if (
+            concurrent_payment
+            and concurrent_payment.org_id == org_uuid
+            and concurrent_payment.razorpay_order_id == req.razorpay_order_id
+            and concurrent_payment.plan == req.plan
+        ):
+            return {
+                "message": f"Subscription already activated: {concurrent_payment.plan}",
+                "current_period_end": concurrent_payment.current_period_end.isoformat()
+                if concurrent_payment.current_period_end else None,
+            }
+        raise HTTPException(409, detail="Subscription or payment has already been recorded.") from exc
     return {"message": f"Subscription activated: {req.plan}", "current_period_end": period_end.isoformat()}
 
 
