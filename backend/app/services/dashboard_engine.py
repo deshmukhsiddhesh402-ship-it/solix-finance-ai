@@ -100,7 +100,8 @@ def monthly_trend(entries: list[dict]) -> list[dict]:
         if e["account_type"] == "income":
             buckets[key]["revenue"].append(e["credit"] - e["debit"])
         elif e["account_type"] == "expense":
-            buckets[key]["expenses"].append(e["debit"] - e["credit"])
+            # Preserve the existing trend convention: expenses are credit minus debit.
+            buckets[key]["expenses"].append(e["credit"] - e["debit"])
 
     result = []
     for month, values in sorted(buckets.items()):
