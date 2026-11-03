@@ -147,9 +147,18 @@ async def _read_bounded_webhook_body(request: Request, max_bytes: int) -> bytes:
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
         raise ValueError("Webhook body limit must be a positive integer.")
 
+    stream = getattr(request, "stream", None)
+    if not callable(stream):
+        # Compatibility for lightweight request adapters used by integrations/tests.
+        # FastAPI/Starlette Request objects always use the bounded streaming path.
+        body = await request.body()
+        if len(body) > max_bytes:
+            raise HTTPException(413, detail="Webhook payload is too large.")
+        return body
+
     chunks: list[bytes] = []
     total_bytes = 0
-    async for chunk in request.stream():
+    async for chunk in stream():
         total_bytes += len(chunk)
         if total_bytes > max_bytes:
             raise HTTPException(413, detail="Webhook payload is too large.")
