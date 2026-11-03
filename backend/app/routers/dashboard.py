@@ -69,11 +69,12 @@ def dashboard_summary(
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
     start, end = _date_range(start_date, end_date)
     entries = _load_entries(db, start, end, org_uuid)
+    kpis, trend, breakdown = _calculate_dashboard(entries)
     return {
         "period": {"start": start.isoformat(), "end": end.isoformat()},
-        "kpis": _calculate_dashboard(entries)[0],
-        "monthly_trend": _calculate_dashboard(entries)[1],
-        "expense_breakdown": _calculate_dashboard(entries)[2],
+        "kpis": kpis,
+        "monthly_trend": trend,
+        "expense_breakdown": breakdown,
         "data_points": len(entries),
     }
 
