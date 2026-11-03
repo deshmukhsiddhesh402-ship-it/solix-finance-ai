@@ -10,14 +10,13 @@ import string
 from datetime import datetime, timedelta, timezone
 from jose import jwt
 
-from app.core.config import settings
+from app.core.config import MAX_JWT_EXPIRE_MINUTES, settings
 
 MAX_OTP_ATTEMPTS = 5
 OTP_RESEND_SECONDS = 60
 _OTP_STORE: dict[str, dict] = {}
 _OTP_LAST_SENT: dict[str, datetime] = {}
 MAX_OTP_TRACKED_EMAILS = 10000
-MAX_JWT_EXPIRE_MINUTES = 10080  # 7 days
 
 def _purge_expired_otp_records(now: datetime) -> None:
     expired = [
