@@ -18,6 +18,15 @@ MAX_LINE_ID_LENGTH = 128
 MAX_DESCRIPTION_LENGTH = 1_000
 
 
+def _is_finite_number(value) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError):
+        return False
+
+
 @dataclass
 class BankLine:
     id: str
@@ -59,9 +68,7 @@ def _validate_reconciliation_lines(lines, label: str, *, is_bank: bool) -> None:
             raise ValueError(f"{label}[{index}] must have a valid calendar date.")
         if not isinstance(line.description, str) or len(line.description) > MAX_DESCRIPTION_LENGTH:
             raise ValueError(f"{label}[{index}] has an invalid description.")
-        if isinstance(line.amount, bool) or not isinstance(line.amount, (int, float)):
-            raise ValueError(f"{label}[{index}] amount must be a finite positive number.")
-        if not math.isfinite(line.amount) or line.amount <= 0:
+        if not _is_finite_number(line.amount) or line.amount <= 0:
             raise ValueError(f"{label}[{index}] amount must be a finite positive number.")
         if not isinstance(line.txn_type, str) or line.txn_type not in {"credit", "debit"}:
             raise ValueError(f"{label}[{index}] transaction type must be credit or debit.")
@@ -168,7 +175,7 @@ def reconciled_balance(
         "deposits_not_credited_total": deposits_not_credited_total,
     }
     for name, value in values.items():
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        if not _is_finite_number(value):
             raise ValueError(f"{name} must be a finite number.")
     if outstanding_cheques_total < 0 or deposits_not_credited_total < 0:
         raise ValueError("Reconciliation adjustment totals cannot be negative.")
