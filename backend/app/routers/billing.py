@@ -167,6 +167,17 @@ async def _read_bounded_webhook_body(request: Request, max_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
+def _parse_webhook_payload(payload_text: str) -> dict:
+    """Parse an already-read webhook body without consuming the request again."""
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(400, detail="Webhook payload must be a JSON object.")
+    return payload
+
+
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     MAX_WEBHOOK_BODY_BYTES = 1_000_000
@@ -181,15 +192,10 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     if not verify_webhook_signature(payload_text, signature, settings.RAZORPAY_WEBHOOK_SECRET):
         raise HTTPException(400, detail="Webhook signature verification failed.")
 
-    try:
-        # The bounded reader has already consumed request.stream(); parse the
-        # exact bytes we verified instead of asking Starlette to read the
-        # consumed request stream a second time.
-        payload = json.loads(payload_text)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
-    if not isinstance(payload, dict):
-        raise HTTPException(400, detail="Webhook payload must be a JSON object.")
+    # The bounded reader has already consumed request.stream(); parse the
+    # exact bytes we verified instead of asking Starlette to read the
+    # consumed request stream a second time.
+    payload = _parse_webhook_payload(payload_text)
     event = payload.get("event", "")
     from app.models.billing import Subscription
 
