@@ -31,6 +31,11 @@ def test_production_accepts_a_valid_https_origin():
         "https://app.example.com#fragment",
         "https://app.example.com:99999",
         "https://localhost",
+        "https://localhost.",
+        "https://admin.localhost",
+        "https://127.0.0.2",
+        "https://[::1]",
+        "https://0.0.0.0",
         "*",
     ],
 )
