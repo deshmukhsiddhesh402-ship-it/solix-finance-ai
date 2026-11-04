@@ -171,7 +171,7 @@ def _parse_webhook_payload(payload_text: str) -> dict:
     """Parse an already-read webhook body without consuming the request again."""
     try:
         payload = json.loads(payload_text)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
     if not isinstance(payload, dict):
         raise HTTPException(400, detail="Webhook payload must be a JSON object.")
