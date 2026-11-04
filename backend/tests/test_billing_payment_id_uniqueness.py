@@ -21,5 +21,6 @@ def test_payment_id_migration_preflights_duplicates_before_creating_index():
 
     assert "HAVING COUNT(*) > 1" in sql
     assert "RAISE EXCEPTION" in sql
+    assert "END;\n$$;" in sql
     assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_razorpay_payment_id" in sql
     assert "WHERE razorpay_payment_id IS NOT NULL" in sql
