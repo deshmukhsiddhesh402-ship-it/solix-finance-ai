@@ -1,5 +1,6 @@
 """Centralized configuration. Production secrets must come from environment variables."""
 from pydantic import model_validator
+import ipaddress
 from pydantic_settings import BaseSettings
 from typing import List
 from urllib.parse import urlparse
@@ -43,8 +44,15 @@ class Settings(BaseSettings):
                     raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.") from exc
                 if port is not None and not 1 <= port <= 65535:
                     raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.")
-                if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+                hostname = parsed.hostname.rstrip(".").lower()
+                if hostname == "localhost" or hostname.endswith(".localhost"):
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
+                try:
+                    address = ipaddress.ip_address(hostname)
+                except ValueError:
+                    address = None
+                if address is not None and (address.is_loopback or address.is_unspecified):
+                    raise ValueError("Production ALLOWED_ORIGINS cannot use loopback or unspecified IP addresses.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
             raise ValueError("JWT_ALGORITHM must be one of HS256, HS384, or HS512.")
         if self.JWT_EXPIRE_MINUTES <= 0:
