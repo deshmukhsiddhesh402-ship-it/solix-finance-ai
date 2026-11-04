@@ -15,6 +15,7 @@ rather than silently assumed reliable.
 """
 from collections import defaultdict
 from datetime import date
+import math
 
 
 def _matches_any(name: str, keywords: list[str]) -> bool:
@@ -22,43 +23,70 @@ def _matches_any(name: str, keywords: list[str]) -> bool:
     return any(k in lower for k in keywords)
 
 
+def _safe_sum(values, label: str) -> float:
+    try:
+        total = math.fsum(values)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{label} exceeds the supported numeric range.") from exc
+    if not math.isfinite(total):
+        raise ValueError(f"{label} exceeds the supported numeric range.")
+    return total
+
+
+def _validate_entry_amounts(entries: list[dict]) -> None:
+    if not isinstance(entries, list):
+        raise ValueError("entries must be a list.")
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"entries[{index}] must be an object.")
+        for field in ("debit", "credit"):
+            if field not in entry:
+                raise ValueError(f"entries[{index}].{field} is required.")
+            value = entry[field]
+            try:
+                finite = math.isfinite(value)
+            except (OverflowError, TypeError):
+                finite = False
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not finite:
+                raise ValueError(f"entries[{index}].{field} must be a finite number.")
+
+
 def compute_dashboard_kpis(entries: list[dict]) -> dict:
     """entries: list of {date: date, account_name: str, account_type: str, debit: float, credit: float}"""
-    revenue = sum(e["credit"] - e["debit"] for e in entries if e["account_type"] == "income")
-    expenses = sum(e["debit"] - e["credit"] for e in entries if e["account_type"] == "expense")
+    _validate_entry_amounts(entries)
+    revenue = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "income"), "Revenue total")
+    expenses = _safe_sum((e["debit"] - e["credit"] for e in entries if e["account_type"] == "expense"), "Expense total")
     net_profit = revenue - expenses
+    if not math.isfinite(net_profit):
+        raise ValueError("Net profit exceeds the supported numeric range.")
 
-    cash_position = sum(
+    cash_position = _safe_sum((
         e["debit"] - e["credit"] for e in entries
         if e["account_type"] == "asset" and _matches_any(e["account_name"], ["cash", "bank"])
-    )
-    receivables = sum(
+    ), "Cash position")
+    receivables = _safe_sum((
         e["debit"] - e["credit"] for e in entries
         if e["account_type"] == "asset" and _matches_any(e["account_name"], ["receivable", "debtor"])
-    )
+    ), "Receivables")
 
-    # Classify each liability into exactly one bucket (gst / tds / generic payables) so an
-    # account like "GST Output Payable" isn't double-counted into both GST liability AND payables.
-    gst_liability = 0.0
-    tds_payable = 0.0
-    payables = 0.0
-    for e in entries:
-        if e["account_type"] != "liability":
-            continue
-        name = (e["account_name"] or "").lower()
-        net = e["credit"] - e["debit"]
-        if "gst" in name:
-            gst_liability += net
-        elif "tds" in name:
-            tds_payable += net
-        elif _matches_any(name, ["payable", "creditor"]):
-            payables += net
+    # Classify each liability into exactly one bucket (gst / tds / generic payables).
+    gst_liability = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "gst" in (e["account_name"] or "").lower()), "GST liability")
+    tds_payable = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "tds" in (e["account_name"] or "").lower() and "gst" not in (e["account_name"] or "").lower()), "TDS payable")
+    payables = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability" and "gst" not in (e["account_name"] or "").lower() and "tds" not in (e["account_name"] or "").lower() and _matches_any(e["account_name"], ["payable", "creditor"])), "Payables")
 
-    total_assets = sum(e["debit"] - e["credit"] for e in entries if e["account_type"] == "asset")
-    total_liabilities = sum(e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability")
-    working_capital = total_assets - total_liabilities  # simplification: not split into current vs non-current
+    total_assets = _safe_sum((e["debit"] - e["credit"] for e in entries if e["account_type"] == "asset"), "Asset total")
+    total_liabilities = _safe_sum((e["credit"] - e["debit"] for e in entries if e["account_type"] == "liability"), "Liability total")
+    working_capital = total_assets - total_liabilities
+    if not math.isfinite(working_capital):
+        raise ValueError("Working capital exceeds the supported numeric range.")
 
-    profit_margin_pct = round((net_profit / revenue) * 100, 2) if revenue else None
+    if revenue:
+        margin = (net_profit / revenue) * 100
+        if not math.isfinite(margin):
+            raise ValueError("Profit margin exceeds the supported numeric range.")
+        profit_margin_pct = round(margin, 2)
+    else:
+        profit_margin_pct = None
 
     return {
         "revenue": round(revenue, 2),
