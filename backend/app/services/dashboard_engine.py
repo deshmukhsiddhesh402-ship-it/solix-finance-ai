@@ -26,7 +26,7 @@ def _matches_any(name: str, keywords: list[str]) -> bool:
 def _safe_sum(values, label: str) -> float:
     try:
         total = math.fsum(values)
-    except OverflowError as exc:
+    except (OverflowError, ValueError) as exc:
         raise ValueError(f"{label} exceeds the supported numeric range.") from exc
     if not math.isfinite(total):
         raise ValueError(f"{label} exceeds the supported numeric range.")
