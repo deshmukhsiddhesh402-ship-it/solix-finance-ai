@@ -255,7 +255,7 @@ CREATE TABLE subscriptions (
     plan                        VARCHAR(20) NOT NULL DEFAULT 'trial', -- trial, pro, enterprise
     status                      VARCHAR(20) NOT NULL DEFAULT 'active', -- active, past_due, cancelled
     razorpay_order_id           VARCHAR(100),
-    razorpay_payment_id         VARCHAR(100),
+    razorpay_payment_id         VARCHAR(100) UNIQUE,
     current_period_end          TIMESTAMPTZ,
     ai_chat_uploads_this_month  INT NOT NULL DEFAULT 0,
     invoice_ocr_this_month      INT NOT NULL DEFAULT 0,
