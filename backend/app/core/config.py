@@ -1,5 +1,6 @@
 """Centralized configuration. Production secrets must come from environment variables."""
 from pydantic import model_validator
+import ipaddress
 from pydantic_settings import BaseSettings
 from typing import List
 from urllib.parse import urlparse
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def require_production_secrets(self):
         if self.ENV.strip().lower() in {"prod", "production"}:
-            if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET) < 32:
+            if self.JWT_SECRET == "change-me-in-production" or len(self.JWT_SECRET.strip()) < 32:
                 raise ValueError("Production requires a JWT_SECRET of at least 32 characters.")
             if self.DATABASE_URL == "postgresql://solix:solix@localhost:5432/solix_finance_ai":
                 raise ValueError("Production requires an explicitly configured DATABASE_URL.")
@@ -31,10 +32,27 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires explicit ALLOWED_ORIGINS.")
             for origin in self.ALLOWED_ORIGINS:
                 parsed = urlparse(origin.strip())
-                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                    raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTP(S) origins.")
-                if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+                if parsed.scheme != "https" or not parsed.netloc or not parsed.hostname:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain valid HTTPS origins.")
+                if parsed.username is not None or parsed.password is not None:
+                    raise ValueError("Production ALLOWED_ORIGINS cannot contain URL credentials.")
+                if parsed.path or parsed.query or parsed.fragment:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain only an origin (scheme and host).")
+                try:
+                    port = parsed.port
+                except ValueError as exc:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.") from exc
+                if port is not None and not 1 <= port <= 65535:
+                    raise ValueError("Production ALLOWED_ORIGINS must contain a valid port.")
+                hostname = parsed.hostname.rstrip(".").lower()
+                if hostname == "localhost" or hostname.endswith(".localhost"):
                     raise ValueError("Production ALLOWED_ORIGINS cannot use localhost.")
+                try:
+                    address = ipaddress.ip_address(hostname)
+                except ValueError:
+                    address = None
+                if address is not None and (address.is_loopback or address.is_unspecified):
+                    raise ValueError("Production ALLOWED_ORIGINS cannot use loopback or unspecified IP addresses.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
             raise ValueError("JWT_ALGORITHM must be one of HS256, HS384, or HS512.")
         if self.JWT_EXPIRE_MINUTES <= 0:
