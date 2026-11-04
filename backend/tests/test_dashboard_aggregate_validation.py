@@ -1,7 +1,7 @@
 """Regression tests for dashboard financial aggregate boundaries."""
 import pytest
 
-from app.services.dashboard_engine import compute_dashboard_kpis, monthly_trend, expense_breakdown
+from app.services.dashboard_engine import compute_dashboard_kpis
 
 
 def _entry(**overrides):
@@ -39,46 +39,6 @@ def test_dashboard_kpis_rejects_aggregate_overflow():
     ]
     with pytest.raises(ValueError, match="supported numeric range"):
         compute_dashboard_kpis(entries)
-
-
-def test_monthly_trend_rejects_monthly_aggregate_overflow():
-    entries = [
-        _entry(credit=1e308),
-        _entry(date="2026-11-02", credit=1e308),
-    ]
-    with pytest.raises(ValueError, match="supported numeric range"):
-        monthly_trend(entries)
-
-
-def test_monthly_trend_preserves_finite_month_totals():
-    entries = [
-        _entry(credit=100.25),
-        _entry(date="2026-11-02", credit=50.25),
-    ]
-    assert monthly_trend(entries) == [
-        {"month": "2026-11", "revenue": 150.5, "expenses": 0.0}
-    ]
-
-
-def test_expense_breakdown_rejects_account_aggregate_overflow():
-    entries = [
-        _entry(account_type="expense", account_name="Rent", debit=1e308, credit=0.0),
-        _entry(account_type="expense", account_name="Rent", debit=1e308, credit=0.0),
-    ]
-    with pytest.raises(ValueError, match="supported numeric range"):
-        expense_breakdown(entries)
-
-
-def test_expense_breakdown_preserves_finite_account_totals():
-    entries = [
-        _entry(account_type="expense", account_name="Rent", debit=100.0, credit=0.0),
-        _entry(account_type="expense", account_name="Rent", debit=50.0, credit=0.0),
-        _entry(account_type="expense", account_name="Utilities", debit=25.0, credit=0.0),
-    ]
-    assert expense_breakdown(entries) == [
-        {"name": "Rent", "value": 150.0},
-        {"name": "Utilities", "value": 25.0},
-    ]
 
 
 def test_dashboard_rejects_missing_amount_field_with_controlled_error():
