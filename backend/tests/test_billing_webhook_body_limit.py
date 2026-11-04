@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from app.routers.billing import _read_bounded_webhook_body
+from app.routers.billing import _parse_webhook_payload, _read_bounded_webhook_body
 
 
 class ChunkedRequest:
@@ -55,3 +55,23 @@ def test_webhook_body_reader_rejects_oversized_body_only_request_adapters():
 
     assert exc.value.status_code == 413
     assert exc.value.detail == "Webhook payload is too large."
+
+
+def test_webhook_payload_parser_accepts_json_objects():
+    assert _parse_webhook_payload('{"event":"payment.failed"}') == {"event": "payment.failed"}
+
+
+def test_webhook_payload_parser_rejects_invalid_json():
+    with pytest.raises(HTTPException) as exc:
+        _parse_webhook_payload("{")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Webhook payload is not valid JSON."
+
+
+def test_webhook_payload_parser_rejects_non_object_json():
+    with pytest.raises(HTTPException) as exc:
+        _parse_webhook_payload("[]")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Webhook payload must be a JSON object."
