@@ -33,6 +33,20 @@ def _load_entries(db: Session, start_date: date, end_date: date, org_id: uuid.UU
     ]
 
 
+
+
+
+def _calculate_dashboard(entries, *, include_breakdown: bool = True):
+    """Translate invalid financial aggregates into a controlled client error."""
+    try:
+        kpis = compute_dashboard_kpis(entries)
+        trend = monthly_trend(entries)
+        breakdown = expense_breakdown(entries) if include_breakdown else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return kpis, trend, breakdown
+
+
 def _date_range(start_date: date | None, end_date: date | None):
     end = end_date or date.today()
     start = start_date or (end - timedelta(days=180))
@@ -55,11 +69,12 @@ def dashboard_summary(
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
     start, end = _date_range(start_date, end_date)
     entries = _load_entries(db, start, end, org_uuid)
+    kpis, trend, breakdown = _calculate_dashboard(entries)
     return {
         "period": {"start": start.isoformat(), "end": end.isoformat()},
-        "kpis": compute_dashboard_kpis(entries),
-        "monthly_trend": monthly_trend(entries),
-        "expense_breakdown": expense_breakdown(entries),
+        "kpis": kpis,
+        "monthly_trend": trend,
+        "expense_breakdown": breakdown,
         "data_points": len(entries),
     }
 
@@ -78,7 +93,7 @@ def export_excel(
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
     start, end = _date_range(start_date, end_date)
     entries = _load_entries(db, start, end, org_uuid)
-    kpis, trend, breakdown = compute_dashboard_kpis(entries), monthly_trend(entries), expense_breakdown(entries)
+    kpis, trend, breakdown = _calculate_dashboard(entries)
     return StreamingResponse(
         io.BytesIO(dashboard_to_excel(kpis, trend, breakdown)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -102,7 +117,7 @@ def export_pdf(
     start, end = _date_range(start_date, end_date)
     entries = _load_entries(db, start, end, org_uuid)
     return StreamingResponse(
-        io.BytesIO(dashboard_to_pdf(org_name, f"{start.isoformat()} to {end.isoformat()}", compute_dashboard_kpis(entries), monthly_trend(entries))),
+        io.BytesIO(dashboard_to_pdf(org_name, f"{start.isoformat()} to {end.isoformat()}", *_calculate_dashboard(entries, include_breakdown=False)[:2])),
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=solix_dashboard_report.pdf"},
     )
