@@ -12,7 +12,7 @@ BEGIN
         RAISE EXCEPTION
             'Cannot enforce unique Razorpay payment IDs: duplicate non-null values exist in subscriptions. Reconcile these records before retrying this migration.';
     END IF;
-END
+END;
 $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_razorpay_payment_id
