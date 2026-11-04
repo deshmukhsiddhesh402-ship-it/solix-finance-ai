@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings
 from typing import List
 from urllib.parse import urlparse
 
+MAX_JWT_EXPIRE_MINUTES = 10080  # 7 days; keep aligned with the token engine.
+
 
 class Settings(BaseSettings):
     ENV: str = "development"
@@ -55,8 +57,8 @@ class Settings(BaseSettings):
                     raise ValueError("Production ALLOWED_ORIGINS cannot use loopback or unspecified IP addresses.")
         if self.JWT_ALGORITHM not in {"HS256", "HS384", "HS512"}:
             raise ValueError("JWT_ALGORITHM must be one of HS256, HS384, or HS512.")
-        if self.JWT_EXPIRE_MINUTES <= 0:
-            raise ValueError("JWT_EXPIRE_MINUTES must be positive.")
+        if not 1 <= self.JWT_EXPIRE_MINUTES <= MAX_JWT_EXPIRE_MINUTES:
+            raise ValueError("JWT_EXPIRE_MINUTES must be between 1 minute and 7 days.")
         return self
 
     class Config:

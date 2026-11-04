@@ -10,14 +10,13 @@ import string
 from datetime import datetime, timedelta, timezone
 from jose import jwt
 
-from app.core.config import settings
+from app.core.config import MAX_JWT_EXPIRE_MINUTES, settings
 
 MAX_OTP_ATTEMPTS = 5
 OTP_RESEND_SECONDS = 60
 _OTP_STORE: dict[str, dict] = {}
 _OTP_LAST_SENT: dict[str, datetime] = {}
 MAX_OTP_TRACKED_EMAILS = 10000
-MAX_JWT_EXPIRE_MINUTES = 10080  # 7 days
 
 def _purge_expired_otp_records(now: datetime) -> None:
     expired = [
@@ -101,8 +100,8 @@ def create_access_token(subject: str, expires_minutes: int | None = None) -> str
     if not subject:
         raise ValueError("Token subject is required.")
     minutes = settings.JWT_EXPIRE_MINUTES if expires_minutes is None else expires_minutes
-    if minutes <= 0 or minutes > MAX_JWT_EXPIRE_MINUTES:
-        raise ValueError("Token expiry must be between 1 minute and 7 days.")
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= MAX_JWT_EXPIRE_MINUTES:
+        raise ValueError("Token expiry must be an integer between 1 minute and 7 days.")
     expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {"sub": subject, "iat": datetime.now(timezone.utc), "exp": expire}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
