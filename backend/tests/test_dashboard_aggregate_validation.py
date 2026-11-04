@@ -41,6 +41,20 @@ def test_dashboard_kpis_rejects_aggregate_overflow():
         compute_dashboard_kpis(entries)
 
 
+def test_dashboard_rejects_missing_amount_field_with_controlled_error():
+    with pytest.raises(ValueError, match="is required"):
+        compute_dashboard_kpis([{"account_type": "income", "debit": 0.0}])
+
+
+def test_dashboard_kpis_normalizes_non_finite_intermediate_sum_errors():
+    entries = [
+        _entry(credit=1e308, debit=-1e308),
+        _entry(account_name="Reversal", credit=-1e308, debit=1e308),
+    ]
+    with pytest.raises(ValueError, match="supported numeric range"):
+        compute_dashboard_kpis(entries)
+
+
 def test_monthly_trend_preserves_finite_monthly_totals():
     from app.services.dashboard_engine import monthly_trend
 
