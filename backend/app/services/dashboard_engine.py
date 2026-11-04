@@ -103,34 +103,28 @@ def compute_dashboard_kpis(entries: list[dict]) -> dict:
 
 
 def monthly_trend(entries: list[dict]) -> list[dict]:
-    """Group revenue/expenses by calendar month (YYYY-MM), with checked totals."""
-    _validate_entry_amounts(entries)
-    buckets = defaultdict(lambda: {"revenue": [], "expenses": []})
-    for entry in entries:
-        key = entry["date"].strftime("%Y-%m") if isinstance(entry["date"], date) else str(entry["date"])[:7]
-        if entry["account_type"] == "income":
-            buckets[key]["revenue"].append(entry["credit"] - entry["debit"])
-        elif entry["account_type"] == "expense":
-            buckets[key]["expenses"].append(entry["debit"] - entry["credit"])
+    """Group revenue/expenses by calendar month (YYYY-MM), sorted chronologically."""
+    buckets = defaultdict(lambda: {"revenue": 0.0, "expenses": 0.0})
+    for e in entries:
+        key = e["date"].strftime("%Y-%m") if isinstance(e["date"], date) else str(e["date"])[:7]
+        if e["account_type"] == "income":
+            buckets[key]["revenue"] += e["credit"] - e["debit"]
+        elif e["account_type"] == "expense":
+            buckets[key]["expenses"] += e["debit"] - e["credit"]
 
-    result = []
-    for month, values in sorted(buckets.items()):
-        revenue = _safe_sum(values["revenue"], f"{month} revenue")
-        expenses = _safe_sum(values["expenses"], f"{month} expenses")
-        result.append({"month": month, "revenue": round(revenue, 2), "expenses": round(expenses, 2)})
-    return result
+    return [
+        {"month": k, "revenue": round(v["revenue"], 2), "expenses": round(v["expenses"], 2)}
+        for k, v in sorted(buckets.items())
+    ]
 
 
 def expense_breakdown(entries: list[dict]) -> list[dict]:
     """Total expense per account name — feeds the pie chart."""
-    _validate_entry_amounts(entries)
-    amounts = defaultdict(list)
-    for entry in entries:
-        if entry["account_type"] == "expense":
-            amounts[entry["account_name"]].append(entry["debit"] - entry["credit"])
-
-    totals = [
-        {"name": name, "value": round(_safe_sum(values, f"{name} expense total"), 2)}
-        for name, values in amounts.items()
-    ]
-    return sorted((item for item in totals if item["value"] > 0), key=lambda item: item["value"], reverse=True)
+    totals = defaultdict(float)
+    for e in entries:
+        if e["account_type"] == "expense":
+            totals[e["account_name"]] += e["debit"] - e["credit"]
+    return sorted(
+        [{"name": k, "value": round(v, 2)} for k, v in totals.items() if v > 0],
+        key=lambda x: x["value"], reverse=True,
+    )
