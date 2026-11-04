@@ -75,3 +75,14 @@ def test_webhook_payload_parser_rejects_non_object_json():
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "Webhook payload must be a JSON object."
+
+
+
+def test_webhook_payload_parser_rejects_excessively_nested_json():
+    deeply_nested = "[" * 2_000 + "]" * 2_000
+
+    with pytest.raises(HTTPException) as exc:
+        _parse_webhook_payload(deeply_nested)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Webhook payload is not valid JSON."
