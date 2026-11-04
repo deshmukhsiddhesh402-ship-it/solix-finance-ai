@@ -34,3 +34,24 @@ def test_webhook_body_reader_rejects_oversized_stream_before_joining():
 def test_webhook_body_reader_requires_positive_integer_limit(limit):
     with pytest.raises(ValueError, match="positive integer"):
         asyncio.run(_read_bounded_webhook_body(ChunkedRequest([b"x"]), limit))
+
+
+class BodyOnlyRequest:
+    def __init__(self, body):
+        self._body = body
+
+    async def body(self):
+        return self._body
+
+
+def test_webhook_body_reader_supports_body_only_request_adapters():
+    body = asyncio.run(_read_bounded_webhook_body(BodyOnlyRequest(b"adapter-body"), 20))
+    assert body == b"adapter-body"
+
+
+def test_webhook_body_reader_rejects_oversized_body_only_request_adapters():
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(_read_bounded_webhook_body(BodyOnlyRequest(b"too-large"), 3))
+
+    assert exc.value.status_code == 413
+    assert exc.value.detail == "Webhook payload is too large."
