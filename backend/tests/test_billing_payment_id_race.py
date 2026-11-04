@@ -7,7 +7,6 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from app.models.billing import Subscription
 from app.routers import billing
 
 
