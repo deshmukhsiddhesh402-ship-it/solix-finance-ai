@@ -11,6 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
+from app.services.ai_usage_meter import reserve_ai_usage, UsageLimitExceeded
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -76,6 +77,10 @@ async def upload_document(
         raise HTTPException(422, detail="No extractable text found in this file.")
 
     chunks = chunk_text(text)
+    try:
+        reserve_ai_usage(db, org_uuid, "ai_chat_uploads_this_month")
+    except UsageLimitExceeded as exc:
+        raise HTTPException(429, detail=str(exc)) from exc
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
         vectors = get_embeddings(chunks, input_type="document")
