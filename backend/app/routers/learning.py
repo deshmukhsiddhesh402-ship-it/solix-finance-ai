@@ -4,12 +4,17 @@ Excel, Tally Prime, Power BI, GST, TDS, ITR, Accounting, Finance, and US CMA.
 """
 import json
 import re
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+from app.routers.enterprise import require_permission
 from app.services.claude_service import ask_claude, learning_tutor_prompt, quiz_generation_prompt
 
 router = APIRouter()
+
+# These endpoints call a paid AI provider. Require a valid backend JWT,
+# active organization membership, and the explicit Learning permission.
+_require_learning_access = require_permission("learning", "create")
 
 TOPICS = [
     "Excel", "Advanced Excel", "Tally Prime", "Power BI", "GST", "TDS",
@@ -19,6 +24,7 @@ TOPICS = [
 
 @router.get("/topics")
 def list_topics():
+    """Public, static metadata; no AI provider or tenant data is accessed."""
     return {"topics": TOPICS}
 
 
@@ -37,7 +43,7 @@ class AskTutorRequest(BaseModel):
 
 
 @router.post("/ask")
-def ask_tutor(req: AskTutorRequest):
+def ask_tutor(req: AskTutorRequest, _user: str = Depends(_require_learning_access)):
     system, message = learning_tutor_prompt(req.topic, req.level, req.question)
     return {"answer": ask_claude(system, message, max_tokens=1200)}
 
@@ -66,7 +72,7 @@ def _strip_json_fences(text: str) -> str:
 
 
 @router.post("/generate-quiz")
-def generate_quiz(req: QuizRequest):
+def generate_quiz(req: QuizRequest, _user: str = Depends(_require_learning_access)):
     system, message = quiz_generation_prompt(req.topic, req.level, req.num_questions)
     raw = ask_claude(system, message, max_tokens=2000)
     try:
