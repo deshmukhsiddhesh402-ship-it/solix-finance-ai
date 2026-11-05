@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
+    const url = `${BACKEND_URL}${path}?org_id=${encodeURIComponent(auth.orgId)}`;
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth.headers },
       body: JSON.stringify(payload),
