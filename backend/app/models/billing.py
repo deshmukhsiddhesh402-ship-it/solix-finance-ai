@@ -2,7 +2,7 @@
 ORM model for subscription/billing state per organization.
 """
 import uuid
-from sqlalchemy import Column, String, DateTime, Integer, func
+from sqlalchemy import Column, String, DateTime, Integer, Date, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
@@ -21,5 +21,6 @@ class Subscription(Base):
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     ai_chat_uploads_this_month = Column(Integer, nullable=False, default=0)
     invoice_ocr_this_month = Column(Integer, nullable=False, default=0)
+    usage_period_start = Column(Date, nullable=False, server_default=func.date_trunc("month", func.now()).cast(Date))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

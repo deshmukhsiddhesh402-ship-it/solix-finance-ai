@@ -473,3 +473,69 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
 def test_rejects_unsafe_jwt_algorithm():
     with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
         Settings(JWT_ALGORITHM="none")
+
+
+def test_ai_usage_meter_builds_atomic_tenant_scoped_reservation():
+    from uuid import UUID
+    from sqlalchemy.dialects import postgresql
+    from app.services.ai_usage_meter import reserve_ai_usage
+
+    org_id = UUID("6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22")
+
+    class FakeResult:
+        def first(self):
+            return ("trial", 1)
+
+    class FakeDB:
+        def __init__(self):
+            self.statements = []
+            self.commits = 0
+
+        def execute(self, statement):
+            self.statements.append(statement)
+            return FakeResult()
+
+        def commit(self):
+            self.commits += 1
+
+    db = FakeDB()
+    result = reserve_ai_usage(db, org_id, "ai_chat_uploads_this_month")
+    assert result == {"plan": "trial", "current_usage": 1}
+    assert db.commits == 1
+    assert len(db.statements) == 2
+    update_sql = str(db.statements[1].compile(dialect=postgresql.dialect()))
+    assert "org_id" in update_sql and "status" in update_sql
+    assert "usage_period_start" in update_sql and "RETURNING" in update_sql.upper()
+
+
+def test_ai_usage_meter_rejects_unknown_meter_and_exhausted_limit():
+    from uuid import UUID
+    from app.services.ai_usage_meter import reserve_ai_usage, UsageLimitExceeded
+
+    org_id = UUID("6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22")
+
+    class EmptyResult:
+        def first(self):
+            return None
+
+    class FakeDB:
+        def __init__(self):
+            self.commits = 0
+            self.rollbacks = 0
+
+        def execute(self, statement):
+            return EmptyResult()
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+    db = FakeDB()
+    with pytest.raises(ValueError, match="Unsupported AI usage"):
+        reserve_ai_usage(db, org_id, "unknown_counter")
+    with pytest.raises(UsageLimitExceeded):
+        reserve_ai_usage(db, org_id, "invoice_ocr_this_month")
+    assert db.commits == 0
+    assert db.rollbacks == 1
