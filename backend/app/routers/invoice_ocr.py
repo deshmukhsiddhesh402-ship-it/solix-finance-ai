@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
+from app.services.ai_usage_meter import reserve_ai_usage, UsageLimitExceeded
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -78,6 +79,10 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
     if not _has_expected_file_signature(file_bytes, extension):
         raise HTTPException(400, detail="Invoice file content does not match its file type.")
+    try:
+        reserve_ai_usage(db, org_uuid, "invoice_ocr_this_month")
+    except UsageLimitExceeded as exc:
+        raise HTTPException(429, detail=str(exc)) from exc
     if extension == "pdf":
         try:
             images = pdf_pages_to_images(file_bytes, max_pages=MAX_PDF_PAGES)
