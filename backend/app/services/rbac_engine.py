@@ -29,6 +29,13 @@ PERMISSION_MATRIX: dict[str, dict[Role, set[Action]]] = {
         Role.ACCOUNTANT: {Action.VIEW, Action.CREATE},
         Role.AUDITOR: {Action.VIEW},
     },
+    "learning": {
+        # Learning Mode creates educational content, not financial records.
+        # All tenant roles may use it after authentication and membership checks.
+        Role.ADMIN: {Action.VIEW, Action.CREATE},
+        Role.ACCOUNTANT: {Action.VIEW, Action.CREATE},
+        Role.AUDITOR: {Action.VIEW, Action.CREATE},
+    },
     "chat": {
         Role.ADMIN: {Action.VIEW, Action.CREATE},
         Role.ACCOUNTANT: {Action.VIEW, Action.CREATE},
