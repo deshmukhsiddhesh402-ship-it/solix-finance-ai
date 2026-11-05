@@ -145,3 +145,33 @@ def test_learning_access_rejects_unknown_membership_role(monkeypatch):
         )
 
     assert exc.value.status_code == 403
+
+
+def test_generate_quiz_returns_only_validated_questions(monkeypatch):
+    response = [{
+        "question": "What is GST?",
+        "options": ["A tax", "A bank", "A loan", "A salary"],
+        "correct_index": 0,
+        "explanation": "GST is an indirect tax.",
+    }]
+    monkeypatch.setattr(learning, "ask_claude", lambda *args, **kwargs: __import__("json").dumps(response))
+
+    result = learning.generate_quiz(learning.QuizRequest(topic="GST", num_questions=1))
+
+    assert result["questions"] == response
+
+
+@pytest.mark.parametrize("response", [
+    "not-json",
+    '[{"question":"Q","options":["A","B"],"correct_index":0,"explanation":"Why"}]',
+    '[{"question":"Q","options":["A","B","C","D"],"correct_index":4,"explanation":"Why"}]',
+    '[{"question":"Q","options":["A","B","C","D"],"correct_index":0,"explanation":"Why","extra":"unexpected"}]',
+    '[]',
+])
+def test_generate_quiz_rejects_invalid_provider_output(monkeypatch, response):
+    monkeypatch.setattr(learning, "ask_claude", lambda *args, **kwargs: response)
+
+    with pytest.raises(HTTPException) as exc:
+        learning.generate_quiz(learning.QuizRequest(topic="GST", num_questions=1))
+
+    assert exc.value.status_code == 502
