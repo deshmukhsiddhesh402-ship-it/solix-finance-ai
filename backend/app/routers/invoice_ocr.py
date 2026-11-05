@@ -3,6 +3,8 @@ import json, re, uuid, io, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from app.core.db import get_db
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
@@ -65,7 +67,7 @@ def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
     return data
 
 @router.post("/extract-invoice")
-async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
+async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), db: Session = Depends(get_db), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
     try:
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
