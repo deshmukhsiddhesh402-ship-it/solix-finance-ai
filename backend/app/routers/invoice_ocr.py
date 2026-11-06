@@ -53,9 +53,11 @@ def _strip_json_fences(text: str) -> str:
 
 def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
     raw = ask_claude_with_image(INVOICE_EXTRACTION_SYSTEM_PROMPT, "Extract the invoice fields from this document image.", encode_image_base64(image_bytes), media_type, max_tokens=1500)
+    if not isinstance(raw, str):
+        raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
     try:
         data = json.loads(_strip_json_fences(raw))
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise HTTPException(502, detail="Could not parse the extracted invoice data. Try a clearer image.") from exc
     if not isinstance(data, dict):
         raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
