@@ -175,3 +175,26 @@ def test_generate_quiz_rejects_invalid_provider_output(monkeypatch, response):
         learning.generate_quiz(learning.QuizRequest(topic="GST", num_questions=1))
 
     assert exc.value.status_code == 502
+
+
+@pytest.mark.parametrize("response", [None, 123, {"questions": []}])
+def test_generate_quiz_rejects_non_text_provider_output(monkeypatch, response):
+    monkeypatch.setattr(learning, "ask_claude", lambda *args, **kwargs: response)
+
+    with pytest.raises(HTTPException) as exc:
+        learning.generate_quiz(learning.QuizRequest(topic="GST", num_questions=1))
+
+    assert exc.value.status_code == 502
+    assert exc.value.detail == "The quiz provider returned an invalid response. Try again."
+
+
+def test_generate_quiz_rejects_excessively_nested_provider_json(monkeypatch):
+    # Exceed Python's JSON decoder recursion threshold to cover RecursionError.
+    deeply_nested = "[" * 10_000 + "]" * 10_000
+    monkeypatch.setattr(learning, "ask_claude", lambda *args, **kwargs: deeply_nested)
+
+    with pytest.raises(HTTPException) as exc:
+        learning.generate_quiz(learning.QuizRequest(topic="GST", num_questions=1))
+
+    assert exc.value.status_code == 502
+    assert exc.value.detail == "The quiz provider returned an invalid response. Try again."
