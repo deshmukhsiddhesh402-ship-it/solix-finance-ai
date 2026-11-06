@@ -4,6 +4,7 @@ Valuation, and Scenario Analysis. Pure Python (no numpy/scipy dependency)
 so it's lightweight and easy to unit test.
 """
 from dataclasses import dataclass
+import math
 
 
 # ---------------------------------------------------------------------------
