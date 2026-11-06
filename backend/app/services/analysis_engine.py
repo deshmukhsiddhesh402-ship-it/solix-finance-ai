@@ -4,6 +4,22 @@ Valuation, and Scenario Analysis. Pure Python (no numpy/scipy dependency)
 so it's lightweight and easy to unit test.
 """
 from dataclasses import dataclass
+import math
+
+
+MAX_IRR_PERIODS = 100
+
+
+def _validate_irr_cash_flows(cash_flows: list[float]) -> list[float]:
+    """Validate IRR input before root bracketing and numerical iteration."""
+    if not isinstance(cash_flows, list):
+        raise ValueError("cash_flows must be a list.")
+    if len(cash_flows) > MAX_IRR_PERIODS:
+        raise ValueError(f"cash_flows cannot contain more than {MAX_IRR_PERIODS} periods.")
+    for index, value in enumerate(cash_flows):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"cash_flows[{index}] must be a finite number.")
+    return cash_flows
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +40,12 @@ def irr(cash_flows: list[float], low: float = -99.0, high: float = 1000.0, tol: 
     """Find the discount rate (%) at which NPV == 0, via bisection.
     Returns None if no sign change is found in the search range (no real IRR).
     """
+    cash_flows = _validate_irr_cash_flows(cash_flows)
+    # A meaningful IRR requires at least one investment outflow and one
+    # subsequent inflow. Empty or single-sign series must not produce 0%.
+    if not any(cf < 0 for cf in cash_flows) or not any(cf > 0 for cf in cash_flows):
+        return None
+
     def npv_at(rate_pct: float) -> float:
         r = rate_pct / 100
         return sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
