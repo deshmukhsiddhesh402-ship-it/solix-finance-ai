@@ -539,3 +539,43 @@ def test_ai_usage_meter_rejects_unknown_meter_and_exhausted_limit():
         reserve_ai_usage(db, org_id, "invoice_ocr_this_month")
     assert db.commits == 0
     assert db.rollbacks == 1
+
+
+@pytest.mark.parametrize("usage_key", [
+    "ai_chat_uploads_this_month",
+    "invoice_ocr_this_month",
+])
+def test_ai_usage_month_rollover_resets_both_counters_atomically(usage_key):
+    from uuid import UUID
+    from sqlalchemy.dialects import postgresql
+    from app.services.ai_usage_meter import reserve_ai_usage
+
+    org_id = UUID("6f1b7d5d-2c0a-4b9f-9a6d-7a0b5d9b1c22")
+
+    class FakeResult:
+        def first(self):
+            return ("trial", 1)
+
+    class FakeDB:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+            return FakeResult()
+
+        def commit(self):
+            pass
+
+    db = FakeDB()
+    reserve_ai_usage(db, org_id, usage_key)
+
+    update_sql = str(db.statements[1].compile(dialect=postgresql.dialect()))
+    set_clause = update_sql.split(" WHERE ", 1)[0].split(" SET ", 1)[1]
+
+    # Both meters must reset in the same statement as the shared period marker.
+    assert "ai_chat_uploads_this_month" in set_clause
+    assert "invoice_ocr_this_month" in set_clause
+    assert "usage_period_start" in set_clause
+    assert set_clause.count("CASE WHEN") >= 2
+    assert "usage_period_start !=" in update_sql
