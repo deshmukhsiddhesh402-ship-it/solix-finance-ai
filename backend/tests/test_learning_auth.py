@@ -198,3 +198,15 @@ def test_generate_quiz_rejects_excessively_nested_provider_json(monkeypatch):
 
     assert exc.value.status_code == 502
     assert exc.value.detail == "The quiz provider returned an invalid response. Try again."
+
+
+@pytest.mark.parametrize("response", [None, 123, "   "])
+def test_ask_tutor_rejects_non_text_or_blank_provider_output(monkeypatch, response):
+    monkeypatch.setattr(learning, "ask_claude", lambda *args, **kwargs: response)
+
+    request = learning.AskTutorRequest(topic="GST", question="Explain input tax credit.")
+    with pytest.raises(HTTPException) as exc:
+        learning.ask_tutor(request)
+
+    assert exc.value.status_code == 502
+    assert exc.value.detail == "The tutor provider returned an invalid response. Try again."
