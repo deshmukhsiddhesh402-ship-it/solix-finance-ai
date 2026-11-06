@@ -4,6 +4,7 @@ Valuation, and Scenario Analysis. Pure Python (no numpy/scipy dependency)
 so it's lightweight and easy to unit test.
 """
 from dataclasses import dataclass
+import math
 
 
 # ---------------------------------------------------------------------------
@@ -80,19 +81,43 @@ def dcf_valuation(
     discount_rate_pct: float,
     terminal_growth_rate_pct: float,
 ) -> dict:
+    if not isinstance(projected_cash_flows, list) or not projected_cash_flows:
+        raise ValueError("projected_cash_flows must be a non-empty list.")
+    if len(projected_cash_flows) > 100:
+        raise ValueError("projected_cash_flows cannot contain more than 100 periods.")
+    for index, value in enumerate(projected_cash_flows):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"projected_cash_flows[{index}] must be a finite number.")
+    if (
+        isinstance(discount_rate_pct, bool)
+        or not isinstance(discount_rate_pct, (int, float))
+        or not math.isfinite(discount_rate_pct)
+        or isinstance(terminal_growth_rate_pct, bool)
+        or not isinstance(terminal_growth_rate_pct, (int, float))
+        or not math.isfinite(terminal_growth_rate_pct)
+    ):
+        raise ValueError("Discount and terminal growth rates must be finite numbers.")
+
     r = discount_rate_pct / 100
     g = terminal_growth_rate_pct / 100
     if r <= g:
         raise ValueError("Discount rate must exceed terminal growth rate")
+    if r <= -1:
+        raise ValueError("Discount rate must be greater than -100%.")
 
-    pv_cash_flows = [cf / ((1 + r) ** (t + 1)) for t, cf in enumerate(projected_cash_flows)]
-    sum_pv_cash_flows = sum(pv_cash_flows)
+    try:
+        pv_cash_flows = [cf / ((1 + r) ** (t + 1)) for t, cf in enumerate(projected_cash_flows)]
+        sum_pv_cash_flows = math.fsum(pv_cash_flows)
+        last_cf = projected_cash_flows[-1]
+        terminal_value = (last_cf * (1 + g)) / (r - g)
+        pv_terminal_value = terminal_value / ((1 + r) ** len(projected_cash_flows))
+        enterprise_value = math.fsum((sum_pv_cash_flows, pv_terminal_value))
+    except (OverflowError, ZeroDivisionError, ValueError) as exc:
+        raise ValueError("DCF calculation exceeds the supported numeric range.") from exc
 
-    last_cf = projected_cash_flows[-1]
-    terminal_value = (last_cf * (1 + g)) / (r - g)
-    pv_terminal_value = terminal_value / ((1 + r) ** len(projected_cash_flows))
-
-    enterprise_value = sum_pv_cash_flows + pv_terminal_value
+    values = (sum_pv_cash_flows, terminal_value, pv_terminal_value, enterprise_value)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("DCF calculation exceeds the supported numeric range.")
     return {
         "pv_of_forecast_cash_flows": round(sum_pv_cash_flows, 2),
         "terminal_value": round(terminal_value, 2),
