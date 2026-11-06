@@ -1,33 +1,40 @@
 """Module 4: Banking — tenant-authorized reconciliation API."""
 from datetime import date
 from typing import Literal
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
 
+
 class BankLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=1000)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     txn_type: Literal["credit", "debit"]
-    mode: str = ""
+    mode: str = Field(default="", max_length=30)
+
 
 class BookLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=1000)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     txn_type: Literal["credit", "debit"]
 
+
 class ReconcileRequest(BaseModel):
-    bank_lines: list[BankLineIn]
-    book_lines: list[BookLineIn]
-    date_window_days: int = 5
-    balance_as_per_bank: float = 0.0
+    bank_lines: list[BankLineIn] = Field(max_length=5000)
+    book_lines: list[BookLineIn] = Field(max_length=5000)
+    date_window_days: int = Field(default=5, ge=0, le=366, strict=True)
+    # A negative bank balance is valid for an overdraft.
+    balance_as_per_bank: float = Field(default=0.0, allow_inf_nan=False)
+
 
 @router.post("/reconcile")
 def reconcile_endpoint(
@@ -35,13 +42,22 @@ def reconcile_endpoint(
     org_id: str = Query(...),
     _user: str = Depends(require_permission("reports", "create")),
 ):
-    bank_lines = [BankLine(**l.dict()) for l in req.bank_lines]
-    book_lines = [BookLine(**l.dict()) for l in req.book_lines]
-    result = reconcile(bank_lines, book_lines, req.date_window_days)
+    bank_lines = [BankLine(**line.model_dump()) for line in req.bank_lines]
+    book_lines = [BookLine(**line.model_dump()) for line in req.book_lines]
+    try:
+        result = reconcile(bank_lines, book_lines, req.date_window_days)
+    except ValueError as exc:
+        # Expected input/calculation validation errors must not become HTTP 500s.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     result["reconciliation_statement"] = {
         "balance_as_per_bank": req.balance_as_per_bank,
         "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
         "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
-        "balance_as_per_books": reconciled_balance(req.balance_as_per_bank, result["totals"]["outstanding_cheques"], result["totals"]["deposits_not_credited"]),
+        "balance_as_per_books": reconciled_balance(
+            req.balance_as_per_bank,
+            result["totals"]["outstanding_cheques"],
+            result["totals"]["deposits_not_credited"],
+        ),
     }
     return result
