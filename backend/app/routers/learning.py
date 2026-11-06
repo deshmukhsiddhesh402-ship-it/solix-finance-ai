@@ -45,7 +45,10 @@ class AskTutorRequest(BaseModel):
 @router.post("/ask")
 def ask_tutor(req: AskTutorRequest, _user: str = Depends(_require_learning_access)):
     system, message = learning_tutor_prompt(req.topic, req.level, req.question)
-    return {"answer": ask_claude(system, message, max_tokens=1200)}
+    answer = ask_claude(system, message, max_tokens=1200)
+    if not isinstance(answer, str) or not answer.strip():
+        raise HTTPException(502, detail="The tutor provider returned an invalid response. Try again.")
+    return {"answer": answer.strip()}
 
 
 class QuizQuestion(BaseModel):
