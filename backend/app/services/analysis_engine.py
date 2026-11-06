@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import math
 
 
-MAX_IRR_PERIODS = 1_000
+MAX_IRR_PERIODS = 100
 
 
 def _validate_irr_cash_flows(cash_flows: list[float]) -> list[float]:
