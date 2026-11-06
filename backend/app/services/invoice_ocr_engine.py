@@ -116,36 +116,60 @@ def invoices_to_excel(invoices: list[dict]) -> bytes:
 # ---------------------------------------------------------------------------
 # Convert extracted invoice to a double-entry journal entry
 # ---------------------------------------------------------------------------
-def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") -> list[dict]:
-    """Standard purchase-invoice journal entry:
-        Dr Purchases/Expense       (taxable value)
-        Dr Input CGST              (if any)
-        Dr Input SGST              (if any)
-        Dr Input IGST              (if any)
-        Cr Vendor (Accounts Payable) (total amount)
-    Rounds to 2dp and asserts the entry balances before returning it.
-    """
-    taxable = round(float(invoice.get("taxable_value") or 0), 2)
-    cgst = round(float(invoice.get("cgst_amount") or 0), 2)
-    sgst = round(float(invoice.get("sgst_amount") or 0), 2)
-    igst = round(float(invoice.get("igst_amount") or 0), 2)
-    total = round(float(invoice.get("total_amount") or (taxable + cgst + sgst + igst)), 2)
+def _parse_invoice_amount(value, label: str, default: float = 0.0) -> float:
+    """Convert untrusted extracted invoice values into finite non-negative amounts."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        amount = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be a finite numeric value.") from exc
+    if not math.isfinite(amount):
+        raise ValueError(f"{label} must be a finite numeric value.")
+    if amount < 0:
+        raise ValueError(f"{label} cannot be negative.")
+    return round(amount, 2)
 
-    values = {"taxable_value": taxable, "cgst_amount": cgst, "sgst_amount": sgst, "igst_amount": igst, "total_amount": total}
-    if not all(math.isfinite(v) for v in values.values()):
-        raise ValueError("Invoice amounts must be finite numeric values.")
-    if any(v < 0 for v in values.values()):
-        raise ValueError("Invoice monetary values cannot be negative.")
-    expected_total = round(taxable + cgst + sgst + igst, 2)
+
+def _checked_invoice_sum(values: list[float], label: str) -> float:
+    try:
+        total = math.fsum(values)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{label} exceeds the supported numeric range.") from exc
+    if not math.isfinite(total):
+        raise ValueError(f"{label} exceeds the supported numeric range.")
+    return round(total, 2)
+
+
+def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") -> list[dict]:
+    """Convert an extracted purchase invoice into a balanced double-entry entry.
+
+    Invalid provider-extracted values are rejected as ValueError so the API can
+    return a controlled 422 and never build journal lines from malformed data.
+    """
+    if not isinstance(invoice, dict):
+        raise ValueError("Invoice data must be an object.")
+    if not isinstance(expense_account, str) or not expense_account.strip():
+        raise ValueError("Expense account must be a non-empty string.")
+
+    taxable = _parse_invoice_amount(invoice.get("taxable_value"), "taxable_value")
+    cgst = _parse_invoice_amount(invoice.get("cgst_amount"), "cgst_amount")
+    sgst = _parse_invoice_amount(invoice.get("sgst_amount"), "sgst_amount")
+    igst = _parse_invoice_amount(invoice.get("igst_amount"), "igst_amount")
+
+    expected_total = _checked_invoice_sum([taxable, cgst, sgst, igst], "Invoice total")
+    raw_total = invoice.get("total_amount")
+    total = expected_total if raw_total is None or (isinstance(raw_total, str) and not raw_total.strip()) else _parse_invoice_amount(raw_total, "total_amount")
     if abs(expected_total - total) > 0.01:
         raise ValueError(
             f"Extracted invoice total does not reconcile (expected {expected_total}, got {total}). "
             "Review the extracted fields before posting."
         )
 
-    vendor = invoice.get("vendor_name") or "Unknown Vendor"
+    vendor_value = invoice.get("vendor_name")
+    vendor = vendor_value.strip() if isinstance(vendor_value, str) and vendor_value.strip() else "Unknown Vendor"
 
-    lines = [{"account_name": expense_account, "account_type": "expense", "debit": taxable, "credit": 0.0}]
+    lines = [{"account_name": expense_account.strip(), "account_type": "expense", "debit": taxable, "credit": 0.0}]
     if cgst:
         lines.append({"account_name": "Input CGST", "account_type": "asset", "debit": cgst, "credit": 0.0})
     if sgst:
@@ -154,8 +178,8 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
         lines.append({"account_name": "Input IGST", "account_type": "asset", "debit": igst, "credit": 0.0})
     lines.append({"account_name": f"{vendor} (Payable)", "account_type": "liability", "debit": 0.0, "credit": total})
 
-    total_debit = round(sum(l["debit"] for l in lines), 2)
-    total_credit = round(sum(l["credit"] for l in lines), 2)
+    total_debit = _checked_invoice_sum([line["debit"] for line in lines], "Journal debit total")
+    total_credit = _checked_invoice_sum([line["credit"] for line in lines], "Journal credit total")
     if abs(total_debit - total_credit) > 0.01:
         raise ValueError(
             f"Journal entry doesn't balance (Dr {total_debit} vs Cr {total_credit}) — "
