@@ -39,8 +39,17 @@ def reserve_ai_usage(db, org_id, usage_key: str) -> dict:
             and_(Subscription.plan == "trial", counter < policy["trial"]),
             and_(Subscription.plan == "pro", counter < policy["pro"]),
         )
-        new_count = case(
-            (Subscription.usage_period_start < current_month, 1),
+        # All monthly counters share one period marker. When any meter rolls
+        # the marker forward, reset every other counter in the same atomic UPDATE
+        # so the first request of the month cannot leave another meter stale.
+        period_changed = Subscription.usage_period_start != current_month
+        counter_updates = {
+            key: case((period_changed, 0), else_=getattr(Subscription, key))
+            for key in USAGE_POLICIES
+            if key != usage_key
+        }
+        counter_updates[usage_key] = case(
+            (period_changed, 1),
             else_=counter + 1,
         )
         statement = (
@@ -48,9 +57,9 @@ def reserve_ai_usage(db, org_id, usage_key: str) -> dict:
             .where(
                 Subscription.org_id == org_id,
                 Subscription.status == "active",
-                or_(Subscription.usage_period_start < current_month, within_plan_limit),
+                or_(period_changed, within_plan_limit),
             )
-            .values({usage_key: new_count, "usage_period_start": current_month})
+            .values({**counter_updates, "usage_period_start": current_month})
             .returning(Subscription.plan, counter)
         )
         row = db.execute(statement).first()
