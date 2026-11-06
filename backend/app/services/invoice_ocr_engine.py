@@ -120,6 +120,8 @@ def _parse_invoice_amount(value, label: str, default: float = 0.0) -> float:
     """Convert untrusted extracted invoice values into finite non-negative amounts."""
     if value is None or (isinstance(value, str) and not value.strip()):
         return default
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite numeric value.")
     try:
         amount = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
