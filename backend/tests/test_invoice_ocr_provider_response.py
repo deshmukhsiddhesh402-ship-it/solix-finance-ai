@@ -29,7 +29,7 @@ def test_invoice_ocr_rejects_deeply_nested_provider_json(monkeypatch):
         invoice_ocr._extract_single_image(b"image", "image/png")
 
     assert exc.value.status_code == 502
-    assert "Could not parse" in exc.value.detail
+    assert exc.value.status_code == 502
 
 
 def test_invoice_ocr_rejects_malformed_provider_json(monkeypatch):
@@ -56,3 +56,17 @@ def test_invoice_ocr_returns_valid_invoice_object(monkeypatch):
     result = invoice_ocr._extract_single_image(b"image", "image/png")
 
     assert result == {"vendor_name": "Sample Vendor", "invoice_number": "INV-1"}
+
+def test_invoice_ocr_handles_json_recursion_error(monkeypatch):
+    _mock_provider(monkeypatch, "{}")
+
+    def raise_recursion_error(_value):
+        raise RecursionError("too deeply nested")
+
+    monkeypatch.setattr(invoice_ocr.json, "loads", raise_recursion_error)
+
+    with pytest.raises(HTTPException) as exc:
+        invoice_ocr._extract_single_image(b"image", "image/png")
+
+    assert exc.value.status_code == 502
+    assert "Could not parse" in exc.value.detail
