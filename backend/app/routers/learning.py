@@ -45,7 +45,10 @@ class AskTutorRequest(BaseModel):
 @router.post("/ask")
 def ask_tutor(req: AskTutorRequest, _user: str = Depends(_require_learning_access)):
     system, message = learning_tutor_prompt(req.topic, req.level, req.question)
-    return {"answer": ask_claude(system, message, max_tokens=1200)}
+    answer = ask_claude(system, message, max_tokens=1200)
+    if not isinstance(answer, str) or not answer.strip():
+        raise HTTPException(502, detail="The tutor provider returned an invalid response. Try again.")
+    return {"answer": answer.strip()}
 
 
 class QuizQuestion(BaseModel):
@@ -104,11 +107,16 @@ def generate_quiz(req: QuizRequest, _user: str = Depends(_require_learning_acces
     system, message = quiz_generation_prompt(req.topic, req.level, req.num_questions)
     raw = ask_claude(system, message, max_tokens=2000)
     try:
+        # Provider adapters should return text. Fail closed for unexpected values
+        # before calling string methods, and normalize parser recursion failures
+        # into the same controlled upstream-provider response as malformed JSON.
+        if not isinstance(raw, str):
+            raise ValueError("The quiz provider response must be text.")
         parsed = json.loads(_strip_json_fences(raw))
         questions = QUIZ_QUESTIONS_ADAPTER.validate_python(parsed)
         if len(questions) != req.num_questions:
             raise ValueError("The generated question count does not match the request.")
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (json.JSONDecodeError, RecursionError, TypeError, ValueError):
         raise HTTPException(502, detail="The quiz provider returned an invalid response. Try again.") from None
     return {
         "topic": req.topic,
