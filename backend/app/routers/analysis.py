@@ -18,7 +18,10 @@ class NpvRequest(BaseModel):
 
 @router.post("/npv")
 def npv_endpoint(req: NpvRequest):
-    return {"npv": npv(req.rate_pct, req.cash_flows)}
+    try:
+        return {"npv": npv(req.rate_pct, req.cash_flows)}
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class IrrRequest(BaseModel):
@@ -27,7 +30,10 @@ class IrrRequest(BaseModel):
 
 @router.post("/irr")
 def irr_endpoint(req: IrrRequest):
-    result = irr(req.cash_flows)
+    try:
+        result = irr(req.cash_flows)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(422, detail="No real IRR found for these cash flows in the search range.")
     return {"irr_pct": result}
@@ -43,8 +49,8 @@ class CagrRequest(BaseModel):
 def cagr_endpoint(req: CagrRequest):
     try:
         return {"cagr_pct": cagr(req.beginning_value, req.ending_value, req.years)}
-    except ValueError as e:
-        raise HTTPException(422, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class BreakEvenRequest(BaseModel):
@@ -57,8 +63,8 @@ class BreakEvenRequest(BaseModel):
 def break_even_endpoint(req: BreakEvenRequest):
     try:
         return break_even(req.fixed_costs, req.price_per_unit, req.variable_cost_per_unit)
-    except ValueError as e:
-        raise HTTPException(422, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class DcfRequest(BaseModel):
@@ -71,8 +77,8 @@ class DcfRequest(BaseModel):
 def dcf_endpoint(req: DcfRequest):
     try:
         return dcf_valuation(req.projected_cash_flows, req.discount_rate_pct, req.terminal_growth_rate_pct)
-    except ValueError as e:
-        raise HTTPException(422, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class ScenarioIn(BaseModel):
@@ -89,4 +95,7 @@ class ScenarioAnalysisRequest(BaseModel):
 @router.post("/scenario-analysis")
 def scenario_analysis_endpoint(req: ScenarioAnalysisRequest):
     scenarios = [Scenario(**s.dict()) for s in req.scenarios]
-    return scenario_analysis(scenarios)
+    try:
+        return scenario_analysis(scenarios)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
