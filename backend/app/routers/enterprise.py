@@ -248,7 +248,7 @@ def list_api_keys(
     org_uuid = _parse_uuid(org_id, "organization identifier")
     rows = (
         db.query(ApiKey)
-        .filter(ApiKey.org_id == org_uuid, ApiKey.revoked == False)  # noqa: E712
+        .filter(ApiKey.org_id == org_uuid, ApiKey.revoked.is_(False))
         .order_by(ApiKey.created_at.desc())
         .limit(limit)
         .all()
