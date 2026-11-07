@@ -67,7 +67,19 @@ class FakeDB:
 
 
 def _criterion_columns(query):
-    return {criterion.left.key: criterion.right.value for criterion in query.criteria}
+    values = {}
+    for criterion in query.criteria:
+        right = criterion.right
+        if hasattr(right, "value"):
+            value = right.value
+        elif right.__class__.__name__ == "False_":
+            value = False
+        elif right.__class__.__name__ == "True_":
+            value = True
+        else:
+            value = None
+        values[criterion.left.key] = value
+    return values
 
 
 def test_create_api_key_persists_hash_and_mask_not_plaintext():
