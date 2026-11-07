@@ -11,7 +11,7 @@ import math
 import re
 import uuid
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -155,26 +155,68 @@ def ask_copilot(
     try:
         org_uuid = uuid.UUID(str(org_id))
     except (ValueError, AttributeError, TypeError) as exc:
-        from fastapi import HTTPException
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
 
     entries = _load_entries_for_copilot(db, org_uuid)
 
-    first_response = ask_claude_with_tools(COPILOT_SYSTEM_PROMPT, req.question, TOOLS)
+    try:
+        first_response = ask_claude_with_tools(COPILOT_SYSTEM_PROMPT, req.question, TOOLS)
+    except Exception as exc:
+        raise HTTPException(502, detail="Copilot provider request failed.") from exc
 
-    tool_use_block = next((b for b in first_response.content if b.type == "tool_use"), None)
-    if not tool_use_block:
-        # Claude answered directly without needing a tool (e.g. a general question).
-        text = "".join(b.text for b in first_response.content if b.type == "text")
-        return {"answer": text, "data": None}
+    content = getattr(first_response, "content", None)
+    if not isinstance(content, list):
+        raise HTTPException(502, detail="Copilot provider returned an invalid response.")
 
-    tool_result = _execute_tool(tool_use_block.name, tool_use_block.input, entries)
+    text_blocks = []
+    tool_blocks = []
+    for block in content:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            block_text = getattr(block, "text", None)
+            if not isinstance(block_text, str):
+                raise HTTPException(502, detail="Copilot provider returned an invalid text response.")
+            text_blocks.append(block_text)
+        elif block_type == "tool_use":
+            tool_name = getattr(block, "name", None)
+            tool_input = getattr(block, "input", None)
+            tool_use_id = getattr(block, "id", None)
+            if (
+                not isinstance(tool_name, str) or not tool_name
+                or not isinstance(tool_input, dict)
+                or not isinstance(tool_use_id, str) or not tool_use_id
+            ):
+                raise HTTPException(502, detail="Copilot provider returned an invalid tool request.")
+            tool_blocks.append(block)
+        else:
+            raise HTTPException(502, detail="Copilot provider returned an unsupported response block.")
 
-    final_answer = continue_with_tool_result(
-        COPILOT_SYSTEM_PROMPT, req.question, TOOLS,
-        assistant_content=first_response.content,
-        tool_use_id=tool_use_block.id,
-        tool_result=tool_result,
-    )
+    if len(tool_blocks) > 1:
+        raise HTTPException(502, detail="Copilot provider returned multiple tool requests.")
 
-    return {"answer": final_answer, "data": tool_result, "tool_used": tool_use_block.name}
+    if not tool_blocks:
+        answer = "".join(text_blocks).strip()
+        if not answer:
+            raise HTTPException(502, detail="Copilot provider returned an empty answer.")
+        return {"answer": answer, "data": None}
+
+    tool_use_block = tool_blocks[0]
+    try:
+        tool_result = _execute_tool(tool_use_block.name, tool_use_block.input, entries)
+    except ValueError as exc:
+        raise HTTPException(502, detail="Copilot provider returned an unsupported tool request.") from exc
+
+    try:
+        final_answer = continue_with_tool_result(
+            COPILOT_SYSTEM_PROMPT, req.question, TOOLS,
+            assistant_content=content,
+            tool_use_id=tool_use_block.id,
+            tool_result=tool_result,
+        )
+    except Exception as exc:
+        raise HTTPException(502, detail="Copilot provider follow-up request failed.") from exc
+
+    if not isinstance(final_answer, str) or not final_answer.strip():
+        raise HTTPException(502, detail="Copilot provider returned an empty final answer.")
+
+    return {"answer": final_answer.strip(), "data": tool_result, "tool_used": tool_use_block.name}
