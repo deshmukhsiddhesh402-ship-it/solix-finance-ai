@@ -19,12 +19,12 @@ def test_npv_rejects_discount_factor_underflow():
 
 
 def test_cagr_rejects_overflowing_growth_multiple():
-    with pytest.raises(ValueError, match="CAGR calculation exceeds"):
+    with pytest.raises(ValueError, match="CAGR result exceeds"):
         cagr(1e-308, 1e308, 1)
 
 
 def test_break_even_rejects_overflowing_units_and_revenue():
-    with pytest.raises(ValueError, match="Break-even calculation exceeds"):
+    with pytest.raises(ValueError, match="Break-even units exceeds"):
         break_even(1e308, 1.0, 0.9999999999999999)
 
 
