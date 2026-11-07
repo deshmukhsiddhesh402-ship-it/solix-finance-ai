@@ -224,6 +224,7 @@ def create_api_key(
     plaintext, hashed = generate_api_key()
     key_row = ApiKey(org_id=org_uuid, name=req.name, hashed_key=hashed, key_prefix_display=mask_api_key(plaintext))
     db.add(key_row)
+    db.flush()  # Assign the generated key ID before writing its audit event.
     _record_api_key_audit(
         db, org_uuid, user_uuid, "create", key_row, after={"name": key_row.name}
     )
