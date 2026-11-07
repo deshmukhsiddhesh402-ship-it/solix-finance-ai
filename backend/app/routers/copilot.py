@@ -155,7 +155,6 @@ def ask_copilot(
     try:
         org_uuid = uuid.UUID(str(org_id))
     except (ValueError, AttributeError, TypeError) as exc:
-        from fastapi import HTTPException
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
 
     entries = _load_entries_for_copilot(db, org_uuid)
