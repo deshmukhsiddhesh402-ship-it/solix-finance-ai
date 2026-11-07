@@ -79,8 +79,9 @@ def test_create_api_key_persists_hash_and_mask_not_plaintext():
     response = create_api_key(request, org_id=str(org_id), db=db, _user=str(uuid4()))
 
     assert db.committed
-    assert len(db.added) == 1
-    stored = db.added[0]
+    stored_rows = [row for row in db.added if isinstance(row, ApiKey)]
+    assert len(stored_rows) == 1
+    stored = stored_rows[0]
     plaintext = response["plaintext_key"]
 
     assert stored.org_id == org_id
