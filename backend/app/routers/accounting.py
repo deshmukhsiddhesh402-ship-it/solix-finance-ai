@@ -234,4 +234,7 @@ class InventoryValuationRequest(BaseModel):
 @router.post("/inventory/valuation")
 def inventory_valuation_endpoint(req: InventoryValuationRequest):
     txns = [InventoryTxn(**t.dict()) for t in req.txns]
-    return inventory_valuation(txns, req.method)
+    try:
+        return inventory_valuation(txns, req.method)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
