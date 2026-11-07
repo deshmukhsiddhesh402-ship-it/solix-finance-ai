@@ -57,6 +57,11 @@ class FakeDB:
         row.id = row.id or uuid4()
         self.added.append(row)
 
+    def flush(self):
+        # The production session assigns generated primary keys during flush.
+        for row in self.added:
+            row.id = row.id or uuid4()
+
     def commit(self):
         self.committed = True
 
