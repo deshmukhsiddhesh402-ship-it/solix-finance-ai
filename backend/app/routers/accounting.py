@@ -174,7 +174,10 @@ class RatiosRequest(BaseModel):
 
 @router.post("/ratios")
 def ratios(req: RatiosRequest):
-    return financial_ratios(**req.dict())
+    try:
+        return financial_ratios(**req.dict())
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class StraightLineRequest(BaseModel):
