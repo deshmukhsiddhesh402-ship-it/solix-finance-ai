@@ -19,6 +19,15 @@ def _require_cash_flows(cash_flows: list[float], label: str = "cash_flows") -> N
         _require_finite(value, label)
 
 
+def _checked_round(value: float, label: str) -> float:
+    if not math.isfinite(value):
+        raise ValueError(f"{label} exceeds the supported numeric range.")
+    rounded = round(value, 2)
+    if not math.isfinite(rounded):
+        raise ValueError(f"{label} exceeds the supported numeric range.")
+    return rounded
+
+
 # ---------------------------------------------------------------------------
 # NPV
 # ---------------------------------------------------------------------------
@@ -30,10 +39,20 @@ def npv(rate_pct: float, cash_flows: list[float]) -> float:
     if rate_pct <= -100:
         raise ValueError("rate_pct must be greater than -100.")
     r = rate_pct / 100
-    total = sum(cf / ((1 + r) ** t) for t, cf in enumerate(cash_flows))
-    if not math.isfinite(total):
-        raise ValueError("NPV result is not finite.")
-    return round(total, 2)
+    try:
+        discounted_cash_flows = []
+        for period, cash_flow in enumerate(cash_flows):
+            discount_factor = (1 + r) ** period
+            if discount_factor == 0:
+                raise ZeroDivisionError("discount factor underflow")
+            present_value = cash_flow / discount_factor
+            if not math.isfinite(present_value):
+                raise OverflowError("present value is not finite")
+            discounted_cash_flows.append(present_value)
+        total = math.fsum(discounted_cash_flows)
+    except (OverflowError, ZeroDivisionError, ValueError) as exc:
+        raise ValueError("NPV calculation exceeds the supported numeric range.") from exc
+    return _checked_round(total, "NPV result")
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +107,12 @@ def cagr(beginning_value: float, ending_value: float, years: float) -> float:
         _require_finite(value, label)
     if beginning_value <= 0 or ending_value <= 0 or years <= 0:
         raise ValueError("beginning_value, ending_value, and years must be positive")
-    rate = (ending_value / beginning_value) ** (1 / years) - 1
-    return round(rate * 100, 2)
+    try:
+        rate = (ending_value / beginning_value) ** (1 / years) - 1
+        annualized_rate_pct = rate * 100
+    except (OverflowError, ZeroDivisionError, ValueError) as exc:
+        raise ValueError("CAGR calculation exceeds the supported numeric range.") from exc
+    return _checked_round(annualized_rate_pct, "CAGR result")
 
 
 # ---------------------------------------------------------------------------
@@ -109,13 +132,17 @@ def break_even(fixed_costs: float, price_per_unit: float, variable_cost_per_unit
     contribution_margin = price_per_unit - variable_cost_per_unit
     if contribution_margin <= 0:
         raise ValueError("Price per unit must exceed variable cost per unit")
-    break_even_units = fixed_costs / contribution_margin
-    break_even_revenue = break_even_units * price_per_unit
+    try:
+        break_even_units = fixed_costs / contribution_margin
+        contribution_margin_ratio_pct = (contribution_margin / price_per_unit) * 100
+        break_even_revenue = break_even_units * price_per_unit
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError("Break-even calculation exceeds the supported numeric range.") from exc
     return {
-        "contribution_margin_per_unit": round(contribution_margin, 2),
-        "contribution_margin_ratio_pct": round((contribution_margin / price_per_unit) * 100, 2),
-        "break_even_units": round(break_even_units, 2),
-        "break_even_revenue": round(break_even_revenue, 2),
+        "contribution_margin_per_unit": _checked_round(contribution_margin, "Contribution margin"),
+        "contribution_margin_ratio_pct": _checked_round(contribution_margin_ratio_pct, "Contribution margin ratio"),
+        "break_even_units": _checked_round(break_even_units, "Break-even units"),
+        "break_even_revenue": _checked_round(break_even_revenue, "Break-even revenue"),
     }
 
 
