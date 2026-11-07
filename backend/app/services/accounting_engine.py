@@ -125,13 +125,25 @@ def financial_ratios(
         raise ValueError("Financial ratio balance inputs cannot be negative.")
     if inventory > current_assets:
         raise ValueError("Inventory cannot exceed current assets.")
+    def _checked_ratio(numerator: float, denominator: float, label: str, multiplier: float = 1.0):
+        try:
+            value = (numerator / denominator) * multiplier
+        except (OverflowError, ZeroDivisionError) as exc:
+            raise ValueError(f"{label} exceeds the supported numeric range.") from exc
+        if not math.isfinite(value):
+            raise ValueError(f"{label} exceeds the supported numeric range.")
+        rounded = round(value, 2)
+        if not math.isfinite(rounded):
+            raise ValueError(f"{label} exceeds the supported numeric range.")
+        return rounded
+
     return {
-        "current_ratio": round(current_assets / current_liabilities, 2) if current_liabilities else None,
-        "quick_ratio": round((current_assets - inventory) / current_liabilities, 2) if current_liabilities else None,
-        "debt_to_equity": round(total_debt / total_equity, 2) if total_equity else None,
-        "net_profit_margin_pct": round((net_profit / revenue) * 100, 2) if revenue else None,
-        "return_on_assets_pct": round((net_profit / total_assets) * 100, 2) if total_assets else None,
-        "return_on_equity_pct": round((net_profit / total_equity) * 100, 2) if total_equity else None,
+        "current_ratio": _checked_ratio(current_assets, current_liabilities, "Current ratio") if current_liabilities else None,
+        "quick_ratio": _checked_ratio(current_assets - inventory, current_liabilities, "Quick ratio") if current_liabilities else None,
+        "debt_to_equity": _checked_ratio(total_debt, total_equity, "Debt-to-equity ratio") if total_equity else None,
+        "net_profit_margin_pct": _checked_ratio(net_profit, revenue, "Net profit margin", 100.0) if revenue else None,
+        "return_on_assets_pct": _checked_ratio(net_profit, total_assets, "Return on assets", 100.0) if total_assets else None,
+        "return_on_equity_pct": _checked_ratio(net_profit, total_equity, "Return on equity", 100.0) if total_equity else None,
     }
 
 
