@@ -177,6 +177,31 @@ def log_action(db: Session, org_id: str, user_id: str, action: str, entity_type:
     db.commit()
 
 
+def _record_api_key_audit(
+    db: Session,
+    org_uuid: uuid.UUID,
+    user_uuid: uuid.UUID,
+    action: str,
+    key_row,
+    before: dict | None = None,
+    after: dict | None = None,
+) -> None:
+    """Add safe API-key lifecycle metadata to the same transaction as the key change."""
+    from app.models.enterprise import AuditLog
+
+    entry = build_audit_entry(
+        str(user_uuid), str(org_uuid), action, "api_key", str(key_row.id), before, after
+    )
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action=entry.action,
+        entity_type=entry.entity_type,
+        entity_id=entry.entity_id,
+        changes=entry.changes,
+    ))
+
+
 # ---------------------------------------------------------------------------
 # API keys
 # ---------------------------------------------------------------------------
@@ -191,6 +216,7 @@ def create_api_key(
     _user: str = Depends(require_permission("api_keys", "create")),
 ):
     org_uuid = _parse_uuid(org_id, "organization identifier")
+    user_uuid = _parse_uuid(_user, "user identifier")
     if _parse_uuid(req.org_id, "request organization identifier") != org_uuid:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
     from app.models.enterprise import ApiKey
@@ -198,6 +224,9 @@ def create_api_key(
     plaintext, hashed = generate_api_key()
     key_row = ApiKey(org_id=org_uuid, name=req.name, hashed_key=hashed, key_prefix_display=mask_api_key(plaintext))
     db.add(key_row)
+    _record_api_key_audit(
+        db, org_uuid, user_uuid, "create", key_row, after={"name": key_row.name}
+    )
     db.commit()
     return {
         "id": str(key_row.id),
@@ -239,11 +268,18 @@ def revoke_api_key(
     from app.models.enterprise import ApiKey
 
     org_uuid = _parse_uuid(org_id, "organization identifier")
+    user_uuid = _parse_uuid(_user, "user identifier")
     key_uuid = _parse_uuid(key_id, "API key identifier")
     key_row = db.query(ApiKey).filter(ApiKey.id == key_uuid, ApiKey.org_id == org_uuid).first()
     if not key_row:
         raise HTTPException(404, detail="API key not found.")
-    key_row.revoked = True
+    if not key_row.revoked:
+        before = {"name": key_row.name, "revoked": False}
+        key_row.revoked = True
+        _record_api_key_audit(
+            db, org_uuid, user_uuid, "revoke", key_row,
+            before=before, after={"name": key_row.name, "revoked": True},
+        )
     db.commit()
     return {"message": "API key revoked."}
 
