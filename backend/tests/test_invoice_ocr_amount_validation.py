@@ -65,3 +65,28 @@ def test_invoice_to_journal_lines_rejects_component_sum_overflow():
 def test_invoice_to_journal_lines_rejects_unbalanced_extracted_total():
     with pytest.raises(ValueError, match="does not reconcile"):
         invoice_to_journal_lines({"taxable_value": 100, "total_amount": 99})
+
+
+
+def test_invoice_to_journal_lines_accepts_vendor_name_at_account_limit():
+    lines = invoice_to_journal_lines(
+        {"vendor_name": "V" * 245, "taxable_value": 100, "total_amount": 100}
+    )
+
+    assert len(lines[-1]["account_name"]) == 255
+    assert lines[-1]["account_name"].endswith(" (Payable)")
+
+
+def test_invoice_to_journal_lines_rejects_vendor_name_that_exceeds_account_limit():
+    with pytest.raises(ValueError, match="maximum 245 characters"):
+        invoice_to_journal_lines(
+            {"vendor_name": "V" * 246, "taxable_value": 100, "total_amount": 100}
+        )
+
+
+def test_invoice_to_journal_lines_rejects_overlong_expense_account():
+    with pytest.raises(ValueError, match="Expense account name"):
+        invoice_to_journal_lines(
+            {"taxable_value": 100, "total_amount": 100},
+            "E" * 256,
+        )

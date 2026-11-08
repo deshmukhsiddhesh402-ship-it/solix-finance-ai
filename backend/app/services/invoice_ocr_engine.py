@@ -178,6 +178,9 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
         raise ValueError("Invoice data must be an object.")
     if not isinstance(expense_account, str) or not expense_account.strip():
         raise ValueError("Expense account must be a non-empty string.")
+    normalized_expense_account = expense_account.strip()
+    if len(normalized_expense_account) > 255:
+        raise ValueError("Expense account name cannot exceed 255 characters.")
 
     taxable = _parse_invoice_amount(invoice.get("taxable_value"), "taxable_value")
     cgst = _parse_invoice_amount(invoice.get("cgst_amount"), "cgst_amount")
@@ -196,14 +199,18 @@ def invoice_to_journal_lines(invoice: dict, expense_account: str = "Purchases") 
     vendor_value = invoice.get("vendor_name")
     vendor = vendor_value.strip() if isinstance(vendor_value, str) and vendor_value.strip() else "Unknown Vendor"
 
-    lines = [{"account_name": expense_account.strip(), "account_type": "expense", "debit": taxable, "credit": 0.0}]
+    payable_account = f"{vendor} (Payable)"
+    if len(payable_account) > 255:
+        raise ValueError("Vendor name is too long to create a payable account (maximum 245 characters).")
+
+    lines = [{"account_name": normalized_expense_account, "account_type": "expense", "debit": taxable, "credit": 0.0}]
     if cgst:
         lines.append({"account_name": "Input CGST", "account_type": "asset", "debit": cgst, "credit": 0.0})
     if sgst:
         lines.append({"account_name": "Input SGST", "account_type": "asset", "debit": sgst, "credit": 0.0})
     if igst:
         lines.append({"account_name": "Input IGST", "account_type": "asset", "debit": igst, "credit": 0.0})
-    lines.append({"account_name": f"{vendor} (Payable)", "account_type": "liability", "debit": 0.0, "credit": total})
+    lines.append({"account_name": payable_account, "account_type": "liability", "debit": 0.0, "credit": total})
 
     total_debit = _checked_invoice_sum([line["debit"] for line in lines], "Journal debit total")
     total_credit = _checked_invoice_sum([line["credit"] for line in lines], "Journal credit total")
