@@ -179,6 +179,10 @@ def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0
     total_tax = round(tax + cess, 2)
 
     return {
+        # The current engine constants are explicitly FY 2025-26; surface that
+        # basis so callers cannot mistake this result for a newer tax year.
+        "financial_year": "2025-26",
+        "tax_regime": "new",
         "taxable_income": round(taxable_income, 2),
         "tax_before_cess": round(tax, 2),
         "rebate_87a_applied": rebate_applied,
