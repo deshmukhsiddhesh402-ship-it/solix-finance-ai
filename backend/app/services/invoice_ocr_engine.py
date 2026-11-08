@@ -103,8 +103,19 @@ def _sanitize_excel_formula_value(value):
 def invoices_to_excel(invoices: list[dict]) -> bytes:
     """Flatten a list of extracted invoice dicts into a single-sheet Excel
     file, one row per invoice (line items summarized as a count)."""
+    if not isinstance(invoices, list):
+        raise ValueError("Invoices must be provided as a list.")
+
     rows = []
-    for inv in invoices:
+    for index, inv in enumerate(invoices):
+        if not isinstance(inv, dict):
+            raise ValueError(f"Invoice {index + 1} must be an object.")
+        line_items = inv.get("line_items")
+        if line_items is None:
+            line_items = []
+        elif not isinstance(line_items, list):
+            raise ValueError(f"Invoice {index + 1} line_items must be a list.")
+
         row = {
             "Vendor Name": inv.get("vendor_name"),
             "Vendor GSTIN": inv.get("vendor_gstin"),
@@ -116,7 +127,7 @@ def invoices_to_excel(invoices: list[dict]) -> bytes:
             "SGST": inv.get("sgst_amount"),
             "IGST": inv.get("igst_amount"),
             "Total Amount": inv.get("total_amount"),
-            "Line Items": len(inv.get("line_items") or []),
+            "Line Items": len(line_items),
         }
         rows.append({key: _sanitize_excel_formula_value(value) for key, value in row.items()})
     df = pd.DataFrame(rows)
