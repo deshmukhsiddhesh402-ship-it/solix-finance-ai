@@ -20,7 +20,10 @@ class GstRequest(BaseModel):
 
 @router.post("/gst/calculate")
 def gst_calculate(req: GstRequest):
-    return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    try:
+        return calculate_gst(req.taxable_value, req.gst_rate_pct, req.is_interstate)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class GstInvoiceLineIn(BaseModel):
@@ -37,7 +40,10 @@ class Gstr3bRequest(BaseModel):
 @router.post("/gst/gstr3b-summary")
 def gst_gstr3b(req: Gstr3bRequest):
     lines = [GstInvoiceLine(**l.dict()) for l in req.lines]
-    return gstr3b_summary(lines, req.input_tax_credit)
+    try:
+        return gstr3b_summary(lines, req.input_tax_credit)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
 
 
 class TdsRequest(BaseModel):
@@ -61,4 +67,7 @@ class IncomeTaxRequest(BaseModel):
 
 @router.post("/income-tax/new-regime")
 def income_tax_new_regime(req: IncomeTaxRequest):
-    return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    try:
+        return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
