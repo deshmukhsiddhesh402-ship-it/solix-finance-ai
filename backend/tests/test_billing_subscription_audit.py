@@ -242,11 +242,11 @@ def test_locked_subscription_rejects_same_payment_bound_to_different_order(monke
     )
     db = FakeDB([None, concurrently_recorded])
 
-    with pytest.raises(Exception) as exc:
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
         _invoke(monkeypatch, db, org_id)
 
-    from fastapi import HTTPException
-    assert isinstance(exc.value, HTTPException)
     assert exc.value.status_code == 409
     assert db.queries[1].lock_requested is True
     assert db.commit_count == 0
