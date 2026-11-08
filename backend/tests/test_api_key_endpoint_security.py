@@ -33,6 +33,9 @@ class FakeQuery:
     def order_by(self, *args):
         return self
 
+    def with_for_update(self):
+        return self
+
     def limit(self, value):
         return self
 
