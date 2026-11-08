@@ -126,7 +126,14 @@ def verify_payment(
 
     sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
     period_end = datetime.now(timezone.utc) + timedelta(days=30)
+    before = None
     if sub:
+        before = {
+            "plan": sub.plan,
+            "status": sub.status,
+            "current_period_end": sub.current_period_end.isoformat()
+            if sub.current_period_end else None,
+        }
         sub.plan = req.plan
         sub.status = "active"
         sub.razorpay_order_id = req.razorpay_order_id
@@ -139,7 +146,36 @@ def verify_payment(
             current_period_end=period_end,
         )
         db.add(sub)
+    after = {
+        "plan": req.plan,
+        "status": "active",
+        "current_period_end": period_end.isoformat(),
+    }
     try:
+        # Flush first so the audit row can reference the persisted subscription ID.
+        # Keep flush, audit insert, and commit in one guarded transaction so the
+        # payment-ID uniqueness recovery still handles races at either write.
+        db.flush()
+        from app.models.enterprise import AuditLog
+        from app.services.audit_engine import build_audit_entry
+
+        audit = build_audit_entry(
+            str(uuid.UUID(str(_user))),
+            str(org_uuid),
+            "payment_verified",
+            "subscription",
+            str(sub.id),
+            before=before,
+            after=after,
+        )
+        db.add(AuditLog(
+            org_id=org_uuid,
+            user_id=uuid.UUID(str(_user)),
+            action=audit.action,
+            entity_type=audit.entity_type,
+            entity_id=audit.entity_id,
+            changes=audit.changes,
+        ))
         db.commit()
     except IntegrityError as exc:
         # The database uniqueness constraint closes the race between concurrent
