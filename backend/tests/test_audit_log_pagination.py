@@ -78,10 +78,10 @@ def test_audit_log_uses_default_offset_and_bounded_page_size():
 
     assert response == {"entries": []}
     assert offset_parameter.default == 0
-    assert offset_parameter.ge == 0
-    assert offset_parameter.le == 10000
+    assert any(getattr(item, "ge", None) == 0 for item in offset_parameter.metadata)
+    assert any(getattr(item, "le", None) == 10000 for item in offset_parameter.metadata)
     assert limit_parameter.default == 50
-    assert limit_parameter.le == 200
+    assert any(getattr(item, "le", None) == 200 for item in limit_parameter.metadata)
     assert query.limit_value == 50
     assert query.offset_value == 0
 
