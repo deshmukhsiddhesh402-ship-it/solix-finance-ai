@@ -168,3 +168,87 @@ def test_audit_entry_rejects_empty_organization_identifier():
             entity_type="invoice",
             entity_id="invoice-1",
         )
+
+
+
+def test_persisted_audit_changes_are_redacted_again_at_read_boundary():
+    from app.services.audit_engine import redact_audit_changes
+
+    legacy = {
+        "api_key": {"before": "old-plaintext-key", "after": "new-plaintext-key"},
+        "metadata": {
+            "before": {"refresh-token": "old-refresh-secret", "label": "Visible"},
+            "after": {"refresh-token": "new-refresh-secret", "label": "Updated"},
+        },
+    }
+
+    sanitized = redact_audit_changes(legacy)
+
+    assert sanitized["api_key"] == "[REDACTED]"
+    assert sanitized["metadata"]["before"]["refresh-token"] == "[REDACTED]"
+    assert sanitized["metadata"]["after"]["refresh-token"] == "[REDACTED]"
+    assert sanitized["metadata"]["before"]["label"] == "Visible"
+    assert sanitized["metadata"]["after"]["label"] == "Updated"
+    # The read guard must not mutate the ORM/JSON value stored in the database.
+    assert legacy["api_key"]["before"] == "old-plaintext-key"
+
+
+def test_persisted_audit_changes_reject_malformed_non_object_values():
+    from app.services.audit_engine import redact_audit_changes
+
+    assert redact_audit_changes(None) is None
+    assert redact_audit_changes(["unstructured", "legacy"]) is None
+
+
+def test_audit_log_endpoint_redacts_legacy_rows_before_returning_them():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.models.enterprise import AuditLog
+    from app.routers.enterprise import view_audit_log
+
+    org_id = uuid4()
+    row = SimpleNamespace(
+        id=uuid4(),
+        user_id=uuid4(),
+        action="edit",
+        entity_type="integration",
+        entity_id="integration-1",
+        changes={
+            "api_key": {"before": "legacy-key", "after": "another-key"},
+            "settings": {
+                "before": {"display_name": "Old", "clientSecret": "legacy-secret"},
+                "after": {"display_name": "New", "clientSecret": "new-secret"},
+            },
+        },
+        created_at=datetime(2026, 11, 8, tzinfo=timezone.utc),
+    )
+
+    class FakeQuery:
+        def filter(self, *criteria):
+            self.criteria = criteria
+            return self
+
+        def order_by(self, *criteria):
+            return self
+
+        def limit(self, value):
+            return self
+
+        def all(self):
+            return [row]
+
+    class FakeDB:
+        def query(self, model):
+            assert model is AuditLog
+            return FakeQuery()
+
+    response = view_audit_log(org_id=str(org_id), db=FakeDB(), _user=str(uuid4()))
+
+    changes = response["entries"][0]["changes"]
+    assert changes["api_key"] == "[REDACTED]"
+    assert changes["settings"]["before"]["clientSecret"] == "[REDACTED]"
+    assert changes["settings"]["after"]["clientSecret"] == "[REDACTED]"
+    assert changes["settings"]["before"]["display_name"] == "Old"
+    assert row.changes["api_key"]["before"] == "legacy-key"

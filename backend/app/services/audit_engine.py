@@ -60,6 +60,17 @@ def _audit_value(field_name: str, value):
     return value
 
 
+def redact_audit_changes(changes: dict | None) -> dict | None:
+    """Re-apply sensitive-field redaction when reading persisted audit changes.
+
+    Write-time redaction protects new entries; this read-boundary guard also
+    protects legacy rows created before that protection was introduced.
+    """
+    if changes is None or not isinstance(changes, dict):
+        return None
+    return _audit_value("", changes)
+
+
 def diff_fields(before: dict | None, after: dict | None) -> dict:
     """Compute field-level changes between two snapshots of a record.
     - before=None means a new record was created (all fields are "added").
