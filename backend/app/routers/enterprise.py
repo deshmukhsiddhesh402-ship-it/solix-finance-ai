@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import get_db
 from app.core.security import decode_access_token
@@ -119,17 +120,33 @@ def add_membership(
         raise HTTPException(409, detail="User is already a member of this organization.")
     membership = OrgMembership(user_id=target_user.id, org_id=org_uuid, role=req.role)
     db.add(membership)
-    db.flush()  # Assign the membership ID before writing its audit event.
-    _record_enterprise_audit(
-        db,
-        org_uuid,
-        _parse_uuid(_acting_user, "acting user identifier"),
-        "create",
-        "org_membership",
-        str(membership.id),
-        after={"user_id": str(target_user.id), "role": membership.role},
-    )
-    db.commit()
+    try:
+        # The unique (user_id, org_id) constraint is the final race-safe guard.
+        # Flush may raise before the audit row is added; commit may raise after it.
+        db.flush()
+        _record_enterprise_audit(
+            db,
+            org_uuid,
+            _parse_uuid(_acting_user, "acting user identifier"),
+            "create",
+            "org_membership",
+            str(membership.id),
+            after={"user_id": str(target_user.id), "role": membership.role},
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # Only translate a genuine concurrent duplicate into 409. Other
+        # integrity failures remain visible to normal error handling.
+        concurrent_membership = db.query(OrgMembership).filter(
+            OrgMembership.user_id == target_user.id,
+            OrgMembership.org_id == org_uuid,
+        ).first()
+        if concurrent_membership:
+            raise HTTPException(
+                409, detail="User is already a member of this organization."
+            ) from exc
+        raise
     return {"message": f"{req.user_email} added to organization as {req.role}."}
 
 
