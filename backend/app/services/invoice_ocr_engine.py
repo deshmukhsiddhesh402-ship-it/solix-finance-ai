@@ -93,12 +93,19 @@ def encode_image_base64(image_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Export extracted invoices to Excel
 # ---------------------------------------------------------------------------
+def _sanitize_excel_formula_value(value):
+    """Escape untrusted text that spreadsheet applications may evaluate as formulas."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def invoices_to_excel(invoices: list[dict]) -> bytes:
     """Flatten a list of extracted invoice dicts into a single-sheet Excel
     file, one row per invoice (line items summarized as a count)."""
     rows = []
     for inv in invoices:
-        rows.append({
+        row = {
             "Vendor Name": inv.get("vendor_name"),
             "Vendor GSTIN": inv.get("vendor_gstin"),
             "GSTIN Valid": is_valid_gstin_format(inv.get("vendor_gstin") or ""),
@@ -110,7 +117,8 @@ def invoices_to_excel(invoices: list[dict]) -> bytes:
             "IGST": inv.get("igst_amount"),
             "Total Amount": inv.get("total_amount"),
             "Line Items": len(inv.get("line_items") or []),
-        })
+        }
+        rows.append({key: _sanitize_excel_formula_value(value) for key, value in row.items()})
     df = pd.DataFrame(rows)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
