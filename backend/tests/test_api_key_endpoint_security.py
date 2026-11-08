@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -150,3 +151,18 @@ def test_revoke_api_key_query_is_scoped_to_key_and_requested_org():
     assert filters["org_id"] == org_id
     assert exc.value.status_code == 404
     assert not db.committed
+
+
+
+def test_api_key_name_is_trimmed_before_storage():
+    request = CreateApiKeyRequest(
+        org_id=str(uuid4()),
+        name="  Finance integration  ",
+    )
+
+    assert request.name == "Finance integration"
+
+
+def test_api_key_name_rejects_whitespace_only_values():
+    with pytest.raises(ValidationError, match="API key name must not be blank"):
+        CreateApiKeyRequest(org_id=str(uuid4()), name="   ")
