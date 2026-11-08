@@ -217,17 +217,30 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
                     Subscription.org_id == org_uuid,
                     Subscription.razorpay_order_id == str(gateway_order_id),
                 )
+                # Duplicate provider deliveries must serialize around the
+                # status transition so only one audit event is written.
+                .with_for_update()
                 .first()
             )
             if sub:
                 # A recorded payment ID means the subscription has a
                 # verified successful payment. A failure webhook must never
-                # downgrade it, even if a delayed/contradictory event carries
-                # that same ID. Only pending subscriptions without a recorded
-                # successful payment can be marked past_due.
+                # downgrade it. Likewise, a late failure must not resurrect a
+                # cancelled subscription or duplicate an existing past_due event.
                 recorded_payment_id = getattr(sub, "razorpay_payment_id", None)
-                if not recorded_payment_id:
+                if not recorded_payment_id and sub.status not in {"past_due", "cancelled"}:
+                    previous_status = sub.status
                     sub.status = "past_due"
+                    from app.models.enterprise import AuditLog
+
+                    db.add(AuditLog(
+                        org_id=org_uuid,
+                        user_id=None,  # Provider-originated event; no human actor.
+                        action="payment_failed",
+                        entity_type="subscription",
+                        entity_id=str(sub.id),
+                        changes={"status": {"before": previous_status, "after": "past_due"}},
+                    ))
                     db.commit()
     return {"status": "ok"}
 
