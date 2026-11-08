@@ -19,13 +19,15 @@ def test_gstin_helpers_reject_non_string_values(value):
 
 
 def test_gstin_format_trims_surrounding_whitespace_before_matching():
-    assert is_valid_gstin_format("27ABCDE1234F1Z5\\n") is True
-    assert extract_state_code("27ABCDE1234F1Z5\\n") == "27"
+    gstin = "27ABCDE1234F1Z5" + chr(10)
+    assert is_valid_gstin_format(gstin) is True
+    assert extract_state_code(gstin) == "27"
 
 
 def test_gstin_format_rejects_non_whitespace_suffix():
     assert is_valid_gstin_format("27ABCDE1234F1Z5X") is False
     assert extract_state_code("27ABCDE1234F1Z5X") is None
+
 
 def test_extract_state_code_returns_none_for_invalid_format():
     assert extract_state_code("not-a-gstin") is None
