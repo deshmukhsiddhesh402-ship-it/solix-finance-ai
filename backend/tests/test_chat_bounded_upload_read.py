@@ -44,7 +44,6 @@ def test_chat_upload_endpoint_rejects_oversized_file_before_parsing(monkeypatch)
         filename="oversized.txt",
         read=AsyncMock(return_value=b"x" * (chat.MAX_UPLOAD_BYTES + 1)),
     )
-    parse = SimpleNamespace()
     monkeypatch.setattr(chat, "extract_text", lambda *_args: pytest.fail("oversized content must not be parsed"))
 
     with pytest.raises(HTTPException) as exc:
