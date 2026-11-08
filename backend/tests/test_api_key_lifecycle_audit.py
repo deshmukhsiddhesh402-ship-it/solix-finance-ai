@@ -18,8 +18,13 @@ from app.routers import enterprise
 class FakeQuery:
     def __init__(self, row):
         self.row = row
+        self.lock_requested = False
 
     def filter(self, *criteria):
+        return self
+
+    def with_for_update(self):
+        self.lock_requested = True
         return self
 
     def first(self):
@@ -32,6 +37,7 @@ class FakeDB:
         self.added = []
         self.flush_count = 0
         self.commit_count = 0
+        self.query_obj = None
 
     def add(self, value):
         self.added.append(value)
@@ -47,7 +53,8 @@ class FakeDB:
 
     def query(self, model):
         assert model is ApiKey
-        return FakeQuery(self.query_row)
+        self.query_obj = FakeQuery(self.query_row)
+        return self.query_obj
 
 
 def _audit_rows(db):
@@ -104,6 +111,7 @@ def test_api_key_revocation_records_only_the_state_transition():
     audit_rows = _audit_rows(db)
     assert result == {"message": "API key revoked."}
     assert key_row.revoked is True
+    assert db.query_obj.lock_requested is True
     assert len(audit_rows) == 1
     assert db.commit_count == 1
     audit = audit_rows[0]
