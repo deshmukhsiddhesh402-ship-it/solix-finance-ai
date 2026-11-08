@@ -70,3 +70,19 @@ def test_invoice_ocr_handles_json_recursion_error(monkeypatch):
 
     assert exc.value.status_code == 502
     assert "Could not parse" in exc.value.detail
+
+
+
+@pytest.mark.parametrize("provider_error", [RuntimeError("provider internal detail"), TimeoutError("provider timeout")])
+def test_invoice_ocr_maps_provider_request_failures_to_generic_502(monkeypatch, provider_error):
+    def fail_provider(*_args, **_kwargs):
+        raise provider_error
+
+    monkeypatch.setattr(invoice_ocr, "ask_claude_with_image", fail_provider)
+
+    with pytest.raises(HTTPException) as exc:
+        invoice_ocr._extract_single_image(b"image", "image/png")
+
+    assert exc.value.status_code == 502
+    assert exc.value.detail == "Invoice extraction provider request failed."
+    assert "provider internal detail" not in exc.value.detail
