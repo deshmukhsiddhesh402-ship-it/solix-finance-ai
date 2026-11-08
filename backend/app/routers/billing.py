@@ -295,6 +295,15 @@ def check_limit(
     from app.models.billing import Subscription
     sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
     plan = sub.plan if sub else "trial"
+    status = sub.status if sub else "active"
     current_usage = getattr(sub, usage_key, 0) or 0 if sub else 0
-    allowed = is_within_limit(plan, usage_key.replace("_this_month", "_per_month"), current_usage)
-    return {"plan": plan, "usage_key": usage_key, "current_usage": current_usage, "allowed": allowed}
+    allowed = status == "active" and is_within_limit(
+        plan, usage_key.replace("_this_month", "_per_month"), current_usage
+    )
+    return {
+        "plan": plan,
+        "status": status,
+        "usage_key": usage_key,
+        "current_usage": current_usage,
+        "allowed": allowed,
+    }
