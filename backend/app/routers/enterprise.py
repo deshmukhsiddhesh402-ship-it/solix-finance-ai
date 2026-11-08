@@ -119,6 +119,16 @@ def add_membership(
         raise HTTPException(409, detail="User is already a member of this organization.")
     membership = OrgMembership(user_id=target_user.id, org_id=org_uuid, role=req.role)
     db.add(membership)
+    db.flush()  # Assign the membership ID before writing its audit event.
+    _record_enterprise_audit(
+        db,
+        org_uuid,
+        _parse_uuid(_acting_user, "acting user identifier"),
+        "create",
+        "org_membership",
+        str(membership.id),
+        after={"user_id": str(target_user.id), "role": membership.role},
+    )
     db.commit()
     return {"message": f"{req.user_email} added to organization as {req.role}."}
 
@@ -177,20 +187,21 @@ def log_action(db: Session, org_id: str, user_id: str, action: str, entity_type:
     db.commit()
 
 
-def _record_api_key_audit(
+def _record_enterprise_audit(
     db: Session,
     org_uuid: uuid.UUID,
     user_uuid: uuid.UUID,
     action: str,
-    key_row,
+    entity_type: str,
+    entity_id: str,
     before: dict | None = None,
     after: dict | None = None,
 ) -> None:
-    """Add safe API-key lifecycle metadata to the same transaction as the key change."""
+    """Add safe enterprise lifecycle metadata to the caller's transaction."""
     from app.models.enterprise import AuditLog
 
     entry = build_audit_entry(
-        str(user_uuid), str(org_uuid), action, "api_key", str(key_row.id), before, after
+        str(user_uuid), str(org_uuid), action, entity_type, entity_id, before, after
     )
     db.add(AuditLog(
         org_id=org_uuid,
@@ -225,8 +236,9 @@ def create_api_key(
     key_row = ApiKey(org_id=org_uuid, name=req.name, hashed_key=hashed, key_prefix_display=mask_api_key(plaintext))
     db.add(key_row)
     db.flush()  # Assign the generated key ID before writing its audit event.
-    _record_api_key_audit(
-        db, org_uuid, user_uuid, "create", key_row, after={"name": key_row.name}
+    _record_enterprise_audit(
+        db, org_uuid, user_uuid, "create", "api_key", str(key_row.id),
+        after={"name": key_row.name},
     )
     db.commit()
     return {
@@ -277,8 +289,8 @@ def revoke_api_key(
     if not key_row.revoked:
         before = {"name": key_row.name, "revoked": False}
         key_row.revoked = True
-        _record_api_key_audit(
-            db, org_uuid, user_uuid, "revoke", key_row,
+        _record_enterprise_audit(
+            db, org_uuid, user_uuid, "revoke", "api_key", str(key_row.id),
             before=before, after={"name": key_row.name, "revoked": True},
         )
     db.commit()
