@@ -10,7 +10,7 @@ from app.routers import invoice_ocr
 
 @pytest.mark.parametrize("invoices", [None, {}, "invoice", [None], [1], ["invoice"]])
 def test_invoice_export_rejects_non_object_invoice_records(invoices):
-    with pytest.raises(ValueError, match="Invoices must be a list|must be an object"):
+    with pytest.raises(ValueError, match="Invoices must be provided as a list|must be an object"):
         invoices_to_excel(invoices)
 
 
