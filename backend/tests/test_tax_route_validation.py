@@ -53,3 +53,14 @@ def test_valid_gst_route_response_is_unchanged():
     assert response["cgst"] == 0.0
     assert response["sgst"] == 0.0
     assert response["invoice_total"] == 1180.0
+
+
+
+def test_income_tax_response_labels_the_financial_year_of_its_slab_constants():
+    response = tax.income_tax_new_regime(
+        tax.IncomeTaxRequest(gross_salary=900000, other_income=0)
+    )
+
+    assert response["financial_year"] == "2025-26"
+    assert response["tax_regime"] == "new"
+    assert response["taxable_income"] == 825000.0
