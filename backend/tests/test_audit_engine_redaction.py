@@ -252,3 +252,20 @@ def test_audit_log_endpoint_redacts_legacy_rows_before_returning_them():
     assert changes["settings"]["after"]["clientSecret"] == "[REDACTED]"
     assert changes["settings"]["before"]["display_name"] == "Old"
     assert row.changes["api_key"]["before"] == "legacy-key"
+
+
+def test_persisted_audit_redaction_bounds_deeply_nested_legacy_values():
+    from app.services.audit_engine import (
+        MAX_AUDIT_NESTING_DEPTH,
+        _AUDIT_DEPTH_LIMIT_MARKER,
+        redact_audit_changes,
+    )
+
+    deeply_nested = {"password": "legacy-deep-secret"}
+    for _ in range(MAX_AUDIT_NESTING_DEPTH + 20):
+        deeply_nested = {"nested": deeply_nested}
+
+    sanitized = redact_audit_changes({"payload": deeply_nested})
+
+    assert _AUDIT_DEPTH_LIMIT_MARKER in repr(sanitized)
+    assert "legacy-deep-secret" not in repr(sanitized)
