@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.security import decode_access_token
 from app.services.rbac_engine import has_permission
-from app.services.audit_engine import build_audit_entry
+from app.services.audit_engine import build_audit_entry, redact_audit_changes
 from app.services.api_key_engine import generate_api_key, mask_api_key
 
 router = APIRouter()
@@ -139,7 +139,7 @@ def view_audit_log(
     return {
         "entries": [
             {"id": str(r.id), "user_id": str(r.user_id) if r.user_id else None, "action": r.action,
-             "entity_type": r.entity_type, "entity_id": r.entity_id, "changes": r.changes,
+             "entity_type": r.entity_type, "entity_id": r.entity_id, "changes": redact_audit_changes(r.changes),
              "created_at": r.created_at.isoformat() if r.created_at else None}
             for r in rows
         ]
