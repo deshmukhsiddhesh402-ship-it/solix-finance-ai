@@ -28,33 +28,39 @@ _SENSITIVE_FIELD_MARKERS = (
     "authorization", "credential", "otp", "private_key",
     "cookie", "bearer", "privatekey",
 )
+MAX_AUDIT_NESTING_DEPTH = 64
+_AUDIT_DEPTH_LIMIT_MARKER = "[OMITTED: maximum audit nesting depth exceeded]"
 
 
-def _audit_value(field_name: str, value):
-    """Redact sensitive fields recursively before values enter audit diffs."""
+def _audit_value(field_name: str, value, _depth: int = 0):
+    """Redact sensitive fields recursively and bound untrusted nesting depth."""
     normalized = re.sub(r"[\W_]+", "_", str(field_name).casefold()).strip("_")
     if any(marker in normalized for marker in _SENSITIVE_FIELD_MARKERS):
         return "[REDACTED]"
+    if _depth >= MAX_AUDIT_NESTING_DEPTH and isinstance(value, (dict, list, tuple, set, frozenset)):
+        # Omit the entire over-deep subtree so nested secrets cannot escape
+        # redaction and malformed legacy JSON cannot exhaust Python recursion.
+        return _AUDIT_DEPTH_LIMIT_MARKER
     if isinstance(value, dict):
-        return {key: _audit_value(str(key), nested) for key, nested in value.items()}
+        return {key: _audit_value(str(key), nested, _depth + 1) for key, nested in value.items()}
     if isinstance(value, list):
-        return [_audit_value("", item) for item in value]
+        return [_audit_value("", item, _depth + 1) for item in value]
     if isinstance(value, tuple):
         if len(value) == 2 and isinstance(value[0], str):
-            return (value[0], _audit_value(value[0], value[1]))
-        return tuple(_audit_value("", item) for item in value)
+            return (value[0], _audit_value(value[0], value[1], _depth + 1))
+        return tuple(_audit_value("", item, _depth + 1) for item in value)
     if isinstance(value, set):
         return {
-            (item[0], _audit_value(item[0], item[1]))
+            (item[0], _audit_value(item[0], item[1], _depth + 1))
             if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
-            else _audit_value("", item)
+            else _audit_value("", item, _depth + 1)
             for item in value
         }
     if isinstance(value, frozenset):
         return frozenset(
-            (item[0], _audit_value(item[0], item[1]))
+            (item[0], _audit_value(item[0], item[1], _depth + 1))
             if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
-            else _audit_value("", item)
+            else _audit_value("", item, _depth + 1)
             for item in value
         )
     return value
