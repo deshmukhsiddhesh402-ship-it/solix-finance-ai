@@ -143,7 +143,10 @@ def ask_question(
         if not doc:
             raise HTTPException(404, detail="Document session not found.")
         filename = session["filename"]
-        query_embedding = get_query_embedding(req.question)
+        try:
+            query_embedding = get_query_embedding(req.question)
+        except Exception as exc:
+            raise HTTPException(502, detail="Semantic search provider request failed.") from exc
         matches = semantic_retrieve(db, doc_uuid, query_embedding, top_k=req.top_k)
     elif str(session_uuid) in _TFIDF_SESSIONS:
         session = _TFIDF_SESSIONS[str(session_uuid)]
@@ -161,7 +164,12 @@ def ask_question(
 
     retrieved_chunks = [m["chunk"] for m in matches]
     system, user_message = rag_chat_prompt(req.question, retrieved_chunks)
-    answer = ask_claude(system, user_message, max_tokens=1000)
+    try:
+        answer = ask_claude(system, user_message, max_tokens=1000)
+    except Exception as exc:
+        raise HTTPException(502, detail="AI chat provider request failed.") from exc
+    if not isinstance(answer, str) or not answer.strip():
+        raise HTTPException(502, detail="AI chat provider returned an invalid response.")
     return {
         "answer": answer,
         "sources": [
