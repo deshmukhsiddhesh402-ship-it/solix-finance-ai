@@ -47,8 +47,28 @@ def create_order(
 
     import razorpay
     client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-    order = client.order.create(data=payload)
-    return {"order_id": order["id"], "amount": order["amount"], "currency": order["currency"], "key_id": settings.RAZORPAY_KEY_ID}
+    try:
+        order = client.order.create(data=payload)
+    except Exception as exc:
+        raise HTTPException(502, detail="Payment order could not be created with the payment provider.") from exc
+
+    if not isinstance(order, dict):
+        raise HTTPException(502, detail="Payment provider returned an invalid order response.")
+    order_id = order.get("id")
+    amount = order.get("amount")
+    currency = order.get("currency")
+    if (
+        not isinstance(order_id, str)
+        or not order_id
+        or order_id != order_id.strip()
+        or len(order_id) > 100
+        or isinstance(amount, bool)
+        or not isinstance(amount, int)
+        or amount != payload["amount"]
+        or currency != "INR"
+    ):
+        raise HTTPException(502, detail="Payment provider returned an invalid order response.")
+    return {"order_id": order_id, "amount": amount, "currency": currency, "key_id": settings.RAZORPAY_KEY_ID}
 
 
 class VerifyPaymentRequest(BaseModel):
