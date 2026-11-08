@@ -305,7 +305,12 @@ def revoke_api_key(
     org_uuid = _parse_uuid(org_id, "organization identifier")
     user_uuid = _parse_uuid(_user, "user identifier")
     key_uuid = _parse_uuid(key_id, "API key identifier")
-    key_row = db.query(ApiKey).filter(ApiKey.id == key_uuid, ApiKey.org_id == org_uuid).first()
+    key_row = (
+        db.query(ApiKey)
+        .filter(ApiKey.id == key_uuid, ApiKey.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
     if not key_row:
         raise HTTPException(404, detail="API key not found.")
     if not key_row.revoked:
