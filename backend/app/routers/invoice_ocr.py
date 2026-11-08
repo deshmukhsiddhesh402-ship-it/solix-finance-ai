@@ -124,4 +124,8 @@ def to_journal_entry(req: JournalEntryRequest, org_id: str = Query(...), _user: 
 @router.get("/export/{session_id}")
 def export_to_excel(session_id: str, org_id: str = Query(...), _user: str = Depends(require_permission("invoice_ocr", "view"))):
     session = _get_session(session_id, org_id, _user)
-    return StreamingResponse(io.BytesIO(invoices_to_excel([session["invoice"]])), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=solix_extracted_invoices.xlsx"})
+    try:
+        workbook = invoices_to_excel([session["invoice"]])
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
+    return StreamingResponse(io.BytesIO(workbook), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=solix_extracted_invoices.xlsx"})
