@@ -155,9 +155,11 @@ def add_membership(
 # ---------------------------------------------------------------------------
 @router.get("/audit-log")
 def view_audit_log(
-    org_id: str = Query(...), limit: int = Query(default=50, ge=1, le=200),
+    org_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     _user: str = Depends(require_permission("audit_log", "view")),
+    offset: int = Query(default=0, ge=0, le=10000),
 ):
     from app.models.enterprise import AuditLog
 
@@ -169,8 +171,11 @@ def view_audit_log(
     rows = (
         db.query(AuditLog)
         .filter(AuditLog.org_id == org_uuid)
-        .order_by(AuditLog.created_at.desc())
+        # A unique tie-breaker prevents rows with identical timestamps from
+        # changing order between adjacent offset-based pages.
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
         .limit(limit)
+        .offset(offset)
         .all()
     )
     return {
