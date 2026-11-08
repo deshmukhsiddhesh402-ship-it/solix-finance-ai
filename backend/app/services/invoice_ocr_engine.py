@@ -42,16 +42,22 @@ def is_valid_gstin_format(gstin: str) -> bool:
     checking (https://www.gst.gov.in — public search, or a paid GSP API for
     programmatic access).
     """
-    if not gstin:
+    if not isinstance(gstin, str):
         return False
-    return bool(GSTIN_PATTERN.match(gstin.strip().upper()))
+    normalized = gstin.strip().upper()
+    if not normalized:
+        return False
+    return GSTIN_PATTERN.fullmatch(normalized) is not None
 
 
 def extract_state_code(gstin: str) -> str | None:
-    """First 2 digits of a valid GSTIN are the GST state code."""
-    if not is_valid_gstin_format(gstin):
+    """First 2 digits of a structurally valid, normalized GSTIN."""
+    if not isinstance(gstin, str):
         return None
-    return gstin[:2]
+    normalized = gstin.strip().upper()
+    if not is_valid_gstin_format(normalized):
+        return None
+    return normalized[:2]
 
 
 # ---------------------------------------------------------------------------
