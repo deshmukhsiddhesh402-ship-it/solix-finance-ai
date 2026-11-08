@@ -34,6 +34,11 @@ class _Database:
     def add(self, value):
         self.added.append(value)
 
+    def flush(self):
+        for value in self.added:
+            if getattr(value, "id", None) is None:
+                value.id = uuid.uuid4()
+
     def commit(self):
         self.commits += 1
         raise IntegrityError("INSERT", {}, RuntimeError("unique payment id"))
@@ -69,7 +74,7 @@ def _invoke_verify_payment(monkeypatch, db, org_id, order_id="order_123", paymen
         razorpay_payment_id=payment_id,
         razorpay_signature="s" * 64,
     )
-    return billing.verify_payment(request, org_id=str(org_id), db=db, _user="test-user")
+    return billing.verify_payment(request, org_id=str(org_id), db=db, _user=str(uuid.uuid4()))
 
 
 def test_concurrent_exact_payment_retry_is_idempotent_after_unique_conflict(monkeypatch):
