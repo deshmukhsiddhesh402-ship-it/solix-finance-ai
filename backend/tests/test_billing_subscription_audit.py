@@ -20,8 +20,13 @@ from app.routers import billing
 class FakeQuery:
     def __init__(self, db):
         self.db = db
+        self.lock_requested = False
 
     def filter(self, *criteria):
+        return self
+
+    def with_for_update(self):
+        self.lock_requested = True
         return self
 
     def first(self):
@@ -37,9 +42,12 @@ class FakeDB:
         self.flush_count = 0
         self.commit_count = 0
         self.rollback_count = 0
+        self.queries = []
 
     def query(self, _model):
-        return FakeQuery(self)
+        query = FakeQuery(self)
+        self.queries.append(query)
+        return query
 
     def add(self, value):
         self.added.append(value)
@@ -190,3 +198,55 @@ def test_payment_uniqueness_race_rolls_back_audit_record(monkeypatch, fail_at):
         assert _audit_rows(db.rolled_back_rows)
     else:
         assert not _audit_rows(db.rolled_back_rows)
+
+
+
+def test_payment_retry_rechecks_existing_subscription_after_row_lock(monkeypatch):
+    org_id = uuid4()
+    period_end = datetime(2026, 12, 8, tzinfo=timezone.utc)
+    concurrently_recorded = SimpleNamespace(
+        id=uuid4(),
+        org_id=org_id,
+        plan="pro",
+        status="active",
+        current_period_end=period_end,
+        razorpay_order_id="order_audit_123",
+        razorpay_payment_id="pay_audit_123",
+    )
+    # The initial global payment lookup misses the in-flight transaction;
+    # the row-locked subscription lookup sees the committed retry.
+    db = FakeDB([None, concurrently_recorded])
+
+    response = _invoke(monkeypatch, db, org_id)
+
+    assert response == {
+        "message": "Subscription already activated: pro",
+        "current_period_end": period_end.isoformat(),
+    }
+    assert db.queries[1].lock_requested is True
+    assert db.flush_count == 0
+    assert db.commit_count == 0
+    assert db.added == []
+
+
+def test_locked_subscription_rejects_same_payment_bound_to_different_order(monkeypatch):
+    org_id = uuid4()
+    concurrently_recorded = SimpleNamespace(
+        id=uuid4(),
+        org_id=org_id,
+        plan="pro",
+        status="active",
+        current_period_end=None,
+        razorpay_order_id="different-order",
+        razorpay_payment_id="pay_audit_123",
+    )
+    db = FakeDB([None, concurrently_recorded])
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        _invoke(monkeypatch, db, org_id)
+
+    assert exc.value.status_code == 409
+    assert db.queries[1].lock_requested is True
+    assert db.commit_count == 0

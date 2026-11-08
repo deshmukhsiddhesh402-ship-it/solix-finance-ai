@@ -17,6 +17,9 @@ class _Query:
     def filter(self, *_args, **_kwargs):
         return self
 
+    def with_for_update(self):
+        return self
+
     def first(self):
         return self.db.first_results.pop(0)
 

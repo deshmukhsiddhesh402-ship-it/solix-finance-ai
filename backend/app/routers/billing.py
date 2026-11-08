@@ -124,7 +124,24 @@ def verify_payment(
             if existing_payment.current_period_end else None,
         }
 
-    sub = db.query(Subscription).filter(Subscription.org_id == org_uuid).first()
+    # Serialize updates for this organization's single subscription row.
+    # After acquiring the lock, re-check the payment ID because another
+    # request may have committed the same payment while this request waited.
+    sub = (
+        db.query(Subscription)
+        .filter(Subscription.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if sub and sub.razorpay_payment_id == req.razorpay_payment_id:
+        if sub.razorpay_order_id != req.razorpay_order_id or sub.plan != req.plan:
+            raise HTTPException(409, detail="Payment has already been associated with a different order or plan.")
+        return {
+            "message": f"Subscription already activated: {sub.plan}",
+            "current_period_end": sub.current_period_end.isoformat()
+            if sub.current_period_end else None,
+        }
+
     period_end = datetime.now(timezone.utc) + timedelta(days=30)
     before = None
     if sub:
