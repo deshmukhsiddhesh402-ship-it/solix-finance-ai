@@ -373,6 +373,9 @@ def test_billing_failed_webhook_does_not_downgrade_a_different_recorded_order(mo
         def filter(self, *args, **kwargs):
             return self
 
+        def with_for_update(self):
+            return self
+
         def first(self):
             return None
 
@@ -445,6 +448,9 @@ def test_billing_failed_webhook_does_not_downgrade_captured_payment_on_same_orde
 
     class FakeQuery:
         def filter(self, *args, **kwargs):
+            return self
+
+        def with_for_update(self):
             return self
 
         def first(self):
