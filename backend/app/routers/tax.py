@@ -2,7 +2,7 @@
 Module 3: Indian Tax — API layer over tax_engine.py
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.tax_engine import (
     calculate_gst, GstInvoiceLine, gstr3b_summary, calculate_tds,
@@ -12,10 +12,24 @@ from app.services.tax_engine import (
 router = APIRouter()
 
 
+def _reject_boolean_numeric_inputs(values, field_names):
+    """Prevent Pydantic from coercing JSON booleans into tax amounts or rates."""
+    if isinstance(values, dict):
+        for field_name in field_names:
+            if isinstance(values.get(field_name), bool):
+                raise ValueError(f"{field_name} must be numeric, not boolean.")
+    return values
+
+
 class GstRequest(BaseModel):
     taxable_value: float = Field(ge=0, allow_inf_nan=False)
     gst_rate_pct: float = Field(ge=0, le=100, allow_inf_nan=False)
     is_interstate: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("taxable_value", "gst_rate_pct"))
 
 
 @router.post("/gst/calculate")
@@ -28,10 +42,20 @@ class GstInvoiceLineIn(BaseModel):
     gst_rate_pct: float = Field(ge=0, le=100, allow_inf_nan=False)
     is_interstate: bool
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("taxable_value", "gst_rate_pct"))
+
 
 class Gstr3bRequest(BaseModel):
     lines: list[GstInvoiceLineIn] = Field(max_length=5000)
     input_tax_credit: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_credit(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("input_tax_credit",))
 
 
 @router.post("/gst/gstr3b-summary")
@@ -48,6 +72,11 @@ class TdsRequest(BaseModel):
     section: str = Field(min_length=1, max_length=10)
     has_pan: bool = True
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("amount_paid",))
+
 
 @router.post("/tds/calculate")
 def tds_calculate(req: TdsRequest):
@@ -60,6 +89,11 @@ def tds_calculate(req: TdsRequest):
 class IncomeTaxRequest(BaseModel):
     gross_salary: float = Field(ge=0, allow_inf_nan=False)
     other_income: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_income(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("gross_salary", "other_income"))
 
 
 @router.post("/income-tax/new-regime")
