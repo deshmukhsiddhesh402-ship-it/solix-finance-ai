@@ -47,7 +47,7 @@ class ApiKey(Base):
     key_prefix_display = Column(String(30), nullable=False)       # masked, for UI display only
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_used_at = Column(DateTime(timezone=True), nullable=True)
-    revoked = Column(Boolean, default=False)
+    revoked = Column(Boolean, nullable=False, default=False)
 
 
 class ScheduledReport(Base):
@@ -63,7 +63,7 @@ class ScheduledReport(Base):
     report_type = Column(String(30), nullable=False)      # dashboard_pdf, dashboard_excel, gst_summary, ...
     frequency = Column(String(20), nullable=False)        # daily, weekly, monthly
     recipient_emails = Column(JSON, nullable=False)        # list[str]
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_sent_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -80,5 +80,5 @@ class Notification(Base):
     user_id = Column(UUID(as_uuid=True), nullable=True)
     title = Column(String(200), nullable=False)
     body = Column(Text, nullable=True)
-    is_read = Column(Boolean, default=False)
+    is_read = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
