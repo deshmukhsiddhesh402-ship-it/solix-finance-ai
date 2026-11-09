@@ -1,7 +1,11 @@
 """Regression tests for dashboard result-size validation."""
+from datetime import date
+from uuid import uuid4
+
 import pytest
 from fastapi import HTTPException
 
+from app.routers import dashboard
 from app.routers.dashboard import MAX_DASHBOARD_ENTRIES, _enforce_entry_limit
 
 
@@ -16,12 +20,6 @@ def test_dashboard_rejects_result_over_limit():
         _enforce_entry_limit(rows)
     assert exc_info.value.status_code == 413
     assert str(MAX_DASHBOARD_ENTRIES) in exc_info.value.detail
-
-
-from datetime import date
-from uuid import uuid4
-
-from app.routers import dashboard
 
 
 class _Query:
