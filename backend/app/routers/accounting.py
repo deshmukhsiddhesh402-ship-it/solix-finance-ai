@@ -18,6 +18,11 @@ from app.services.accounting_engine import (
 router = APIRouter()
 
 
+def _raise_accounting_validation_error(exc: ValueError) -> None:
+    """Expose engine input failures as client validation errors, not server errors."""
+    raise HTTPException(422, detail=str(exc)) from exc
+
+
 class LedgerLineIn(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
@@ -81,7 +86,10 @@ def create_journal_entry(
     lines_dec = [LedgerLine(**l.dict()) for l in lines]
     if len(lines_dec) < 2:
         raise HTTPException(422, detail="A journal entry requires at least two lines.")
-    tb_check = build_trial_balance(lines_dec)
+    try:
+        tb_check = build_trial_balance(lines_dec)
+    except ValueError as exc:
+        _raise_accounting_validation_error(exc)
     if not tb_check["is_balanced"]:
         raise HTTPException(422, detail="Journal entry does not balance (total debits != total credits).")
 
@@ -133,7 +141,10 @@ class TrialBalanceRequest(BaseModel):
 @router.post("/trial-balance")
 def trial_balance(req: TrialBalanceRequest):
     lines = [LedgerLine(**l.dict()) for l in req.lines]
-    result = build_trial_balance(lines)
+    try:
+        result = build_trial_balance(lines)
+    except ValueError as exc:
+        _raise_accounting_validation_error(exc)
     if not result["is_balanced"]:
         raise HTTPException(422, detail="Books do not balance — check debit/credit entries.")
     return result
@@ -142,16 +153,22 @@ def trial_balance(req: TrialBalanceRequest):
 @router.post("/profit-and-loss")
 def profit_and_loss(req: TrialBalanceRequest):
     lines = [LedgerLine(**l.dict()) for l in req.lines]
-    tb = build_trial_balance(lines)
-    return build_profit_and_loss(tb["rows"])
+    try:
+        tb = build_trial_balance(lines)
+        return build_profit_and_loss(tb["rows"])
+    except ValueError as exc:
+        _raise_accounting_validation_error(exc)
 
 
 @router.post("/balance-sheet")
 def balance_sheet(req: TrialBalanceRequest):
     lines = [LedgerLine(**l.dict()) for l in req.lines]
-    tb = build_trial_balance(lines)
-    pnl = build_profit_and_loss(tb["rows"])
-    return build_balance_sheet(tb["rows"], pnl["net_profit"])
+    try:
+        tb = build_trial_balance(lines)
+        pnl = build_profit_and_loss(tb["rows"])
+        return build_balance_sheet(tb["rows"], pnl["net_profit"])
+    except ValueError as exc:
+        _raise_accounting_validation_error(exc)
 
 
 class RatiosRequest(BaseModel):
