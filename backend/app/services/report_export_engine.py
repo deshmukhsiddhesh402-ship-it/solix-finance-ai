@@ -46,7 +46,7 @@ def dashboard_to_pdf(org_name: str, period_label: str, kpis: dict, monthly: list
     story = []
 
     story.append(Paragraph(f"{escape(org_name)} — Financial Summary", styles["Title"]))
-    story.append(Paragraph(period_label, styles["Normal"]))
+    story.append(Paragraph(escape(period_label), styles["Normal"]))
     story.append(Spacer(1, 16))
 
     kpi_rows = [
