@@ -19,6 +19,18 @@ class LedgerLine:
     credit: float = 0.0
 
 
+def _validate_ledger_amount(value: object, label: str) -> None:
+    """Reject bools, non-numeric values, and values that overflow float checks."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a finite number.")
+    try:
+        valid = math.isfinite(value)
+    except (OverflowError, TypeError):
+        valid = False
+    if not valid:
+        raise ValueError(f"{label} must be a finite number.")
+
+
 def build_trial_balance(lines: list[LedgerLine]) -> dict:
     """Aggregate ledger lines by account and return a trial balance.
     Raises ValueError if total debits != total credits (books don't balance).
@@ -27,12 +39,12 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
     for line in lines:
         if not isinstance(line, LedgerLine):
             raise ValueError("Trial balance lines must be LedgerLine objects.")
-        if not line.account_name or not line.account_name.strip():
+        if not isinstance(line.account_name, str) or not line.account_name.strip():
             raise ValueError("Account name must be non-empty.")
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
-        if not math.isfinite(line.debit) or not math.isfinite(line.credit):
-            raise ValueError("Debit and credit amounts must be finite.")
+        _validate_ledger_amount(line.debit, "Debit amount")
+        _validate_ledger_amount(line.credit, "Credit amount")
         if line.debit < 0 or line.credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
         acc = totals.setdefault(
