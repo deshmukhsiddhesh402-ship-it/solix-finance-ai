@@ -48,6 +48,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Debit and credit amounts must be finite numbers.")
         if line.debit < 0 or line.credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
+        if (line.debit > 0) == (line.credit > 0):
+            raise ValueError("Each ledger line must have a positive amount on exactly one side.")
         acc = totals.setdefault(
             line.account_name, {"type": line.account_type, "debit": 0.0, "credit": 0.0}
         )
