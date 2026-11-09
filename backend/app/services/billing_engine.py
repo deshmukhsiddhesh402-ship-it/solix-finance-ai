@@ -11,6 +11,7 @@ real, tested crypto — not a stub.
 """
 import hmac
 import hashlib
+import uuid
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ def build_order_payload(plan: str, org_id: str) -> dict:
     return {
         "amount": amount_paise,
         "currency": "INR",
-        "receipt": f"solix_{org_id}_{plan}",
+        "receipt": f"solix_{uuid.uuid4().hex}",
         "notes": {"org_id": org_id, "plan": plan},
     }
 
