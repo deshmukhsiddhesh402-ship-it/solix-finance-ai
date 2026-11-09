@@ -66,3 +66,12 @@ def test_financial_statement_engine_rejects_non_list_trial_balance_rows(rows):
 
     with pytest.raises(ValueError, match="must be a list"):
         build_profit_and_loss(rows)
+
+
+@pytest.mark.parametrize(
+    ("debit", "credit"),
+    [(0.0, 0.0), (100.0, 100.0), (0.01, 0.01)],
+)
+def test_trial_balance_rejects_lines_without_exactly_one_positive_side(debit, credit):
+    with pytest.raises(ValueError, match="positive amount on exactly one side"):
+        build_trial_balance([LedgerLine("Cash", "asset", debit=debit, credit=credit)])
