@@ -14,7 +14,7 @@ from app.models.enterprise import ApiKey, OrgMembership, ScheduledReport
 
 def _table_definition(sql: str, table: str) -> str:
     match = re.search(
-        rf"CREATE TABLE\\s+{re.escape(table)}\\s*\\((.*?)\\n\\);",
+        rf"CREATE TABLE\s+{re.escape(table)}\s*\((.*?)\n\);",
         sql,
         flags=re.IGNORECASE | re.DOTALL,
     )
@@ -43,7 +43,7 @@ def test_canonical_schema_matches_non_nullable_tenant_ownership():
         definition = _table_definition(schema, table)
         for column in columns:
             assert re.search(
-                rf"^\\s*{column}\\s+UUID\\s+NOT NULL\\b",
+                rf"^\s*{column}\s+UUID\s+NOT NULL\b",
                 definition,
                 flags=re.IGNORECASE | re.MULTILINE,
             ), f"{table}.{column} must be NOT NULL in schema.sql"
@@ -59,14 +59,14 @@ def test_migration_preflights_every_null_tenant_identifier_before_altering():
     preflight = migration.split("ALTER TABLE", 1)[0]
 
     expected_preflights = {
-        "org_memberships": r"user_id\\s+IS NULL\\s+OR\\s+org_id\\s+IS NULL",
-        "api_keys": r"org_id\\s+IS NULL",
-        "scheduled_reports": r"org_id\\s+IS NULL",
-        "subscriptions": r"org_id\\s+IS NULL",
+        "org_memberships": r"user_id\s+IS NULL\s+OR\s+org_id\s+IS NULL",
+        "api_keys": r"org_id\s+IS NULL",
+        "scheduled_reports": r"org_id\s+IS NULL",
+        "subscriptions": r"org_id\s+IS NULL",
     }
     for table, predicate in expected_preflights.items():
         assert re.search(
-            rf"FROM\\s+{table}\\s+WHERE\\s+{predicate}",
+            rf"FROM\s+{table}\s+WHERE\s+{predicate}",
             preflight,
             flags=re.IGNORECASE | re.DOTALL,
         ), f"migration must preflight null ownership in {table}"
