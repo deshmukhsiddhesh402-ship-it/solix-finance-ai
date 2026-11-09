@@ -18,6 +18,15 @@ from app.services.accounting_engine import (
 router = APIRouter()
 
 
+def _reject_boolean_numeric_inputs(values, field_names):
+    """Prevent Pydantic from coercing JSON booleans into financial numbers."""
+    if isinstance(values, dict):
+        for field_name in field_names:
+            if isinstance(values.get(field_name), bool):
+                raise ValueError(f"{field_name} must be numeric, not boolean.")
+    return values
+
+
 class LedgerLineIn(BaseModel):
     account_name: str = Field(min_length=1, max_length=255)
     account_type: Literal["asset", "liability", "equity", "income", "expense"]
@@ -29,6 +38,14 @@ class LedgerLineIn(BaseModel):
     tds_section: str | None = Field(default=None, min_length=3, max_length=10)
     tds_rate: float | None = Field(default=None, ge=0, le=100)
     tds_amount: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, values):
+        return _reject_boolean_numeric_inputs(
+            values,
+            ("debit", "credit", "gst_rate_pct", "gst_taxable_value", "tds_rate", "tds_amount"),
+        )
 
     @model_validator(mode="after")
     def require_one_positive_side(self):
@@ -204,6 +221,11 @@ class StraightLineRequest(BaseModel):
     salvage: float = Field(ge=0)
     useful_life_years: int = Field(ge=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("cost", "salvage", "useful_life_years"))
+
     @model_validator(mode="after")
     def validate_inputs(self):
         if not all(math.isfinite(v) for v in (self.cost, self.salvage)):
@@ -224,6 +246,11 @@ class WdvRequest(BaseModel):
     rate_pct: float = Field(gt=0, le=100)
     years: int = Field(ge=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("cost", "rate_pct", "years"))
+
     @model_validator(mode="after")
     def require_finite_values(self):
         if not all(math.isfinite(v) for v in (self.cost, self.rate_pct)):
@@ -240,6 +267,11 @@ class InventoryTxnIn(BaseModel):
     txn_type: Literal["purchase", "sale"]
     quantity: float = Field(gt=0)
     unit_cost: float = Field(ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("quantity", "unit_cost"))
 
     @model_validator(mode="after")
     def require_finite_values(self):
