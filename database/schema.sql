@@ -260,5 +260,7 @@ CREATE TABLE subscriptions (
     ai_chat_uploads_this_month  INT NOT NULL DEFAULT 0,
     invoice_ocr_this_month      INT NOT NULL DEFAULT 0,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_subscriptions_plan CHECK (plan IN ('trial', 'pro', 'enterprise')),
+    CONSTRAINT ck_subscriptions_status CHECK (status IN ('active', 'past_due', 'cancelled'))
 );
