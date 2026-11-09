@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.accounting_simulator_engine import (
     JournalEntry,
@@ -20,10 +20,24 @@ from app.services.accounting_simulator_engine import (
 router = APIRouter()
 
 
+def _reject_boolean_decimal_inputs(values, field_names):
+    """Reject JSON booleans before they can be converted to Decimal amounts."""
+    if isinstance(values, dict):
+        for field_name in field_names:
+            if isinstance(values.get(field_name), bool):
+                raise ValueError(f"{field_name} must be a decimal amount, not a boolean.")
+    return values
+
+
 class JournalLineInput(BaseModel):
     account: str = Field(min_length=1, max_length=120)
     debit: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=14, decimal_places=2)
     credit: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=14, decimal_places=2)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, values):
+        return _reject_boolean_decimal_inputs(values, ("debit", "credit"))
 
 
 class JournalEntryInput(BaseModel):
@@ -39,11 +53,21 @@ class CashTransactionInput(BaseModel):
     description: str = Field(min_length=1, max_length=160)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, values):
+        return _reject_boolean_decimal_inputs(values, ("amount",))
+
 
 class CashBookRequest(BaseModel):
     opening_balance: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     receipts: list[CashTransactionInput] = Field(default_factory=list, max_length=500)
     payments: list[CashTransactionInput] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_opening_balance(cls, values):
+        return _reject_boolean_decimal_inputs(values, ("opening_balance",))
 
 
 def _to_journal_entry(item: JournalEntryInput) -> JournalEntry:
