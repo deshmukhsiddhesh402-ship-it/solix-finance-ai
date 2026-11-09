@@ -2,6 +2,7 @@
 Module: Live Financial Dashboard — report export (Excel + PDF).
 """
 import io
+from xml.sax.saxutils import escape
 import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -33,7 +34,7 @@ def dashboard_to_pdf(org_name: str, period_label: str, kpis: dict, monthly: list
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(f"{org_name} — Financial Summary", styles["Title"]))
+    story.append(Paragraph(f"{escape(org_name)} — Financial Summary", styles["Title"]))
     story.append(Paragraph(period_label, styles["Normal"]))
     story.append(Spacer(1, 16))
 
