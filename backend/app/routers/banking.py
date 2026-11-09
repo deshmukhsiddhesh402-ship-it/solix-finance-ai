@@ -2,11 +2,21 @@
 from datetime import date
 from typing import Literal
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+
+
+def _reject_boolean_numeric_inputs(values, field_names):
+    """Prevent Pydantic from coercing JSON booleans into reconciliation amounts."""
+    if isinstance(values, dict):
+        for field_name in field_names:
+            if isinstance(values.get(field_name), bool):
+                raise ValueError(f"{field_name} must be numeric, not boolean.")
+    return values
+
 
 class BankLineIn(BaseModel):
     id: str
@@ -16,6 +26,12 @@ class BankLineIn(BaseModel):
     txn_type: Literal["credit", "debit"]
     mode: str = ""
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("amount",))
+
+
 class BookLineIn(BaseModel):
     id: str
     txn_date: date
@@ -23,11 +39,22 @@ class BookLineIn(BaseModel):
     amount: float
     txn_type: Literal["credit", "debit"]
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_amount(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("amount",))
+
+
 class ReconcileRequest(BaseModel):
     bank_lines: list[BankLineIn]
     book_lines: list[BookLineIn]
     date_window_days: int = 5
     balance_as_per_bank: float = 0.0
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_numeric_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("date_window_days", "balance_as_per_bank"))
 
 @router.post("/reconcile")
 def reconcile_endpoint(
