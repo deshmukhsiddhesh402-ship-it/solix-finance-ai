@@ -194,8 +194,8 @@ CREATE INDEX idx_doc_chunks_embedding ON document_chunks USING ivfflat (embeddin
 -- ---------------------------------------------------------------------
 CREATE TABLE org_memberships (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
-    org_id      UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     role        VARCHAR(20) NOT NULL DEFAULT 'accountant', -- admin, accountant, auditor
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, org_id)
@@ -215,7 +215,7 @@ CREATE INDEX idx_audit_logs_org_created ON audit_logs(org_id, created_at DESC);
 
 CREATE TABLE api_keys (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id              UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name                VARCHAR(100) NOT NULL,
     hashed_key          VARCHAR(64) NOT NULL UNIQUE,
     key_prefix_display  VARCHAR(30) NOT NULL,
@@ -226,7 +226,7 @@ CREATE TABLE api_keys (
 
 CREATE TABLE scheduled_reports (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id             UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        org_id             UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     report_type        VARCHAR(30) NOT NULL,
     frequency          VARCHAR(20) NOT NULL, -- daily, weekly, monthly
     recipient_emails   JSONB NOT NULL,
@@ -251,7 +251,7 @@ CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read);
 -- ---------------------------------------------------------------------
 CREATE TABLE subscriptions (
     id                          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id                      UUID REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
+        org_id                      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
     plan                        VARCHAR(20) NOT NULL DEFAULT 'trial', -- trial, pro, enterprise
     status                      VARCHAR(20) NOT NULL DEFAULT 'active', -- active, past_due, cancelled
     razorpay_order_id           VARCHAR(100),
