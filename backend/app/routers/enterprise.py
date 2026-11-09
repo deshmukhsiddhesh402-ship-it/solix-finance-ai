@@ -348,6 +348,7 @@ def create_scheduled_report(
     _user: str = Depends(require_permission("reports", "create")),
 ):
     org_uuid = _parse_uuid(org_id, "organization identifier")
+    user_uuid = _parse_uuid(_user, "user identifier")
     if _parse_uuid(req.org_id, "request organization identifier") != org_uuid:
         raise HTTPException(400, detail="Request organization must match the authorized organization.")
     from app.models.enterprise import ScheduledReport
@@ -357,6 +358,20 @@ def create_scheduled_report(
         recipient_emails=req.recipient_emails,
     )
     db.add(report)
+    db.flush()  # Assign the report ID before recording its lifecycle audit event.
+    _record_enterprise_audit(
+        db,
+        org_uuid,
+        user_uuid,
+        "create",
+        "scheduled_report",
+        str(report.id),
+        after={
+            "report_type": report.report_type,
+            "frequency": report.frequency,
+            "recipient_count": len(report.recipient_emails),
+        },
+    )
     db.commit()
     return {
         "id": str(report.id),
