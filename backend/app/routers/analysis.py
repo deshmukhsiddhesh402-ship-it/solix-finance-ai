@@ -2,7 +2,7 @@
 Module 6: Financial Analysis — API layer over analysis_engine.py
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.services.analysis_engine import (
     npv, irr, cagr, break_even, dcf_valuation, Scenario, scenario_analysis,
@@ -11,9 +11,29 @@ from app.services.analysis_engine import (
 router = APIRouter()
 
 
+def _reject_boolean_numeric_inputs(values, scalar_fields=(), sequence_fields=()):
+    """Prevent Pydantic from coercing JSON booleans into financial numbers."""
+    if isinstance(values, dict):
+        for field_name in scalar_fields:
+            if isinstance(values.get(field_name), bool):
+                raise ValueError(f"{field_name} must be numeric, not boolean.")
+        for field_name in sequence_fields:
+            items = values.get(field_name)
+            if isinstance(items, list):
+                for index, item in enumerate(items):
+                    if isinstance(item, bool):
+                        raise ValueError(f"{field_name}[{index}] must be numeric, not boolean.")
+    return values
+
+
 class NpvRequest(BaseModel):
     rate_pct: float
     cash_flows: list[float]
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("rate_pct",), ("cash_flows",))
 
 
 @router.post("/npv")
@@ -26,6 +46,11 @@ def npv_endpoint(req: NpvRequest):
 
 class IrrRequest(BaseModel):
     cash_flows: list[float]
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_cash_flows(cls, values):
+        return _reject_boolean_numeric_inputs(values, sequence_fields=("cash_flows",))
 
 
 @router.post("/irr")
@@ -44,6 +69,11 @@ class CagrRequest(BaseModel):
     ending_value: float
     years: float
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("beginning_value", "ending_value", "years"))
+
 
 @router.post("/cagr")
 def cagr_endpoint(req: CagrRequest):
@@ -57,6 +87,11 @@ class BreakEvenRequest(BaseModel):
     fixed_costs: float
     price_per_unit: float
     variable_cost_per_unit: float
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("fixed_costs", "price_per_unit", "variable_cost_per_unit"))
 
 
 @router.post("/break-even")
@@ -72,6 +107,15 @@ class DcfRequest(BaseModel):
     discount_rate_pct: float
     terminal_growth_rate_pct: float
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(
+            values,
+            ("discount_rate_pct", "terminal_growth_rate_pct"),
+            ("projected_cash_flows",),
+        )
+
 
 @router.post("/dcf")
 def dcf_endpoint(req: DcfRequest):
@@ -86,6 +130,11 @@ class ScenarioIn(BaseModel):
     revenue: float
     cost: float
     probability_pct: float = 0.0
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        return _reject_boolean_numeric_inputs(values, ("revenue", "cost", "probability_pct"))
 
 
 class ScenarioAnalysisRequest(BaseModel):
