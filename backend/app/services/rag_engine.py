@@ -117,7 +117,10 @@ def semantic_retrieve(db, document_id, query_embedding: list[float], top_k: int 
 
     rows = (
         db.query(DocumentChunk, DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"))
-        .filter(DocumentChunk.document_id == document_id)
+        .filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.embedding.isnot(None),
+        )
         .order_by("distance")
         .limit(top_k)
         .all()
