@@ -2,7 +2,7 @@
 ORM model for subscription/billing state per organization.
 """
 import uuid
-from sqlalchemy import Column, String, DateTime, Integer, func
+from sqlalchemy import Column, String, DateTime, Integer, func, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
@@ -11,6 +11,16 @@ Base = declarative_base()
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
+    __table_args__ = (
+        CheckConstraint(
+            "plan IN ('trial', 'pro', 'enterprise')",
+            name="ck_subscriptions_plan",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'past_due', 'cancelled')",
+            name="ck_subscriptions_status",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), nullable=False, unique=True)
