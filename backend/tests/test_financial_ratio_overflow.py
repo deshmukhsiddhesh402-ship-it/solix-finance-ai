@@ -4,6 +4,7 @@ import math
 import sys
 
 import pytest
+from pydantic import ValidationError
 from fastapi import HTTPException
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -75,3 +76,34 @@ def test_valid_ratio_results_remain_finite_and_preserve_zero_denominator_behavio
     assert zero_denominators["net_profit_margin_pct"] is None
     assert zero_denominators["return_on_assets_pct"] is None
     assert zero_denominators["return_on_equity_pct"] is None
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "current_assets",
+        "current_liabilities",
+        "inventory",
+        "total_debt",
+        "total_equity",
+        "net_profit",
+        "revenue",
+        "total_assets",
+    ],
+)
+@pytest.mark.parametrize("value", [True, False])
+def test_ratio_request_rejects_boolean_values_before_float_coercion(field, value):
+    values = _valid_values()
+    values[field] = value
+
+    with pytest.raises(ValidationError, match="numeric, not boolean"):
+        RatiosRequest(**values)
+
+
+def test_ratio_request_continues_to_accept_integer_financial_amounts():
+    values = _valid_values()
+    values["current_assets"] = 200
+
+    request = RatiosRequest(**values)
+
+    assert request.current_assets == 200.0

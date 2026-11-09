@@ -164,6 +164,25 @@ class RatiosRequest(BaseModel):
     revenue: float = Field(ge=0)
     total_assets: float = Field(ge=0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_boolean_inputs(cls, values):
+        if isinstance(values, dict):
+            numeric_fields = {
+                "current_assets",
+                "current_liabilities",
+                "inventory",
+                "total_debt",
+                "total_equity",
+                "net_profit",
+                "revenue",
+                "total_assets",
+            }
+            for field_name in numeric_fields:
+                if isinstance(values.get(field_name), bool):
+                    raise ValueError(f"{field_name} must be numeric, not boolean.")
+        return values
+
     @model_validator(mode="after")
     def require_finite_values(self):
         for name, value in self.__dict__.items():
