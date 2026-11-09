@@ -53,6 +53,18 @@ class LedgerLineIn(BaseModel):
         return self
 
 
+def _to_engine_ledger_line(line: LedgerLineIn) -> LedgerLine:
+    """Pass only fields understood by the pure ledger engine.
+
+    GST/TDS metadata is persisted separately by journal posting and is not part
+    of the trial-balance engine's LedgerLine contract.
+    """
+    return LedgerLine(
+        account_name=line.account_name,
+        account_type=line.account_type,
+        debit=line.debit,
+        credit=line.credit,
+    )
 
 
 @router.post("/journal-entries")
@@ -83,7 +95,7 @@ def create_journal_entry(
     except (TypeError, ValueError) as exc:
         raise HTTPException(422, detail="entry_date must be a valid ISO date (YYYY-MM-DD).") from exc
 
-    lines_dec = [LedgerLine(**l.dict()) for l in lines]
+    lines_dec = [_to_engine_ledger_line(l) for l in lines]
     if len(lines_dec) < 2:
         raise HTTPException(422, detail="A journal entry requires at least two lines.")
     try:
@@ -140,7 +152,7 @@ class TrialBalanceRequest(BaseModel):
 
 @router.post("/trial-balance")
 def trial_balance(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [_to_engine_ledger_line(l) for l in req.lines]
     try:
         result = build_trial_balance(lines)
     except ValueError as exc:
@@ -152,7 +164,7 @@ def trial_balance(req: TrialBalanceRequest):
 
 @router.post("/profit-and-loss")
 def profit_and_loss(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [_to_engine_ledger_line(l) for l in req.lines]
     try:
         tb = build_trial_balance(lines)
         return build_profit_and_loss(tb["rows"])
@@ -162,7 +174,7 @@ def profit_and_loss(req: TrialBalanceRequest):
 
 @router.post("/balance-sheet")
 def balance_sheet(req: TrialBalanceRequest):
-    lines = [LedgerLine(**l.dict()) for l in req.lines]
+    lines = [_to_engine_ledger_line(l) for l in req.lines]
     try:
         tb = build_trial_balance(lines)
         pnl = build_profit_and_loss(tb["rows"])
