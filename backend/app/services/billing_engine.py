@@ -34,14 +34,18 @@ PLANS = {
 
 
 def get_plan_limits(plan: str) -> dict:
-    return PLANS.get(plan, PLANS["trial"])["limits"]
+    """Return a copy so callers cannot mutate process-wide plan entitlements."""
+    return dict(PLANS.get(plan, PLANS["trial"])["limits"])
 
 
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:
-    """Check whether the org is still within its plan's usage limit for a
-    given metered feature. A limit of None means unlimited."""
+    """Check a configured usage limit; only an explicit None means unlimited."""
     limits = get_plan_limits(plan)
-    limit = limits.get(usage_key)
+    if usage_key not in limits:
+        raise ValueError("Unsupported usage key for the selected plan.")
+    if isinstance(current_usage, bool) or not isinstance(current_usage, int) or current_usage < 0:
+        raise ValueError("Current usage must be a non-negative integer.")
+    limit = limits[usage_key]
     if limit is None:
         return True
     return current_usage < limit
