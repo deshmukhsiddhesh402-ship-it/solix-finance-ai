@@ -100,7 +100,7 @@ def export_excel(
 
 @router.get("/export/pdf")
 def export_pdf(
-    org_name: str = Query(default="Your Organization"),
+    org_name: str = Query(default="Your Organization", max_length=120),
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
     org_id: str = Query(...),
