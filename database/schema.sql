@@ -198,7 +198,8 @@ CREATE TABLE org_memberships (
         org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     role        VARCHAR(20) NOT NULL DEFAULT 'accountant', -- admin, accountant, auditor
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (user_id, org_id)
+    UNIQUE (user_id, org_id),
+    CONSTRAINT ck_org_memberships_role CHECK (role IN ('admin', 'accountant', 'auditor'))
 );
 
 CREATE TABLE audit_logs (
