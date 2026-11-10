@@ -128,6 +128,66 @@ def create_journal_entry(
 
 
 
+@router.get("/fixed-assets")
+def list_fixed_assets(
+    org_id: str = Query(...),
+    purchase_date_from: date | None = Query(default=None),
+    purchase_date_to: date | None = Query(default=None),
+    depreciation_method: Literal["straight_line", "wdv"] | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Return a tenant-scoped fixed-asset register with bounded pagination."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+    if purchase_date_from and purchase_date_to and purchase_date_from > purchase_date_to:
+        raise HTTPException(422, detail="purchase_date_from must be on or before purchase_date_to.")
+
+    from app.models.accounting import FixedAsset
+
+    asset_query = db.query(FixedAsset).filter(FixedAsset.org_id == org_uuid)
+    count_query = db.query(func.count(FixedAsset.id)).filter(FixedAsset.org_id == org_uuid)
+    if purchase_date_from is not None:
+        asset_query = asset_query.filter(FixedAsset.purchase_date >= purchase_date_from)
+        count_query = count_query.filter(FixedAsset.purchase_date >= purchase_date_from)
+    if purchase_date_to is not None:
+        asset_query = asset_query.filter(FixedAsset.purchase_date <= purchase_date_to)
+        count_query = count_query.filter(FixedAsset.purchase_date <= purchase_date_to)
+    if depreciation_method is not None:
+        asset_query = asset_query.filter(FixedAsset.depreciation_method == depreciation_method)
+        count_query = count_query.filter(FixedAsset.depreciation_method == depreciation_method)
+
+    total = count_query.scalar() or 0
+    rows = (
+        asset_query
+        .order_by(FixedAsset.purchase_date.desc(), FixedAsset.asset_name.asc(), FixedAsset.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "assets": [
+            {
+                "id": str(asset.id),
+                "asset_name": asset.asset_name,
+                "purchase_date": asset.purchase_date.isoformat(),
+                "cost": float(asset.cost),
+                "salvage_value": float(asset.salvage_value),
+                "useful_life_years": asset.useful_life_years,
+                "depreciation_method": asset.depreciation_method,
+            }
+            for asset in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/chart-of-accounts")
 def list_chart_of_accounts(
     org_id: str = Query(...),
