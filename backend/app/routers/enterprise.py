@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.core.db import get_db
 from app.core.security import decode_access_token
@@ -86,6 +87,51 @@ class AddMembershipRequest(BaseModel):
     org_id: str
     user_email: EmailStr
     role: Literal["admin", "accountant", "auditor"]
+
+
+@router.get("/memberships")
+def list_memberships(
+    org_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db: Session = Depends(get_db),
+    _acting_user: str = Depends(require_permission("users", "manage_users")),
+):
+    """List organization memberships for authorized administrators only."""
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    from app.models.enterprise import OrgMembership
+    from app.models.auth_user import User
+
+    membership_query = (
+        db.query(OrgMembership, User)
+        .join(User, User.id == OrgMembership.user_id)
+        .filter(OrgMembership.org_id == org_uuid)
+    )
+    count_query = db.query(func.count(OrgMembership.id)).filter(OrgMembership.org_id == org_uuid)
+    total = count_query.scalar() or 0
+    rows = (
+        membership_query
+        .order_by(OrgMembership.created_at.desc(), OrgMembership.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "memberships": [
+            {
+                "id": str(membership.id),
+                "user_id": str(user.id),
+                "email": user.email,
+                "full_name": user.full_name,
+                "role": membership.role,
+                "created_at": membership.created_at.isoformat() if membership.created_at else None,
+            }
+            for membership, user in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/memberships")
