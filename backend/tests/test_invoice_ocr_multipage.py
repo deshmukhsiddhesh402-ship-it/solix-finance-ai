@@ -94,7 +94,7 @@ def test_pdf_rasterizer_rejects_truncation_and_closes_document(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
 
-    with pytest.raises(ValueError, match="2-page limit"):
+    with pytest.raises(ValueError, match="1-page limit"):
         engine.pdf_pages_to_images(b"%PDF-test", max_pages=1)
 
     assert document.closed is True
