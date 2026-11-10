@@ -128,6 +128,59 @@ def create_journal_entry(
 
 
 
+@router.get("/chart-of-accounts")
+def list_chart_of_accounts(
+    org_id: str = Query(...),
+    account_type: Literal["asset", "liability", "equity", "income", "expense"] | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Return a bounded, tenant-scoped chart-of-accounts register."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+
+    from app.models.accounting import ChartOfAccount
+
+    account_query = db.query(ChartOfAccount).filter(ChartOfAccount.org_id == org_uuid)
+    count_query = db.query(func.count(ChartOfAccount.id)).filter(ChartOfAccount.org_id == org_uuid)
+    if account_type is not None:
+        account_query = account_query.filter(ChartOfAccount.account_type == account_type)
+        count_query = count_query.filter(ChartOfAccount.account_type == account_type)
+    if not include_inactive:
+        account_query = account_query.filter(ChartOfAccount.is_active.is_(True))
+        count_query = count_query.filter(ChartOfAccount.is_active.is_(True))
+
+    total = count_query.scalar() or 0
+    rows = (
+        account_query
+        .order_by(ChartOfAccount.code.asc(), ChartOfAccount.name.asc(), ChartOfAccount.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "accounts": [
+            {
+                "id": str(account.id),
+                "code": account.code,
+                "name": account.name,
+                "account_type": account.account_type,
+                "parent_id": str(account.parent_id) if account.parent_id else None,
+                "is_active": bool(account.is_active),
+            }
+            for account in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/journal-entries")
 def list_journal_entries(
     org_id: str = Query(...),
