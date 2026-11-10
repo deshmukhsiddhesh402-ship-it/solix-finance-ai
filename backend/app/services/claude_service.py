@@ -65,7 +65,7 @@ def ask_claude_with_images(
         image_base64, media_type = image
         if not isinstance(image_base64, str) or not image_base64:
             raise ValueError("Image payload exceeds the supported size limit.")
-        if media_type not in SUPPORTED_CLAUDE_IMAGE_MEDIA_TYPES:
+        if not isinstance(media_type, str) or media_type not in SUPPORTED_CLAUDE_IMAGE_MEDIA_TYPES:
             raise ValueError("Unsupported image media type.")
         total_image_chars += len(image_base64)
         if total_image_chars > MAX_CLAUDE_IMAGE_BASE64_CHARS:
