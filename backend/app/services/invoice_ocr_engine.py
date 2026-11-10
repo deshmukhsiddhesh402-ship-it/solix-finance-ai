@@ -69,10 +69,12 @@ def pdf_pages_to_images(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 20) -
         raise ValueError("max_pages must be positive.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
-    zoom = dpi / 72  # PDF default is 72 DPI
-    matrix = fitz.Matrix(zoom, zoom)
     try:
-        for page in list(doc)[:max_pages]:
+        if len(doc) > max_pages:
+            raise ValueError(f"PDF exceeds the supported {max_pages}-page limit.")
+        zoom = dpi / 72  # PDF default is 72 DPI
+        matrix = fitz.Matrix(zoom, zoom)
+        for page in doc:
             pix = page.get_pixmap(matrix=matrix)
             images.append(pix.tobytes("png"))
         return images

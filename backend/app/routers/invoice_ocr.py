@@ -3,7 +3,7 @@ import json, re, uuid, io, time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
+from app.services.claude_service import ask_claude_with_image, ask_claude_with_images, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
 
@@ -51,17 +51,49 @@ def _store_session(session_id: str, session: dict) -> None:
 def _strip_json_fences(text: str) -> str:
     return text.strip().replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
 
-def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
-    raw = ask_claude_with_image(INVOICE_EXTRACTION_SYSTEM_PROMPT, "Extract the invoice fields from this document image.", encode_image_base64(image_bytes), media_type, max_tokens=1500)
+def _parse_extracted_invoice(raw: str) -> dict:
     try:
         data = json.loads(_strip_json_fences(raw))
     except json.JSONDecodeError as exc:
         raise HTTPException(502, detail="Could not parse the extracted invoice data. Try a clearer image.") from exc
     if not isinstance(data, dict):
         raise HTTPException(502, detail="Invoice extraction returned an invalid response.")
-    if data.get("vendor_gstin"):
+    if isinstance(data.get("vendor_gstin"), str) and data["vendor_gstin"]:
         data["gstin_format_valid"] = is_valid_gstin_format(data["vendor_gstin"])
     return data
+
+
+def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
+    raw = ask_claude_with_image(
+        INVOICE_EXTRACTION_SYSTEM_PROMPT,
+        "Extract the invoice fields from this document image.",
+        encode_image_base64(image_bytes),
+        media_type,
+        max_tokens=1500,
+    )
+    return _parse_extracted_invoice(raw)
+
+
+def _extract_multiple_images(image_pages: list[bytes]) -> dict:
+    if not isinstance(image_pages, list) or not image_pages:
+        raise HTTPException(422, detail="Could not render any pages from this PDF.")
+    images = [(encode_image_base64(page), "image/png") for page in image_pages]
+    prompt = (
+        "These images are pages of the same invoice document, in page order. "
+        "Review every page together, combine line items and invoice totals across "
+        "the document, and return one JSON object using the requested schema. "
+        "Do not treat continuation pages as separate invoices."
+    )
+    try:
+        raw = ask_claude_with_images(
+            INVOICE_EXTRACTION_SYSTEM_PROMPT, prompt, images, max_tokens=1500
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            413,
+            detail="Rendered PDF pages exceed the supported OCR image payload limit. Upload a lower-resolution or shorter PDF.",
+        ) from exc
+    return _parse_extracted_invoice(raw)
 
 @router.post("/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
@@ -84,7 +116,7 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
-        extracted = _extract_single_image(images[0], "image/png")
+        extracted = _extract_multiple_images(images)
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
     session_id = str(uuid.uuid4())
