@@ -286,6 +286,47 @@ class ScheduledReportRequest(BaseModel):
     recipient_emails: list[EmailStr] = Field(min_length=1, max_length=50)
 
 
+@router.get("/scheduled-reports")
+def list_scheduled_reports(
+    org_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db: Session = Depends(get_db),
+    _user: str = Depends(require_permission("reports", "view")),
+):
+    """List scheduled-report metadata without disclosing recipient addresses."""
+    org_uuid = _parse_uuid(org_id, "organization identifier")
+    from app.models.enterprise import ScheduledReport
+
+    report_query = db.query(ScheduledReport).filter(ScheduledReport.org_id == org_uuid)
+    count_query = db.query(func.count(ScheduledReport.id)).filter(ScheduledReport.org_id == org_uuid)
+    total = count_query.scalar() or 0
+    rows = (
+        report_query
+        .order_by(ScheduledReport.created_at.desc(), ScheduledReport.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "scheduled_reports": [
+            {
+                "id": str(report.id),
+                "report_type": report.report_type,
+                "frequency": report.frequency,
+                "is_active": bool(report.is_active),
+                "recipient_count": len(report.recipient_emails) if isinstance(report.recipient_emails, list) else None,
+                "created_at": report.created_at.isoformat() if report.created_at else None,
+                "last_sent_at": report.last_sent_at.isoformat() if report.last_sent_at else None,
+            }
+            for report in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.post("/scheduled-reports")
 def create_scheduled_report(
     req: ScheduledReportRequest, org_id: str = Query(...), db: Session = Depends(get_db),
