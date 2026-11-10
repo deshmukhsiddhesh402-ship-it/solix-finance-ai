@@ -3,6 +3,8 @@ Module 2: Accounting — API layer over accounting_engine.py
 """
 import math
 import uuid
+from datetime import date
+from sqlalchemy import func
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
@@ -124,6 +126,90 @@ def create_journal_entry(
     return {"journal_entry_id": str(entry.id), "message": "Journal entry posted successfully."}
 
 
+
+
+@router.get("/journal-entries")
+def list_journal_entries(
+    org_id: str = Query(...),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Return a tenant-scoped, stably paginated journal-entry register."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(422, detail="start_date must be on or before end_date.")
+
+    from app.models.accounting import JournalEntry, JournalLine, ChartOfAccount
+
+    entry_query = db.query(JournalEntry).filter(JournalEntry.org_id == org_uuid)
+    count_query = db.query(func.count(JournalEntry.id)).filter(JournalEntry.org_id == org_uuid)
+    if start_date is not None:
+        entry_query = entry_query.filter(JournalEntry.entry_date >= start_date)
+        count_query = count_query.filter(JournalEntry.entry_date >= start_date)
+    if end_date is not None:
+        entry_query = entry_query.filter(JournalEntry.entry_date <= end_date)
+        count_query = count_query.filter(JournalEntry.entry_date <= end_date)
+
+    total = count_query.scalar() or 0
+    entries = (
+        entry_query
+        .order_by(JournalEntry.entry_date.desc(), JournalEntry.created_at.desc(), JournalEntry.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    if not entries:
+        return {"entries": [], "total": total, "limit": limit, "offset": offset}
+
+    entry_ids = [entry.id for entry in entries]
+    line_rows = (
+        db.query(JournalLine, ChartOfAccount)
+        .join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
+        .filter(
+            JournalLine.journal_id.in_(entry_ids),
+            ChartOfAccount.org_id == org_uuid,
+        )
+        .order_by(JournalLine.id.asc())
+        .all()
+    )
+    lines_by_entry: dict[uuid.UUID, list[dict]] = {}
+    for line, account in line_rows:
+        lines_by_entry.setdefault(line.journal_id, []).append({
+            "account_name": account.name,
+            "account_type": account.account_type,
+            "debit": float(line.debit),
+            "credit": float(line.credit),
+            "gst_rate_pct": float(line.gst_rate_pct) if line.gst_rate_pct is not None else None,
+            "gst_type": line.gst_type,
+            "gst_taxable_value": float(line.gst_taxable_value) if line.gst_taxable_value is not None else None,
+            "tds_section": line.tds_section,
+            "tds_rate": float(line.tds_rate) if line.tds_rate is not None else None,
+            "tds_amount": float(line.tds_amount) if line.tds_amount is not None else None,
+        })
+
+    return {
+        "entries": [
+            {
+                "id": str(entry.id),
+                "entry_date": entry.entry_date.isoformat(),
+                "narration": entry.narration,
+                "reference_no": entry.reference_no,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "lines": lines_by_entry.get(entry.id, []),
+            }
+            for entry in entries
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 class TrialBalanceRequest(BaseModel):
