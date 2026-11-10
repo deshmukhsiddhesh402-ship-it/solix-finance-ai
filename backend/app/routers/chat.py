@@ -52,6 +52,16 @@ def _authorized_session_org(session_org_id: str, org_id: str) -> bool:
     return session_org_id == org_id
 
 
+def _get_document_embeddings(chunks: list[str]) -> list[list[float]]:
+    """Translate embedding input failures and upstream outages into safe API errors."""
+    try:
+        return get_embeddings(chunks, input_type="document")
+    except ValueError as exc:
+        raise HTTPException(422, detail="Document text exceeds supported embedding input limits.") from exc
+    except Exception as exc:
+        raise HTTPException(502, detail="Document embedding provider request failed.") from exc
+
+
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -84,7 +94,7 @@ async def upload_document(
     chunks = chunk_text(text)
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
-        vectors = get_embeddings(chunks, input_type="document")
+        vectors = _get_document_embeddings(chunks)
         doc_row = Document(
             org_id=org_uuid, uploaded_by=user_uuid,
             file_name=filename, file_type=filename.rsplit(".", 1)[-1].lower(),
