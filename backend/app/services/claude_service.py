@@ -18,6 +18,8 @@ MAX_CLAUDE_SYSTEM_CHARS = 20_000
 MAX_CLAUDE_OUTPUT_TOKENS = 4_000
 MAX_CLAUDE_TOOL_COUNT = 32
 MAX_CLAUDE_IMAGE_BASE64_CHARS = 15_000_000
+MAX_CLAUDE_IMAGE_COUNT = 20
+SUPPORTED_CLAUDE_IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 
 
 def _validate_request(system_prompt: str, user_message: str, max_tokens: int) -> None:
@@ -44,29 +46,52 @@ def ask_claude(system_prompt: str, user_message: str, max_tokens: int = 1500) ->
     return "".join(block.text for block in response.content if block.type == "text")
 
 
-def ask_claude_with_image(
-    system_prompt: str, user_text: str, image_base64: str, media_type: str, max_tokens: int = 1500
+def ask_claude_with_images(
+    system_prompt: str,
+    user_text: str,
+    images: list[tuple[str, str]],
+    max_tokens: int = 1500,
 ) -> str:
-    """Send a single-turn request with an image attached (used by the
-    Invoice/Receipt OCR module — Claude reads the document visually rather
-    than relying on a separate OCR engine like Tesseract).
-    """
+    """Send one request with an ordered, bounded set of document-page images."""
     _validate_request(system_prompt, user_text, max_tokens)
-    if not isinstance(image_base64, str) or not image_base64 or len(image_base64) > MAX_CLAUDE_IMAGE_BASE64_CHARS:
-        raise ValueError("Image payload exceeds the supported size limit.")
+    if not isinstance(images, list) or not images or len(images) > MAX_CLAUDE_IMAGE_COUNT:
+        raise ValueError(f"Image count must be between 1 and {MAX_CLAUDE_IMAGE_COUNT}.")
+
+    content = []
+    total_image_chars = 0
+    for image in images:
+        if not isinstance(image, (tuple, list)) or len(image) != 2:
+            raise ValueError("Each image must contain base64 data and a media type.")
+        image_base64, media_type = image
+        if not isinstance(image_base64, str) or not image_base64:
+            raise ValueError("Image payload exceeds the supported size limit.")
+        if media_type not in SUPPORTED_CLAUDE_IMAGE_MEDIA_TYPES:
+            raise ValueError("Unsupported image media type.")
+        total_image_chars += len(image_base64)
+        if total_image_chars > MAX_CLAUDE_IMAGE_BASE64_CHARS:
+            raise ValueError("Combined image payload exceeds the supported size limit.")
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": image_base64},
+        })
+
+    content.append({"type": "text", "text": user_text})
     response = _client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=max_tokens,
         system=system_prompt,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_base64}},
-                {"type": "text", "text": user_text},
-            ],
-        }],
+        messages=[{"role": "user", "content": content}],
     )
     return "".join(block.text for block in response.content if block.type == "text")
+
+
+def ask_claude_with_image(
+    system_prompt: str, user_text: str, image_base64: str, media_type: str, max_tokens: int = 1500
+) -> str:
+    """Backward-compatible single-image wrapper around the multi-image API."""
+    return ask_claude_with_images(
+        system_prompt, user_text, [(image_base64, media_type)], max_tokens=max_tokens
+    )
 
 
 def ask_claude_with_tools(
