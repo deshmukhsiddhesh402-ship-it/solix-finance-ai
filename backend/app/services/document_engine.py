@@ -93,20 +93,29 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 
 
 def extract_text(filename: str, file_bytes: bytes) -> str:
-    """Dispatch to the right extractor based on file extension."""
-    lower = filename.lower()
-    if lower.endswith(".pdf"):
-        return extract_text_from_pdf(file_bytes)
-    if lower.endswith((".xlsx", ".xlsm")):
-        return extract_text_from_xlsx(file_bytes)
-    if lower.endswith(".docx"):
-        return extract_text_from_docx(file_bytes)
-    if lower.endswith((".txt", ".csv", ".md")):
-        text = file_bytes.decode("utf-8", errors="ignore")
-        if len(text) > MAX_DOCUMENT_EXTRACTED_CHARS:
-            raise ValueError("Document text exceeds the supported extraction limit.")
-        return text
-    raise ValueError(f"Unsupported file type: {filename}")
+    """Dispatch to the right extractor and normalize malformed-file failures."""
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("Document filename must be a non-empty string.")
+    lower = filename.strip().lower()
+    try:
+        if lower.endswith(".pdf"):
+            return extract_text_from_pdf(file_bytes)
+        if lower.endswith((".xlsx", ".xlsm")):
+            return extract_text_from_xlsx(file_bytes)
+        if lower.endswith(".docx"):
+            return extract_text_from_docx(file_bytes)
+        if lower.endswith((".txt", ".csv", ".md")):
+            text = file_bytes.decode("utf-8", errors="ignore")
+            if len(text) > MAX_DOCUMENT_EXTRACTED_CHARS:
+                raise ValueError("Document text exceeds the supported extraction limit.")
+            return text
+        raise ValueError(f"Unsupported file type: {filename}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            "Uploaded document could not be parsed. Verify that the file is valid and matches its extension."
+        ) from exc
 
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[str]:
