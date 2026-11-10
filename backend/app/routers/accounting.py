@@ -128,6 +128,61 @@ def create_journal_entry(
 
 
 
+@router.get("/inventory/items/{item_id}/valuation")
+def persisted_inventory_item_valuation(
+    item_id: str,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Calculate a persisted inventory item's valuation from its tenant-owned transactions."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        item_uuid = uuid.UUID(str(item_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or inventory item identifier.") from exc
+
+    from app.models.accounting import InventoryItem, InventoryTransaction
+
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_uuid, InventoryItem.org_id == org_uuid)
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, detail="Inventory item not found.")
+
+    rows = (
+        db.query(InventoryTransaction)
+        .filter(InventoryTransaction.item_id == item_uuid)
+        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.id.asc())
+        .all()
+    )
+    transactions = [
+        InventoryTxn(
+            txn_type=row.txn_type,
+            quantity=float(row.quantity),
+            unit_cost=float(row.unit_cost) if row.unit_cost is not None else 0.0,
+        )
+        for row in rows
+    ]
+    try:
+        valuation = inventory_valuation(transactions, item.costing_method)
+    except ValueError as exc:
+        raise HTTPException(422, detail="Stored inventory transactions cannot be valued. Review the item ledger.") from exc
+
+    return {
+        "item": {
+            "id": str(item.id),
+            "sku": item.sku,
+            "name": item.name,
+            "costing_method": item.costing_method,
+        },
+        "transaction_count": len(transactions),
+        "valuation": valuation,
+    }
+
+
 @router.get("/fixed-assets")
 def list_fixed_assets(
     org_id: str = Query(...),
