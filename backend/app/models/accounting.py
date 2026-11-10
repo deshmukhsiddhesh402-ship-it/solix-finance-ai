@@ -8,7 +8,7 @@ actually persist so the dashboard can query real historical data.
 """
 import uuid
 from datetime import date as date_type
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -27,6 +27,19 @@ class Organization(Base):
 
     accounts = relationship("ChartOfAccount", back_populates="organization")
     journal_entries = relationship("JournalEntry", back_populates="organization")
+
+
+class FixedAsset(Base):
+    __tablename__ = "fixed_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    asset_name = Column(String(255), nullable=False)
+    purchase_date = Column(Date, nullable=False)
+    cost = Column(Numeric(18, 2), nullable=False)
+    salvage_value = Column(Numeric(18, 2), nullable=False, default=0)
+    useful_life_years = Column(Integer, nullable=False)
+    depreciation_method = Column(String(20), nullable=False, default="straight_line")
 
 
 class ChartOfAccount(Base):
