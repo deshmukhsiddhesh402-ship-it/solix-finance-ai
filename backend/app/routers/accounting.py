@@ -19,6 +19,79 @@ from app.services.accounting_engine import (
 
 router = APIRouter()
 
+@router.get("/inventory/items/{item_id}/transactions")
+def list_inventory_item_transactions(
+    item_id: str,
+    org_id: str = Query(...),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    txn_type: Literal["purchase", "sale"] | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Return a tenant-verified inventory item's transaction ledger."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        item_uuid = uuid.UUID(str(item_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or inventory item identifier.") from exc
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise HTTPException(422, detail="start_date must be on or before end_date.")
+
+    from app.models.accounting import InventoryItem, InventoryTransaction
+
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_uuid, InventoryItem.org_id == org_uuid)
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, detail="Inventory item not found.")
+
+    transaction_query = db.query(InventoryTransaction).filter(
+        InventoryTransaction.item_id == item_uuid
+    )
+    count_query = db.query(func.count(InventoryTransaction.id)).filter(
+        InventoryTransaction.item_id == item_uuid
+    )
+    if start_date is not None:
+        transaction_query = transaction_query.filter(InventoryTransaction.txn_date >= start_date)
+        count_query = count_query.filter(InventoryTransaction.txn_date >= start_date)
+    if end_date is not None:
+        transaction_query = transaction_query.filter(InventoryTransaction.txn_date <= end_date)
+        count_query = count_query.filter(InventoryTransaction.txn_date <= end_date)
+    if txn_type is not None:
+        transaction_query = transaction_query.filter(InventoryTransaction.txn_type == txn_type)
+        count_query = count_query.filter(InventoryTransaction.txn_type == txn_type)
+
+    total = count_query.scalar() or 0
+    rows = (
+        transaction_query
+        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "transactions": [
+            {
+                "id": str(row.id),
+                "txn_type": row.txn_type,
+                "txn_date": row.txn_date.isoformat(),
+                "quantity": float(row.quantity),
+                "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
+            }
+            for row in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "ordering_note": "Transactions are ordered by date, then stable record ID; the existing schema has no same-day sequence field.",
+    }
+
+
 @router.get("/inventory/items")
 def list_inventory_items(
     org_id: str = Query(...),
