@@ -11,6 +11,15 @@ from app.routers.enterprise import require_permission
 
 router = APIRouter()
 
+def _mask_bank_account_number(account_no: str | None) -> str | None:
+    if account_no is None:
+        return None
+    normalized = str(account_no).strip()
+    if not normalized:
+        return None
+    return f"****{normalized[-4:]}" if len(normalized) > 4 else "****"
+
+
 @router.get("/statements")
 def list_bank_statements(
     org_id: str = Query(...),
@@ -35,17 +44,7 @@ def list_bank_statements(
 
     statement_query = db.query(BankStatement).filter(BankStatement.org_id == org_uuid)
     count_query = db.query(func.count(BankStatement.id)).filter(BankStatement.org_id == org_uuid)
-    for query in (statement_query, count_query):
-        if start_date is not None:
-            query = query.filter(BankStatement.txn_date >= start_date)
-        if end_date is not None:
-            query = query.filter(BankStatement.txn_date <= end_date)
-        if txn_type is not None:
-            query = query.filter(BankStatement.txn_type == txn_type)
-        if reconciled is not None:
-            query = query.filter(BankStatement.reconciled.is_(reconciled))
-
-    # Apply identical filters explicitly to each query so count and page totals agree.
+    # Apply identical filters to both queries so count and page totals agree.
     if start_date is not None:
         statement_query = statement_query.filter(BankStatement.txn_date >= start_date)
         count_query = count_query.filter(BankStatement.txn_date >= start_date)
@@ -72,11 +71,7 @@ def list_bank_statements(
             {
                 "id": str(row.id),
                 "bank_name": row.bank_name,
-                "account_no_masked": (
-                    f"****{str(row.account_no).strip()[-4:]}"
-                    if row.account_no and len(str(row.account_no).strip()) > 4
-                    else ("****" if row.account_no else None)
-                ),
+                "account_no_masked": _mask_bank_account_number(row.account_no),
                 "txn_date": row.txn_date.isoformat(),
                 "description": row.description,
                 "amount": float(row.amount),
