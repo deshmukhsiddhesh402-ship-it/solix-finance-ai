@@ -8,6 +8,14 @@ from typing import Literal
 import math
 
 
+
+
+def _require_finite_number(value, label: str) -> None:
+    """Reject booleans and non-numeric values before financial arithmetic."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number.")
+
+
 # ---------------------------------------------------------------------------
 # Trial Balance
 # ---------------------------------------------------------------------------
@@ -31,8 +39,8 @@ def build_trial_balance(lines: list[LedgerLine]) -> dict:
             raise ValueError("Account name must be non-empty.")
         if line.account_type not in {"asset", "liability", "equity", "income", "expense"}:
             raise ValueError("Invalid account type.")
-        if not math.isfinite(line.debit) or not math.isfinite(line.credit):
-            raise ValueError("Debit and credit amounts must be finite.")
+        _require_finite_number(line.debit, "Debit")
+        _require_finite_number(line.credit, "Credit")
         if line.debit < 0 or line.credit < 0:
             raise ValueError("Debit and credit amounts cannot be negative.")
         acc = totals.setdefault(
@@ -119,8 +127,12 @@ def financial_ratios(
     total_assets: float,
 ) -> dict:
     values = (current_assets, current_liabilities, inventory, total_debt, total_equity, net_profit, revenue, total_assets)
-    if not all(math.isfinite(v) for v in values):
-        raise ValueError("Financial ratio inputs must be finite.")
+    for label, value in zip(
+        ("current_assets", "current_liabilities", "inventory", "total_debt",
+         "total_equity", "net_profit", "revenue", "total_assets"),
+        values,
+    ):
+        _require_finite_number(value, label)
     if any(v < 0 for v in (current_assets, current_liabilities, inventory, total_debt, total_equity, revenue, total_assets)):
         raise ValueError("Financial ratio balance inputs cannot be negative.")
     if inventory > current_assets:
@@ -139,21 +151,21 @@ def financial_ratios(
 # Depreciation
 # ---------------------------------------------------------------------------
 def straight_line_depreciation(cost: float, salvage: float, useful_life_years: int) -> float:
-    if not all(math.isfinite(v) for v in (cost, salvage)):
-        raise ValueError("cost and salvage must be finite.")
+    _require_finite_number(cost, "cost")
+    _require_finite_number(salvage, "salvage")
     if cost < 0 or salvage < 0:
         raise ValueError("cost and salvage cannot be negative.")
     if salvage > cost:
         raise ValueError("salvage cannot exceed cost.")
-    if useful_life_years < 1:
-        raise ValueError("useful_life_years must be at least 1.")
+    if isinstance(useful_life_years, bool) or not isinstance(useful_life_years, int) or useful_life_years < 1:
+        raise ValueError("useful_life_years must be a positive integer.")
     return round((cost - salvage) / useful_life_years, 2)
 
 
 def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[dict]:
     """Written Down Value (reducing balance) method — common under Indian Companies Act."""
-    if not all(math.isfinite(v) for v in (cost, rate_pct)):
-        raise ValueError("cost and rate_pct must be finite.")
+    _require_finite_number(cost, "cost")
+    _require_finite_number(rate_pct, "rate_pct")
     if cost < 0 or rate_pct <= 0 or rate_pct > 100:
         raise ValueError("cost must be non-negative and rate_pct must be between 0 and 100.")
     if isinstance(years, bool) or not isinstance(years, int) or years < 1:
@@ -192,8 +204,8 @@ def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO"
     for txn in txns:
         if txn.txn_type not in {"purchase", "sale"}:
             raise ValueError("Inventory transaction type must be purchase or sale.")
-        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
-            raise ValueError("Inventory quantity and unit cost must be finite.")
+        _require_finite_number(txn.quantity, "Inventory quantity")
+        _require_finite_number(txn.unit_cost, "Inventory unit cost")
         if txn.quantity <= 0 or txn.unit_cost < 0:
             raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
 
