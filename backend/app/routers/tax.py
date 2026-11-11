@@ -21,7 +21,7 @@ router = APIRouter()
 def _validate_gst_period(value: str | None, label: str) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not re.fullmatch(r"\\d{4}-(0[1-9]|1[0-2])", value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
         raise HTTPException(422, detail=f"{label} must use YYYY-MM format.")
     try:
         datetime.strptime(value, "%Y-%m")
