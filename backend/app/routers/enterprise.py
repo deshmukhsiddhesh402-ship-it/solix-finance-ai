@@ -356,7 +356,10 @@ def create_scheduled_report(
 @router.get("/notifications")
 def list_notifications(
     org_id: str = Query(...), user_id: str | None = Query(default=None),
-    unread_only: bool = Query(default=False), db: Session = Depends(get_db),
+    unread_only: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db: Session = Depends(get_db),
     _user: str = Depends(require_permission("reports", "view")),
 ):
     from app.models.enterprise import Notification
@@ -366,14 +369,29 @@ def list_notifications(
     org_uuid = _parse_uuid(org_id, "organization identifier")
     user_uuid = _parse_uuid(_user, "user identifier")
     query = db.query(Notification).filter(Notification.org_id == org_uuid, Notification.user_id == user_uuid)
+    count_query = db.query(func.count(Notification.id)).filter(
+        Notification.org_id == org_uuid, Notification.user_id == user_uuid
+    )
     if unread_only:
-        query = query.filter(Notification.is_read == False)  # noqa: E712
-    rows = query.order_by(Notification.created_at.desc()).limit(50).all()
-    return {"notifications": [
-        {"id": str(r.id), "title": r.title, "body": r.body, "is_read": r.is_read,
-         "created_at": r.created_at.isoformat() if r.created_at else None}
-        for r in rows
-    ]}
+        query = query.filter(Notification.is_read.is_(False))
+        count_query = count_query.filter(Notification.is_read.is_(False))
+    total = count_query.scalar() or 0
+    rows = (
+        query.order_by(Notification.created_at.desc(), Notification.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "notifications": [
+            {"id": str(r.id), "title": r.title, "body": r.body, "is_read": bool(r.is_read),
+             "created_at": r.created_at.isoformat() if r.created_at else None}
+            for r in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/notifications/{notification_id}/read")
