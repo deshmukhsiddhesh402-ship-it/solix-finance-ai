@@ -30,7 +30,7 @@ def test_financial_ratios_reject_boolean_balance_inputs():
 
 @pytest.mark.parametrize("useful_life", [True, False, 1.5, "5"])
 def test_straight_line_depreciation_requires_positive_integer_life(useful_life):
-    with pytest.raises(ValueError, match="positive integer"):
+    with pytest.raises(ValueError, match="integer at least 1"):
         straight_line_depreciation(100.0, 0.0, useful_life)
 
 
