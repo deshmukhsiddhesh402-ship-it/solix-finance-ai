@@ -63,6 +63,23 @@ class InventoryTransaction(Base):
     unit_cost = Column(Numeric(18, 4), nullable=True)
 
 
+class BankStatement(Base):
+    """Persisted bank statement transaction; account numbers are masked in API responses."""
+    __tablename__ = "bank_statements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    bank_name = Column(String(255), nullable=True)
+    account_no = Column(String(50), nullable=True)
+    txn_date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    amount = Column(Numeric(18, 2), nullable=False)
+    txn_type = Column(String(10), nullable=False)
+    mode = Column(String(10), nullable=True)
+    reconciled = Column(Boolean, nullable=False, default=False)
+    matched_journal_id = Column(UUID(as_uuid=True), ForeignKey("journal_entries.id"), nullable=True)
+
+
 class ChartOfAccount(Base):
     __tablename__ = "chart_of_accounts"
 
