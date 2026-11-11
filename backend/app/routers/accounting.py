@@ -4,7 +4,7 @@ Module 2: Accounting — API layer over accounting_engine.py
 import math
 import uuid
 from datetime import date
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal
@@ -18,6 +18,62 @@ from app.services.accounting_engine import (
 )
 
 router = APIRouter()
+
+@router.get("/inventory/items")
+def list_inventory_items(
+    org_id: str = Query(...),
+    costing_method: Literal["FIFO", "LIFO", "WAVG"] | None = Query(default=None),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("journal_entry", "view")),
+):
+    """Return a tenant-scoped inventory item register with bounded search and pagination."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization identifier.") from exc
+    search_term = search.strip() if search is not None else None
+    if search is not None and not search_term:
+        raise HTTPException(422, detail="search must not be blank.")
+
+    from app.models.accounting import InventoryItem
+
+    item_query = db.query(InventoryItem).filter(InventoryItem.org_id == org_uuid)
+    count_query = db.query(func.count(InventoryItem.id)).filter(InventoryItem.org_id == org_uuid)
+    if costing_method is not None:
+        item_query = item_query.filter(InventoryItem.costing_method == costing_method)
+        count_query = count_query.filter(InventoryItem.costing_method == costing_method)
+    if search_term is not None:
+        pattern = f"%{search_term}%"
+        criterion = or_(InventoryItem.sku.ilike(pattern), InventoryItem.name.ilike(pattern))
+        item_query = item_query.filter(criterion)
+        count_query = count_query.filter(criterion)
+
+    total = count_query.scalar() or 0
+    rows = (
+        item_query
+        .order_by(InventoryItem.sku.asc(), InventoryItem.name.asc(), InventoryItem.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": str(item.id),
+                "sku": item.sku,
+                "name": item.name,
+                "costing_method": item.costing_method,
+            }
+            for item in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
 
 def _new_account_code(account_name: str) -> str:
     """Generate a compact, collision-resistant code for auto-created ledger accounts.
