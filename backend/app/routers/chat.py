@@ -30,15 +30,18 @@ def list_documents(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
+    normalized_type = None
+    if file_type is not None:
+        normalized_type = file_type.strip().lower().lstrip(".")
+        if not normalized_type:
+            raise HTTPException(422, detail="file_type must not be blank.")
+
     from sqlalchemy import func
     from app.models.document import Document
 
     document_query = db.query(Document).filter(Document.org_id == org_uuid)
     count_query = db.query(func.count(Document.id)).filter(Document.org_id == org_uuid)
-    if file_type is not None:
-        normalized_type = file_type.strip().lower().lstrip(".")
-        if not normalized_type:
-            raise HTTPException(422, detail="file_type must not be blank.")
+    if normalized_type is not None:
         document_query = document_query.filter(Document.file_type == normalized_type)
         count_query = count_query.filter(Document.file_type == normalized_type)
 
