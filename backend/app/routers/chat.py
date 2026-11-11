@@ -13,6 +13,62 @@ from app.core.db import get_db
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+
+@router.get("/documents")
+def list_documents(
+    org_id: str = Query(...),
+    file_type: str | None = Query(default=None, min_length=1, max_length=20),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(require_permission("chat", "view")),
+):
+    """List persisted document metadata for the authorized organization only."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+
+    normalized_type = None
+    if file_type is not None:
+        normalized_type = file_type.strip().lower().lstrip(".")
+        if not normalized_type:
+            raise HTTPException(422, detail="file_type must not be blank.")
+
+    from sqlalchemy import func
+    from app.models.document import Document
+
+    document_query = db.query(Document).filter(Document.org_id == org_uuid)
+    count_query = db.query(func.count(Document.id)).filter(Document.org_id == org_uuid)
+    if normalized_type is not None:
+        document_query = document_query.filter(Document.file_type == normalized_type)
+        count_query = count_query.filter(Document.file_type == normalized_type)
+
+    total = count_query.scalar() or 0
+    rows = (
+        document_query
+        .order_by(Document.created_at.desc(), Document.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "documents": [
+            {
+                "id": str(row.id),
+                "file_name": row.file_name,
+                "file_type": row.file_type,
+                "uploaded_by": str(row.uploaded_by) if row.uploaded_by else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_CHAT_SESSIONS = 1000
 CHAT_SESSION_TTL_SECONDS = 30 * 60
