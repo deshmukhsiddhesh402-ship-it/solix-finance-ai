@@ -8,7 +8,7 @@ actually persist so the dashboard can query real historical data.
 """
 import uuid
 from datetime import date as date_type
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer, BigInteger, Identity
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -61,6 +61,7 @@ class InventoryTransaction(Base):
     txn_date = Column(Date, nullable=False)
     quantity = Column(Numeric(18, 4), nullable=False)
     unit_cost = Column(Numeric(18, 4), nullable=True)
+    sequence_no = Column(BigInteger, Identity(always=True), nullable=False)
 
 
 class ChartOfAccount(Base):
