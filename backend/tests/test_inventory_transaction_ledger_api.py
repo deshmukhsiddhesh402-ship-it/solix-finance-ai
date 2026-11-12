@@ -65,7 +65,7 @@ def test_inventory_transaction_ledger_verifies_item_tenant_and_paginates():
 
     item_id = uuid4()
     row = SimpleNamespace(
-        id=uuid4(), txn_type="purchase", txn_date=date(2026, 11, 10),
+        id=uuid4(), txn_type="purchase", txn_date=date(2026, 11, 10), sequence_no=42,
         quantity=Decimal("12.5000"), unit_cost=Decimal("80.2500"),
     )
     db = FakeDB(SimpleNamespace(id=item_id), [row], 1)
@@ -79,13 +79,15 @@ def test_inventory_transaction_ledger_verifies_item_tenant_and_paginates():
     assert result["total"] == 1
     assert result["transactions"][0]["quantity"] == 12.5
     assert result["transactions"][0]["unit_cost"] == 80.25
-    assert "same-day sequence field" in result["ordering_note"]
+    assert result["transactions"][0]["sequence_no"] == 42
+    assert "database-generated insertion sequence" in result["ordering_note"]
     assert any("inventory_items.org_id" in str(item) for item in db.item_query.filters)
     assert any("inventory_transactions.item_id" in str(item) for item in db.rows_query.filters)
     assert any("inventory_transactions.item_id" in str(item) for item in db.count_query.filters)
     assert db.rows_query.limit_value == 10
     assert db.rows_query.offset_value == 5
-    assert len(db.rows_query.ordering) == 2
+    assert len(db.rows_query.ordering) == 3
+    assert "sequence_no" in str(db.rows_query.ordering[1])
 
 
 def test_inventory_transaction_ledger_does_not_disclose_foreign_tenant_item():
@@ -131,3 +133,48 @@ def test_inventory_transaction_ledger_rejects_invalid_identifiers_before_queries
 
     assert exc.value.status_code == 400
     assert not db.queries
+
+
+def test_inventory_transaction_model_uses_database_generated_sequence():
+    from app.models.accounting import InventoryTransaction
+
+    column = InventoryTransaction.__table__.c.sequence_no
+    assert column.nullable is False
+    assert column.identity is not None
+    assert column.identity.always is True
+
+
+def test_inventory_valuation_uses_same_day_sequence_order(monkeypatch):
+    import app.routers.accounting as accounting
+
+    item_id = uuid4()
+    rows = [
+        SimpleNamespace(
+            id=uuid4(), txn_type="purchase", txn_date=date(2026, 11, 10),
+            sequence_no=12, quantity=Decimal("10.0000"), unit_cost=Decimal("5.0000"),
+        ),
+        SimpleNamespace(
+            id=uuid4(), txn_type="sale", txn_date=date(2026, 11, 10),
+            sequence_no=13, quantity=Decimal("2.0000"), unit_cost=Decimal("5.0000"),
+        ),
+    ]
+    db = FakeDB(SimpleNamespace(id=item_id, costing_method="FIFO"), rows, 2)
+    captured = {}
+
+    def fake_valuation(transactions, method):
+        captured["transactions"] = transactions
+        captured["method"] = method
+        return {"closing_quantity": 8}
+
+    monkeypatch.setattr(accounting, "inventory_valuation", fake_valuation)
+
+    result = accounting.persisted_inventory_item_valuation(
+        item_id=str(item_id), org_id=str(uuid4()), db=db, _user=str(uuid4()),
+    )
+
+    assert result["valuation"] == {"closing_quantity": 8}
+    assert result["ordering_note"].startswith("Valuation processes transactions")
+    assert len(db.rows_query.ordering) == 3
+    assert "sequence_no" in str(db.rows_query.ordering[1])
+    assert [txn.txn_type for txn in captured["transactions"]] == ["purchase", "sale"]
+    assert captured["method"] == "FIFO"
