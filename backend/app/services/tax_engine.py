@@ -49,6 +49,11 @@ class GstInvoiceLine:
 def gstr3b_summary(lines: list[GstInvoiceLine], input_tax_credit: float = 0.0) -> dict:
     """Aggregate outward supplies into a GSTR-3B-style summary with ITC set-off."""
     _require_finite_non_negative(input_tax_credit, "input_tax_credit")
+    if not isinstance(lines, list):
+        raise ValueError("lines must be a list of GstInvoiceLine objects.")
+    for line in lines:
+        if not isinstance(line, GstInvoiceLine):
+            raise ValueError("lines must contain GstInvoiceLine objects.")
     total_taxable = sum(l.taxable_value for l in lines)
     total_tax = sum(calculate_gst(l.taxable_value, l.gst_rate_pct, l.is_interstate)["total_tax"] for l in lines)
     net_payable = max(0.0, round(total_tax - input_tax_credit, 2))
