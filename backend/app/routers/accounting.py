@@ -69,7 +69,7 @@ def list_inventory_item_transactions(
     total = count_query.scalar() or 0
     rows = (
         transaction_query
-        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.id.asc())
+        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.sequence_no.asc(), InventoryTransaction.id.asc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -82,13 +82,14 @@ def list_inventory_item_transactions(
                 "txn_date": row.txn_date.isoformat(),
                 "quantity": float(row.quantity),
                 "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
+                "sequence_no": int(row.sequence_no),
             }
             for row in rows
         ],
         "total": total,
         "limit": limit,
         "offset": offset,
-        "ordering_note": "Transactions are ordered by date, then stable record ID; the existing schema has no same-day sequence field.",
+        "ordering_note": "Transactions are ordered by transaction date, then database-generated insertion sequence. Existing rows receive sequence values during migration; their historical same-day business order cannot be reconstructed.",
     }
 
 
@@ -295,7 +296,7 @@ def persisted_inventory_item_valuation(
     rows = (
         db.query(InventoryTransaction)
         .filter(InventoryTransaction.item_id == item_uuid)
-        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.id.asc())
+        .order_by(InventoryTransaction.txn_date.asc(), InventoryTransaction.sequence_no.asc(), InventoryTransaction.id.asc())
         .all()
     )
     transactions = [
@@ -320,6 +321,7 @@ def persisted_inventory_item_valuation(
         },
         "transaction_count": len(transactions),
         "valuation": valuation,
+        "ordering_note": "Valuation processes transactions by transaction date, then database-generated insertion sequence. Historical same-day business order cannot be reconstructed for records created before this sequence was added.",
     }
 
 
