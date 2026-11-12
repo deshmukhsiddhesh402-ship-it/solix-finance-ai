@@ -85,7 +85,8 @@ def test_persisted_inventory_valuation_uses_ordered_tenant_item_transactions():
     assert any("inventory_items.org_id" in str(item) for item in db.item_query.filters)
     assert any("inventory_items.id" in str(item) for item in db.item_query.filters)
     assert any("inventory_transactions.item_id" in str(item) for item in db.transactions_query.filters)
-    assert len(db.transactions_query.ordering) == 2
+    assert len(db.transactions_query.ordering) == 3
+    assert "sequence_no" in str(db.transactions_query.ordering[1])
 
 
 def test_persisted_inventory_valuation_does_not_query_transactions_for_foreign_item():
