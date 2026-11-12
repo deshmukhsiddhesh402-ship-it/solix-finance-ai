@@ -158,7 +158,7 @@ def test_inventory_valuation_uses_same_day_sequence_order(monkeypatch):
             sequence_no=13, quantity=Decimal("2.0000"), unit_cost=Decimal("5.0000"),
         ),
     ]
-    db = FakeDB(SimpleNamespace(id=item_id, costing_method="FIFO"), rows, 2)
+    db = FakeDB(SimpleNamespace(id=item_id, sku="SKU-SEQ", name="Sequence Test", costing_method="FIFO"), rows, 2)
     captured = {}
 
     def fake_valuation(transactions, method):
