@@ -62,6 +62,7 @@ class InventoryTransaction(Base):
     quantity = Column(Numeric(18, 4), nullable=False)
     unit_cost = Column(Numeric(18, 4), nullable=True)
     sequence_no = Column(BigInteger, Identity(always=True), nullable=False)
+    reference_no = Column(String(100), nullable=True)
 
 
 class ChartOfAccount(Base):
