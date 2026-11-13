@@ -270,15 +270,19 @@ def inventory_valuation_decimal(
 def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO", "WAVG"]) -> dict:
     """Return the backwards-compatible float response after Decimal calculation."""
     result = inventory_valuation_decimal(txns, method)
-    return {
-        "method": result["method"],
-        "closing_quantity": float(result["closing_quantity"].quantize(
-            Decimal("0.0001"), rounding=ROUND_HALF_EVEN
-        )),
-        "closing_inventory_value": float(result["closing_inventory_value"].quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_EVEN
-        )),
-        "cogs": float(result["cogs"].quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_EVEN
-        )),
-    }
+    with localcontext() as context:
+        # NUMERIC(18,4) quantity and cost can produce up to 36 significant
+        # digits when multiplied; keep enough precision for final rounding.
+        context.prec = 50
+        return {
+            "method": result["method"],
+            "closing_quantity": float(result["closing_quantity"].quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+            )),
+            "closing_inventory_value": float(result["closing_inventory_value"].quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_EVEN
+            )),
+            "cogs": float(result["cogs"].quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_EVEN
+            )),
+        }
