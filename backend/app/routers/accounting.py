@@ -4,6 +4,7 @@ Module 2: Accounting — API layer over accounting_engine.py
 import math
 import uuid
 from datetime import date
+from decimal import Decimal
 from sqlalchemy import func, or_
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel, Field, model_validator
@@ -14,10 +15,22 @@ from app.routers.enterprise import require_permission
 from app.services.accounting_engine import (
     LedgerLine, build_trial_balance, build_profit_and_loss, build_balance_sheet,
     financial_ratios, straight_line_depreciation, wdv_depreciation_schedule,
-    InventoryTxn, inventory_valuation,
+    InventoryTxn, inventory_valuation, inventory_valuation_decimal,
 )
 
 router = APIRouter()
+
+
+def _inventory_valuation_payload(txns, method: str) -> dict:
+    """Keep legacy rounded numbers while exposing high-precision Decimal strings."""
+    rounded = inventory_valuation(txns, method)
+    exact = inventory_valuation_decimal(txns, method)
+    rounded["decimal"] = {
+        "closing_quantity": format(exact["closing_quantity"], "f"),
+        "closing_inventory_value": format(exact["closing_inventory_value"], "f"),
+        "cogs": format(exact["cogs"], "f"),
+    }
+    return rounded
 
 @router.get("/inventory/items/{item_id}/transactions")
 def list_inventory_item_transactions(
@@ -302,13 +315,13 @@ def persisted_inventory_item_valuation(
     transactions = [
         InventoryTxn(
             txn_type=row.txn_type,
-            quantity=float(row.quantity),
-            unit_cost=float(row.unit_cost) if row.unit_cost is not None else 0.0,
+            quantity=row.quantity,
+            unit_cost=row.unit_cost if row.unit_cost is not None else Decimal("0"),
         )
         for row in rows
     ]
     try:
-        valuation = inventory_valuation(transactions, item.costing_method)
+        valuation = _inventory_valuation_payload(transactions, item.costing_method)
     except ValueError as exc:
         raise HTTPException(422, detail="Stored inventory transactions cannot be valued. Review the item ledger.") from exc
 
@@ -630,4 +643,4 @@ class InventoryValuationRequest(BaseModel):
 @router.post("/inventory/valuation")
 def inventory_valuation_endpoint(req: InventoryValuationRequest):
     txns = [InventoryTxn(**t.dict()) for t in req.txns]
-    return inventory_valuation(txns, req.method)
+    return _inventory_valuation_payload(txns, req.method)

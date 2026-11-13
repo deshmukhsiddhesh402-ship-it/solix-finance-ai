@@ -82,6 +82,11 @@ def test_persisted_inventory_valuation_uses_ordered_tenant_item_transactions():
     assert result["valuation"]["cogs"] == 1240.0
     assert result["valuation"]["closing_quantity"] == 8.0
     assert result["valuation"]["closing_inventory_value"] == 960.0
+    assert result["valuation"]["decimal"] == {
+        "closing_quantity": "8.0000",
+        "closing_inventory_value": "960.00000000",
+        "cogs": "1240.00000000",
+    }
     assert any("inventory_items.org_id" in str(item) for item in db.item_query.filters)
     assert any("inventory_items.id" in str(item) for item in db.item_query.filters)
     assert any("inventory_transactions.item_id" in str(item) for item in db.transactions_query.filters)
@@ -146,3 +151,29 @@ def test_persisted_inventory_valuation_rejects_invalid_identifiers():
 
     assert exc.value.status_code == 400
     assert not db.queries
+
+
+
+def test_persisted_inventory_valuation_exposes_exact_values_beyond_float_precision():
+    from app.routers.accounting import persisted_inventory_item_valuation
+
+    item_id = uuid4()
+    item = SimpleNamespace(id=item_id, sku="SKU-PRECISION", name="Precision Item", costing_method="FIFO")
+    transactions = [
+        SimpleNamespace(
+            txn_type="purchase",
+            txn_date=date(2026, 1, 1),
+            quantity=Decimal("1.0000"),
+            unit_cost=Decimal("99999999999999.9999"),
+        )
+    ]
+    result = persisted_inventory_item_valuation(
+        item_id=str(item_id),
+        org_id=str(uuid4()),
+        db=FakeDB(item, transactions),
+        _user=str(uuid4()),
+    )
+
+    assert result["valuation"]["closing_inventory_value"] == 100000000000000.0
+    assert result["valuation"]["decimal"]["closing_inventory_value"] == "99999999999999.99990000"
+    assert result["valuation"]["decimal"]["closing_quantity"] == "1.0000"
