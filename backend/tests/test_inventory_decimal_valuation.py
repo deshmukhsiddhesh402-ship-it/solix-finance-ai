@@ -69,6 +69,15 @@ def test_decimal_valuation_rejects_invalid_unit_cost_values(unit_cost):
         inventory_valuation_decimal([InventoryTxn("purchase", 1, unit_cost)], "FIFO")
 
 
+
+def test_decimal_valuation_rejects_more_than_four_fractional_places():
+    with pytest.raises(ValueError, match="at most 4 decimal places"):
+        inventory_valuation_decimal(
+            [InventoryTxn("purchase", Decimal("0.00001"), Decimal("1"))],
+            "FIFO",
+        )
+
+
 def test_decimal_valuation_rejects_values_outside_persisted_numeric_range():
     with pytest.raises(ValueError, match=r"NUMERIC\(18,4\)"):
         inventory_valuation_decimal(
