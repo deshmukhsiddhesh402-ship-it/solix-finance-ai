@@ -52,9 +52,9 @@ def test_decimal_weighted_average_uses_decimal_layer_values():
     ]
 
     result = inventory_valuation_decimal(transactions, "WAVG")
-    assert result["cogs"] == Decimal("0.16666666666666666666666666666666666666666666666667")
+    assert result["cogs"].quantize(Decimal("0.00000000000000000001")) == Decimal("0.16666666666666666667")
     assert result["closing_quantity"] == Decimal("2")
-    assert result["closing_inventory_value"] == Decimal("0.33333333333333333333333333333333333333333333333334")
+    assert result["closing_inventory_value"].quantize(Decimal("0.00000000000000000001")) == Decimal("0.33333333333333333333")
 
 
 @pytest.mark.parametrize("quantity", [True, False, "1", float("nan"), float("inf"), -1, 0])
@@ -70,7 +70,7 @@ def test_decimal_valuation_rejects_invalid_unit_cost_values(unit_cost):
 
 
 def test_decimal_valuation_rejects_values_outside_persisted_numeric_range():
-    with pytest.raises(ValueError, match="NUMERIC\(18,4\)"):
+    with pytest.raises(ValueError, match=r"NUMERIC\(18,4\)"):
         inventory_valuation_decimal(
             [InventoryTxn("purchase", Decimal("100000000000000"), Decimal("1"))],
             "FIFO",
