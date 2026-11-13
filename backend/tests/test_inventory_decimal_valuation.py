@@ -77,6 +77,16 @@ def test_decimal_valuation_rejects_values_outside_persisted_numeric_range():
         )
 
 
+
+def test_float_compatibility_rounding_handles_maximum_persisted_numeric_values():
+    maximum = Decimal("99999999999999.9999")
+    result = inventory_valuation([InventoryTxn("purchase", maximum, maximum)], "FIFO")
+
+    assert result["closing_quantity"] == float(maximum)
+    assert result["closing_inventory_value"] > 0
+    assert result["cogs"] == 0.0
+
+
 def test_decimal_valuation_still_rejects_sales_beyond_available_stock():
     with pytest.raises(ValueError, match="exceeds available inventory"):
         inventory_valuation_decimal([InventoryTxn("sale", Decimal("0.0001"))], "FIFO")
