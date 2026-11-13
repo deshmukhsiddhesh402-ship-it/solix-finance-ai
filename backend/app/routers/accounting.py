@@ -25,7 +25,7 @@ def _inventory_valuation_payload(txns, method: str) -> dict:
     """Keep legacy rounded numbers while exposing exact decimal strings."""
     rounded = inventory_valuation(txns, method)
     exact = inventory_valuation_decimal(txns, method)
-    rounded["exact"] = {
+    rounded["decimal"] = {
         "closing_quantity": format(exact["closing_quantity"], "f"),
         "closing_inventory_value": format(exact["closing_inventory_value"], "f"),
         "cogs": format(exact["cogs"], "f"),
