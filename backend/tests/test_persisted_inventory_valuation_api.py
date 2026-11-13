@@ -82,7 +82,7 @@ def test_persisted_inventory_valuation_uses_ordered_tenant_item_transactions():
     assert result["valuation"]["cogs"] == 1240.0
     assert result["valuation"]["closing_quantity"] == 8.0
     assert result["valuation"]["closing_inventory_value"] == 960.0
-    assert result["valuation"]["exact"] == {
+    assert result["valuation"]["decimal"] == {
         "closing_quantity": "8.0000",
         "closing_inventory_value": "960.00000000",
         "cogs": "1240.00000000",
@@ -175,5 +175,5 @@ def test_persisted_inventory_valuation_exposes_exact_values_beyond_float_precisi
     )
 
     assert result["valuation"]["closing_inventory_value"] == 100000000000000.0
-    assert result["valuation"]["exact"]["closing_inventory_value"] == "99999999999999.99990000"
-    assert result["valuation"]["exact"]["closing_quantity"] == "1.0000"
+    assert result["valuation"]["decimal"]["closing_inventory_value"] == "99999999999999.99990000"
+    assert result["valuation"]["decimal"]["closing_quantity"] == "1.0000"
