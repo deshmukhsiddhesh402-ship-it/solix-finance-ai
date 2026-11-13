@@ -172,7 +172,8 @@ def test_inventory_valuation_uses_same_day_sequence_order(monkeypatch):
         item_id=str(item_id), org_id=str(uuid4()), db=db, _user=str(uuid4()),
     )
 
-    assert result["valuation"] == {"closing_quantity": 8}
+    assert result["valuation"]["closing_quantity"] == 8
+    assert result["valuation"]["decimal"]["closing_quantity"] == "8.0000"
     assert result["ordering_note"].startswith("Valuation processes transactions")
     assert len(db.rows_query.ordering) == 3
     assert "sequence_no" in str(db.rows_query.ordering[1])
