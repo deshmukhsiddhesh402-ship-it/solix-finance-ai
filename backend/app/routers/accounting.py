@@ -22,7 +22,7 @@ router = APIRouter()
 
 
 def _inventory_valuation_payload(txns, method: str) -> dict:
-    """Keep legacy rounded numbers while exposing exact decimal strings."""
+    """Keep legacy rounded numbers while exposing high-precision Decimal strings."""
     rounded = inventory_valuation(txns, method)
     exact = inventory_valuation_decimal(txns, method)
     rounded["decimal"] = {
