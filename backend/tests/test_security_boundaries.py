@@ -811,3 +811,18 @@ def test_tds_rejects_invalid_section_and_pan_flag_types():
         calculate_tds(1000, "   ")
     with pytest.raises(ValueError, match="boolean"):
         calculate_tds(1000, "194C", "yes")
+
+
+
+def test_inventory_permissions_allow_accounting_roles_but_keep_auditors_read_only():
+    from app.services.rbac_engine import has_permission
+
+    assert has_permission("admin", "inventory", "view")
+    assert has_permission("admin", "inventory", "create")
+    assert has_permission("admin", "inventory", "approve")
+    assert has_permission("accountant", "inventory", "view")
+    assert has_permission("accountant", "inventory", "create")
+    assert not has_permission("accountant", "inventory", "approve")
+    assert has_permission("auditor", "inventory", "view")
+    assert not has_permission("auditor", "inventory", "create")
+    assert not has_permission("unknown-role", "inventory", "create")
