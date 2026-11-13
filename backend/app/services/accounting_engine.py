@@ -4,6 +4,7 @@ Kept framework-free so they're independently unit-testable and reusable
 from CLI scripts, notebooks, or the API router.
 """
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 from typing import Literal
 import math
 
@@ -173,63 +174,111 @@ def wdv_depreciation_schedule(cost: float, rate_pct: float, years: int) -> list[
 @dataclass
 class InventoryTxn:
     txn_type: Literal["purchase", "sale"]
-    quantity: float
-    unit_cost: float = 0.0  # only relevant for purchases
+    quantity: float | int | Decimal
+    unit_cost: float | int | Decimal = 0  # only relevant for purchases
 
 
-def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO", "WAVG"]) -> dict:
-    """Return closing inventory value and COGS for a sequence of transactions.
+_MAX_INVENTORY_NUMERIC = Decimal("99999999999999.9999")
 
-    Inventory cannot be sold below zero. Direct engine callers are validated
-    here as well as at the API boundary so financial calculations fail closed.
+
+def _inventory_decimal(value, label: str) -> Decimal:
+    """Convert supported numeric inputs without importing binary float error."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise ValueError(f"Inventory {label} must be a numeric value.")
+    try:
+        converted = Decimal(str(value))
+    except Exception as exc:
+        raise ValueError(f"Inventory {label} must be a finite numeric value.") from exc
+    if not converted.is_finite():
+        raise ValueError(f"Inventory {label} must be finite.")
+    if abs(converted) > _MAX_INVENTORY_NUMERIC:
+        raise ValueError(f"Inventory {label} exceeds the NUMERIC(18,4) range.")
+    return converted
+
+
+def inventory_valuation_decimal(
+    txns: list[InventoryTxn],
+    method: Literal["FIFO", "LIFO", "WAVG"],
+) -> dict:
+    """Calculate inventory values with Decimal precision until the API boundary.
+
+    Input bounds match the persisted NUMERIC(18,4) quantity and unit-cost
+    columns. Monetary rounding is intentionally left to the caller.
     """
     if method not in {"FIFO", "LIFO", "WAVG"}:
         raise ValueError("Unsupported inventory valuation method.")
+    if not isinstance(txns, list):
+        raise ValueError("Inventory transactions must be provided as a list.")
 
-    lots = []  # list of [qty, unit_cost] — order matters for FIFO/LIFO
-    cogs = 0.0
-
+    normalized = []
     for txn in txns:
+        if not isinstance(txn, InventoryTxn):
+            raise ValueError("Inventory transactions must be InventoryTxn objects.")
         if txn.txn_type not in {"purchase", "sale"}:
             raise ValueError("Inventory transaction type must be purchase or sale.")
-        if not all(__import__("math").isfinite(value) for value in (txn.quantity, txn.unit_cost)):
-            raise ValueError("Inventory quantity and unit cost must be finite.")
-        if txn.quantity <= 0 or txn.unit_cost < 0:
+        quantity = _inventory_decimal(txn.quantity, "quantity")
+        unit_cost = _inventory_decimal(txn.unit_cost, "unit cost")
+        if quantity <= 0 or unit_cost < 0:
             raise ValueError("Inventory quantity must be positive and unit cost non-negative.")
+        normalized.append((txn.txn_type, quantity, unit_cost))
 
-    for txn in txns:
-        if txn.txn_type == "purchase":
-            lots.append([txn.quantity, txn.unit_cost])
-        else:  # sale
-            qty_to_sell = txn.quantity
-            available_qty = sum(l[0] for l in lots)
+    with localcontext() as context:
+        context.prec = 50
+        lots: list[list[Decimal]] = []
+        cogs = Decimal("0")
+
+        for txn_type, quantity, unit_cost in normalized:
+            if txn_type == "purchase":
+                lots.append([quantity, unit_cost])
+                continue
+
+            qty_to_sell = quantity
+            available_qty = sum((lot[0] for lot in lots), Decimal("0"))
             if qty_to_sell > available_qty:
                 raise ValueError("Sale quantity exceeds available inventory.")
-            if method == "WAVG":
-                total_qty = sum(l[0] for l in lots)
-                total_val = sum(l[0] * l[1] for l in lots)
-                avg_cost = total_val / total_qty if total_qty else 0
-                cogs += qty_to_sell * avg_cost
-                # reduce proportionally across all lots
-                remaining_qty = total_qty - qty_to_sell
-                lots = [[remaining_qty, avg_cost]] if remaining_qty > 0 else []
-            else:
-                ordered_lots = lots if method == "FIFO" else list(reversed(lots))
-                while qty_to_sell > 0 and ordered_lots:
-                    lot = ordered_lots[0]
-                    take = min(lot[0], qty_to_sell)
-                    cogs += take * lot[1]
-                    lot[0] -= take
-                    qty_to_sell -= take
-                    if lot[0] == 0:
-                        ordered_lots.pop(0)
-                lots = ordered_lots if method == "FIFO" else list(reversed(ordered_lots))
 
-    closing_qty = sum(l[0] for l in lots)
-    closing_value = sum(l[0] * l[1] for l in lots)
+            if method == "WAVG":
+                total_qty = available_qty
+                total_value = sum((lot[0] * lot[1] for lot in lots), Decimal("0"))
+                average_cost = total_value / total_qty if total_qty else Decimal("0")
+                cogs += qty_to_sell * average_cost
+                remaining_qty = total_qty - qty_to_sell
+                lots = [[remaining_qty, average_cost]] if remaining_qty > 0 else []
+                continue
+
+            ordered_lots = lots if method == "FIFO" else list(reversed(lots))
+            while qty_to_sell > 0 and ordered_lots:
+                lot = ordered_lots[0]
+                take = min(lot[0], qty_to_sell)
+                cogs += take * lot[1]
+                lot[0] -= take
+                qty_to_sell -= take
+                if lot[0] == 0:
+                    ordered_lots.pop(0)
+            lots = ordered_lots if method == "FIFO" else list(reversed(ordered_lots))
+
+        closing_quantity = sum((lot[0] for lot in lots), Decimal("0"))
+        closing_value = sum((lot[0] * lot[1] for lot in lots), Decimal("0"))
+        return {
+            "method": method,
+            "closing_quantity": closing_quantity,
+            "closing_inventory_value": closing_value,
+            "cogs": cogs,
+        }
+
+
+def inventory_valuation(txns: list[InventoryTxn], method: Literal["FIFO", "LIFO", "WAVG"]) -> dict:
+    """Return the backwards-compatible float response after Decimal calculation."""
+    result = inventory_valuation_decimal(txns, method)
     return {
-        "method": method,
-        "closing_quantity": round(closing_qty, 4),
-        "closing_inventory_value": round(closing_value, 2),
-        "cogs": round(cogs, 2),
+        "method": result["method"],
+        "closing_quantity": float(result["closing_quantity"].quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+        )),
+        "closing_inventory_value": float(result["closing_inventory_value"].quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_EVEN
+        )),
+        "cogs": float(result["cogs"].quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_EVEN
+        )),
     }
