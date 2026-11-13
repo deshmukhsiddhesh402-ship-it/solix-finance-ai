@@ -193,6 +193,8 @@ def _inventory_decimal(value, label: str) -> Decimal:
         raise ValueError(f"Inventory {label} must be finite.")
     if abs(converted) > _MAX_INVENTORY_NUMERIC:
         raise ValueError(f"Inventory {label} exceeds the NUMERIC(18,4) range.")
+    if converted.as_tuple().exponent < -4:
+        raise ValueError(f"Inventory {label} supports at most 4 decimal places.")
     return converted
 
 
