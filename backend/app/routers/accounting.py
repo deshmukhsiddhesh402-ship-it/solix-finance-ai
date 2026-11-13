@@ -6,8 +6,9 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Literal
 
 from app.core.db import get_db
@@ -103,6 +104,147 @@ def list_inventory_item_transactions(
         "limit": limit,
         "offset": offset,
         "ordering_note": "Transactions are ordered by transaction date, then database-generated insertion sequence. Existing rows receive sequence values during migration; their historical same-day business order cannot be reconstructed.",
+    }
+
+
+class InventoryTransactionCreate(BaseModel):
+    txn_type: Literal["purchase", "sale"]
+    txn_date: date
+    quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=4)
+    reference_no: str = Field(min_length=1, max_length=100)
+
+    @field_validator("quantity", "unit_cost", mode="before")
+    @classmethod
+    def reject_boolean_amounts(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Inventory amounts must be numeric values, not booleans.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_transaction_shape(self):
+        self.reference_no = self.reference_no.strip()
+        if not self.reference_no:
+            raise ValueError("reference_no must not be blank.")
+        if self.txn_type == "purchase" and self.unit_cost is None:
+            raise ValueError("Purchase transactions require unit_cost.")
+        if self.txn_type == "sale" and self.unit_cost is not None:
+            raise ValueError("Sale transactions must omit unit_cost; costing is calculated from inventory layers.")
+        return self
+
+
+@router.post("/inventory/items/{item_id}/transactions", status_code=201)
+def create_inventory_item_transaction(
+    item_id: str,
+    payload: InventoryTransactionCreate,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("inventory", "create")),
+):
+    """Post a human-entered inventory movement with tenant, duplicate, and stock checks."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        item_uuid = uuid.UUID(str(item_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization, item, or user identifier.") from exc
+
+    from app.models.accounting import InventoryItem, InventoryTransaction
+    from app.models.enterprise import AuditLog
+
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_uuid, InventoryItem.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if not item:
+        db.rollback()
+        raise HTTPException(404, detail="Inventory item not found.")
+
+    duplicate = (
+        db.query(InventoryTransaction)
+        .filter(
+            InventoryTransaction.item_id == item_uuid,
+            InventoryTransaction.reference_no == payload.reference_no,
+        )
+        .first()
+    )
+    if duplicate:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.")
+
+    transaction = InventoryTransaction(
+        item_id=item_uuid,
+        txn_type=payload.txn_type,
+        txn_date=payload.txn_date,
+        quantity=payload.quantity,
+        unit_cost=payload.unit_cost,
+        reference_no=payload.reference_no,
+    )
+    db.add(transaction)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory transaction could not be prepared.") from exc
+
+    rows = (
+        db.query(InventoryTransaction)
+        .filter(InventoryTransaction.item_id == item_uuid)
+        .order_by(
+            InventoryTransaction.txn_date.asc(),
+            InventoryTransaction.sequence_no.asc(),
+            InventoryTransaction.id.asc(),
+        )
+        .all()
+    )
+    transactions = [
+        InventoryTxn(
+            txn_type=row.txn_type,
+            quantity=row.quantity,
+            unit_cost=row.unit_cost if row.unit_cost is not None else Decimal("0"),
+        )
+        for row in rows
+    ]
+    try:
+        valuation = _inventory_valuation_payload(transactions, item.costing_method)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(422, detail="Inventory transaction would produce an invalid stock valuation.") from exc
+
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="create",
+        entity_type="inventory_transaction",
+        entity_id=str(transaction.id),
+        changes={
+            "reference_no": payload.reference_no,
+            "txn_type": payload.txn_type,
+            "txn_date": payload.txn_date.isoformat(),
+            "quantity": str(payload.quantity),
+            "unit_cost": str(payload.unit_cost) if payload.unit_cost is not None else None,
+        },
+    ))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory transaction could not be posted.") from exc
+
+    return {
+        "transaction_id": str(transaction.id),
+        "reference_no": transaction.reference_no,
+        "sequence_no": int(transaction.sequence_no),
+        "valuation": valuation,
+        "message": "Inventory transaction posted successfully.",
     }
 
 

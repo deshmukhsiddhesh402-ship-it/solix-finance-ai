@@ -24,6 +24,11 @@ PERMISSION_MATRIX: dict[str, dict[Role, set[Action]]] = {
         Role.ACCOUNTANT: {Action.VIEW, Action.CREATE, Action.EDIT},
         Role.AUDITOR: {Action.VIEW},
     },
+    "inventory": {
+        Role.ADMIN: {Action.VIEW, Action.CREATE, Action.EDIT, Action.DELETE, Action.APPROVE},
+        Role.ACCOUNTANT: {Action.VIEW, Action.CREATE, Action.EDIT},
+        Role.AUDITOR: {Action.VIEW},
+    },
     "reports": {
         Role.ADMIN: {Action.VIEW, Action.CREATE},
         Role.ACCOUNTANT: {Action.VIEW, Action.CREATE},

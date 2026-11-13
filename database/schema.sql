@@ -100,13 +100,17 @@ CREATE TABLE inventory_transactions (
     txn_date        DATE NOT NULL,
     quantity        NUMERIC(18,4) NOT NULL,
     unit_cost       NUMERIC(18,4),
-    sequence_no     BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL
+    sequence_no     BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    reference_no    VARCHAR(100)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_transactions_sequence_no
     ON inventory_transactions(sequence_no);
 CREATE INDEX IF NOT EXISTS idx_inventory_transactions_item_date_sequence
     ON inventory_transactions(item_id, txn_date, sequence_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_transactions_item_reference
+    ON inventory_transactions(item_id, reference_no)
+    WHERE reference_no IS NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- INDIAN TAX MODULE
