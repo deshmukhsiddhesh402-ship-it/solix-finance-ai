@@ -232,6 +232,9 @@ def create_inventory_item_transaction(
     ))
     try:
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.") from exc
     except Exception as exc:
         db.rollback()
         raise HTTPException(500, detail="Inventory transaction could not be posted.") from exc
