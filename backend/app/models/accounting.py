@@ -44,6 +44,12 @@ class FixedAsset(Base):
 
 class InventoryItem(Base):
     __tablename__ = "inventory_items"
+    __table_args__ = (
+        CheckConstraint(
+            "costing_method IN ('FIFO', 'LIFO', 'WAVG')",
+            name="ck_inventory_item_costing_method",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
