@@ -46,7 +46,7 @@ class InventoryItem(Base):
     __tablename__ = "inventory_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     sku = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     costing_method = Column(String(10), nullable=False, default="FIFO")
@@ -66,7 +66,7 @@ class InventoryTransaction(Base):
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"))
+    item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
     txn_type = Column(String(10), nullable=False)
     txn_date = Column(Date, nullable=False)
     quantity = Column(Numeric(18, 4), nullable=False)
