@@ -203,3 +203,30 @@ def test_inventory_transaction_request_requires_reference_and_cost_shape():
         _payload(quantity=True)
     with pytest.raises(ValidationError):
         _payload(txn_type="sale", unit_cost=Decimal("0"))
+
+
+
+def test_unrelated_inventory_integrity_failure_is_not_reported_as_duplicate_reference():
+    from sqlalchemy.exc import IntegrityError
+    from app.routers.accounting import create_inventory_item_transaction
+
+    class FailingFlushDB(FakeDB):
+        def flush(self):
+            raise IntegrityError("insert inventory transaction", {}, Exception("foreign key violation"))
+
+    item_id = uuid4()
+    db = FailingFlushDB(SimpleNamespace(id=item_id, costing_method="FIFO"))
+    with pytest.raises(HTTPException) as exc:
+        create_inventory_item_transaction(
+            item_id=str(item_id),
+            payload=_payload(reference_no="NEW-REFERENCE"),
+            org_id=str(uuid4()),
+            db=db,
+            _user=str(uuid4()),
+        )
+
+    assert exc.value.status_code == 409
+    assert "database constraint" in exc.value.detail
+    assert "reference already exists" not in exc.value.detail
+    assert db.rolled_back is True
+    assert db.committed is False
