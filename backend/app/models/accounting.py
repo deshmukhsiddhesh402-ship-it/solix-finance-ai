@@ -8,7 +8,7 @@ actually persist so the dashboard can query real historical data.
 """
 import uuid
 from datetime import date as date_type
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer, BigInteger, Identity
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer, BigInteger, Identity, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -54,6 +54,16 @@ class InventoryItem(Base):
 
 class InventoryTransaction(Base):
     __tablename__ = "inventory_transactions"
+    __table_args__ = (
+        Index(
+            "uq_inventory_transactions_item_reference",
+            "item_id",
+            "reference_no",
+            unique=True,
+            postgresql_where=text("reference_no IS NOT NULL"),
+            sqlite_where=text("reference_no IS NOT NULL"),
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"))
