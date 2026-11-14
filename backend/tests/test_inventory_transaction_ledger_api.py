@@ -167,9 +167,15 @@ def test_inventory_valuation_uses_same_day_sequence_order(monkeypatch):
     def fake_valuation(transactions, method):
         captured["transactions"] = transactions
         captured["method"] = method
-        return {"closing_quantity": 8}
+        captured["calls"] = captured.get("calls", 0) + 1
+        return {
+            "method": method,
+            "closing_quantity": Decimal("8.0000"),
+            "closing_inventory_value": Decimal("40.00000000"),
+            "cogs": Decimal("10.00000000"),
+        }
 
-    monkeypatch.setattr(accounting, "inventory_valuation", fake_valuation)
+    monkeypatch.setattr(accounting, "inventory_valuation_decimal", fake_valuation)
 
     result = accounting.persisted_inventory_item_valuation(
         item_id=str(item_id), org_id=str(uuid4()), db=db, _user=str(uuid4()),
@@ -182,3 +188,4 @@ def test_inventory_valuation_uses_same_day_sequence_order(monkeypatch):
     assert "sequence_no" in str(db.rows_query.ordering[1])
     assert [txn.txn_type for txn in captured["transactions"]] == ["purchase", "sale"]
     assert captured["method"] == "FIFO"
+    assert captured["calls"] == 1
