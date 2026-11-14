@@ -268,7 +268,9 @@ def list_inventory_items(
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
     search_term = search.strip() if search is not None else None
     if search is not None and not search_term:
-        raise HTTPException(422, detail="search must not be blank.")    from app.models.accounting import InventoryItem
+        raise HTTPException(422, detail="search must not be blank.")
+
+    from app.models.accounting import InventoryItem
 
     item_query = db.query(InventoryItem).filter(InventoryItem.org_id == org_uuid)
     count_query = db.query(func.count(InventoryItem.id)).filter(InventoryItem.org_id == org_uuid)
