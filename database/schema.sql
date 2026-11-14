@@ -90,7 +90,8 @@ CREATE TABLE inventory_items (
     org_id          UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     sku             VARCHAR(50) NOT NULL,
     name            VARCHAR(255) NOT NULL,
-    costing_method  VARCHAR(10) NOT NULL DEFAULT 'FIFO' -- FIFO, LIFO, WAVG
+    costing_method  VARCHAR(10) NOT NULL DEFAULT 'FIFO', -- FIFO, LIFO, WAVG
+    CONSTRAINT ck_inventory_item_costing_method CHECK (costing_method IN ('FIFO', 'LIFO', 'WAVG'))
 );
 
 CREATE TABLE inventory_transactions (
