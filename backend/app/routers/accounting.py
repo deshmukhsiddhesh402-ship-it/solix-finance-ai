@@ -264,6 +264,11 @@ def create_inventory_item_transaction(
     }
 
 
+def _escape_inventory_search(value: str) -> str:
+    """Escape LIKE metacharacters so inventory search treats input literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("/inventory/items")
 def list_inventory_items(
     org_id: str = Query(...),
@@ -291,8 +296,11 @@ def list_inventory_items(
         item_query = item_query.filter(InventoryItem.costing_method == costing_method)
         count_query = count_query.filter(InventoryItem.costing_method == costing_method)
     if search_term is not None:
-        pattern = f"%{search_term}%"
-        criterion = or_(InventoryItem.sku.ilike(pattern), InventoryItem.name.ilike(pattern))
+        pattern = f"%{_escape_inventory_search(search_term)}%"
+        criterion = or_(
+            InventoryItem.sku.ilike(pattern, escape="\\"),
+            InventoryItem.name.ilike(pattern, escape="\\"),
+        )
         item_query = item_query.filter(criterion)
         count_query = count_query.filter(criterion)
 
