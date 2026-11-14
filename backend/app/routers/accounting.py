@@ -4,7 +4,7 @@ Module 2: Accounting — API layer over accounting_engine.py
 import math
 import uuid
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
@@ -16,16 +16,29 @@ from app.routers.enterprise import require_permission
 from app.services.accounting_engine import (
     LedgerLine, build_trial_balance, build_profit_and_loss, build_balance_sheet,
     financial_ratios, straight_line_depreciation, wdv_depreciation_schedule,
-    InventoryTxn, inventory_valuation, inventory_valuation_decimal,
+    InventoryTxn, inventory_valuation_decimal,
 )
 
 router = APIRouter()
 
 
 def _inventory_valuation_payload(txns, method: str) -> dict:
-    """Keep legacy rounded numbers while exposing high-precision Decimal strings."""
-    rounded = inventory_valuation(txns, method)
+    """Calculate once, preserving legacy rounded numbers and exact Decimal strings."""
     exact = inventory_valuation_decimal(txns, method)
+    with localcontext() as context:
+        context.prec = 50
+        rounded = {
+            "method": exact["method"],
+            "closing_quantity": float(exact["closing_quantity"].quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+            )),
+            "closing_inventory_value": float(exact["closing_inventory_value"].quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_EVEN
+            )),
+            "cogs": float(exact["cogs"].quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_EVEN
+            )),
+        }
     rounded["decimal"] = {
         "closing_quantity": format(exact["closing_quantity"], "f"),
         "closing_inventory_value": format(exact["closing_inventory_value"], "f"),
