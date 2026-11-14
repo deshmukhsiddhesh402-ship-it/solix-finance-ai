@@ -62,6 +62,17 @@ class InventoryTransaction(Base):
     __tablename__ = "inventory_transactions"
     __table_args__ = (
         Index(
+            "uq_inventory_transactions_sequence_no",
+            "sequence_no",
+            unique=True,
+        ),
+        Index(
+            "idx_inventory_transactions_item_date_sequence",
+            "item_id",
+            "txn_date",
+            "sequence_no",
+        ),
+        Index(
             "uq_inventory_transactions_item_reference",
             "item_id",
             "reference_no",
