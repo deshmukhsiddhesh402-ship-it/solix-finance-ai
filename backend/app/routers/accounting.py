@@ -43,7 +43,7 @@ def list_inventory_item_transactions(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1_000_000),
     db=Depends(get_db),
-    _user: str = Depends(require_permission("journal_entry", "view")),
+    _user: str = Depends(require_permission("inventory", "view")),
 ):
     """Return a tenant-verified inventory item's transaction ledger."""
     try:
@@ -256,7 +256,7 @@ def list_inventory_items(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1_000_000),
     db=Depends(get_db),
-    _user: str = Depends(require_permission("journal_entry", "view")),
+    _user: str = Depends(require_permission("inventory", "view")),
 ):
     """Return a tenant-scoped inventory item register with bounded search and pagination."""
     try:
@@ -265,9 +265,7 @@ def list_inventory_items(
         raise HTTPException(400, detail="Invalid organization identifier.") from exc
     search_term = search.strip() if search is not None else None
     if search is not None and not search_term:
-        raise HTTPException(422, detail="search must not be blank.")
-
-    from app.models.accounting import InventoryItem
+        raise HTTPException(422, detail="search must not be blank.")    from app.models.accounting import InventoryItem
 
     item_query = db.query(InventoryItem).filter(InventoryItem.org_id == org_uuid)
     count_query = db.query(func.count(InventoryItem.id)).filter(InventoryItem.org_id == org_uuid)
