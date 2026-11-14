@@ -66,7 +66,7 @@ def test_inventory_transaction_ledger_verifies_item_tenant_and_paginates():
     item_id = uuid4()
     row = SimpleNamespace(
         id=uuid4(), txn_type="purchase", txn_date=date(2026, 11, 10), sequence_no=42,
-        quantity=Decimal("12.5000"), unit_cost=Decimal("80.2500"),
+        quantity=Decimal("12.5000"), unit_cost=Decimal("80.2500"), reference_no="PUR-2026-0042",
     )
     db = FakeDB(SimpleNamespace(id=item_id), [row], 1)
 
@@ -78,7 +78,10 @@ def test_inventory_transaction_ledger_verifies_item_tenant_and_paginates():
 
     assert result["total"] == 1
     assert result["transactions"][0]["quantity"] == 12.5
+    assert result["transactions"][0]["quantity_decimal"] == "12.5000"
     assert result["transactions"][0]["unit_cost"] == 80.25
+    assert result["transactions"][0]["unit_cost_decimal"] == "80.2500"
+    assert result["transactions"][0]["reference_no"] == "PUR-2026-0042"
     assert result["transactions"][0]["sequence_no"] == 42
     assert "database-generated insertion sequence" in result["ordering_note"]
     assert any("inventory_items.org_id" in str(item) for item in db.item_query.filters)
