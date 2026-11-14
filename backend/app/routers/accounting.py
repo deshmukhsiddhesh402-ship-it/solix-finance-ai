@@ -190,7 +190,7 @@ def create_inventory_item_transaction(
         db.flush()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.") from exc
+        raise HTTPException(409, detail="Inventory transaction conflicts with an existing record or database constraint.") from exc
     except Exception as exc:
         db.rollback()
         raise HTTPException(500, detail="Inventory transaction could not be prepared.") from exc
@@ -237,7 +237,7 @@ def create_inventory_item_transaction(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, detail="An inventory transaction with this reference already exists for the item.") from exc
+        raise HTTPException(409, detail="Inventory transaction conflicts with an existing record or database constraint.") from exc
     except Exception as exc:
         db.rollback()
         raise HTTPException(500, detail="Inventory transaction could not be posted.") from exc
