@@ -8,7 +8,7 @@ actually persist so the dashboard can query real historical data.
 """
 import uuid
 from datetime import date as date_type
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer, BigInteger, Identity, Index, text
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Date, Numeric, func, Boolean, Integer, BigInteger, Identity, Index, text, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -62,6 +62,14 @@ class InventoryTransaction(Base):
             unique=True,
             postgresql_where=text("reference_no IS NOT NULL"),
             sqlite_where=text("reference_no IS NOT NULL"),
+        ),
+        CheckConstraint("txn_type IN ('purchase', 'sale')", name="ck_inventory_transaction_type"),
+        CheckConstraint("quantity > 0", name="ck_inventory_transaction_quantity_positive"),
+        CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="ck_inventory_transaction_unit_cost_nonnegative"),
+        CheckConstraint(
+            "(txn_type = 'purchase' AND unit_cost IS NOT NULL) OR "
+            "(txn_type = 'sale' AND unit_cost IS NULL)",
+            name="ck_inventory_transaction_cost_shape",
         ),
     )
 
