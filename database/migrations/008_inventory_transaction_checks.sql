@@ -40,19 +40,19 @@ $$;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_inventory_transaction_type') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'inventory_transactions'::regclass AND conname = 'ck_inventory_transaction_type') THEN
         ALTER TABLE inventory_transactions
             ADD CONSTRAINT ck_inventory_transaction_type CHECK (txn_type IN ('purchase', 'sale'));
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_inventory_transaction_quantity_positive') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'inventory_transactions'::regclass AND conname = 'ck_inventory_transaction_quantity_positive') THEN
         ALTER TABLE inventory_transactions
             ADD CONSTRAINT ck_inventory_transaction_quantity_positive CHECK (quantity > 0);
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_inventory_transaction_unit_cost_nonnegative') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'inventory_transactions'::regclass AND conname = 'ck_inventory_transaction_unit_cost_nonnegative') THEN
         ALTER TABLE inventory_transactions
             ADD CONSTRAINT ck_inventory_transaction_unit_cost_nonnegative CHECK (unit_cost IS NULL OR unit_cost >= 0);
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_inventory_transaction_cost_shape') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'inventory_transactions'::regclass AND conname = 'ck_inventory_transaction_cost_shape') THEN
         ALTER TABLE inventory_transactions
             ADD CONSTRAINT ck_inventory_transaction_cost_shape CHECK (
                 (txn_type = 'purchase' AND unit_cost IS NOT NULL) OR
