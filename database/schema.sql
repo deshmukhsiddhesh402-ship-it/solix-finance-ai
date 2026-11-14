@@ -101,7 +101,14 @@ CREATE TABLE inventory_transactions (
     quantity        NUMERIC(18,4) NOT NULL,
     unit_cost       NUMERIC(18,4),
     sequence_no     BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    reference_no    VARCHAR(100)
+    reference_no    VARCHAR(100),
+    CONSTRAINT ck_inventory_transaction_type CHECK (txn_type IN ('purchase', 'sale')),
+    CONSTRAINT ck_inventory_transaction_quantity_positive CHECK (quantity > 0),
+    CONSTRAINT ck_inventory_transaction_unit_cost_nonnegative CHECK (unit_cost IS NULL OR unit_cost >= 0),
+    CONSTRAINT ck_inventory_transaction_cost_shape CHECK (
+        (txn_type = 'purchase' AND unit_cost IS NOT NULL) OR
+        (txn_type = 'sale' AND unit_cost IS NULL)
+    )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_transactions_sequence_no
