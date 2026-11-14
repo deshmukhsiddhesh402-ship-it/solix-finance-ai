@@ -13,7 +13,8 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
-        WHERE conname = 'ck_inventory_item_costing_method'
+        WHERE conrelid = 'inventory_items'::regclass
+          AND conname = 'ck_inventory_item_costing_method'
     ) THEN
         ALTER TABLE inventory_items
             ADD CONSTRAINT ck_inventory_item_costing_method
