@@ -87,7 +87,7 @@ CREATE TABLE fixed_assets (
 
 CREATE TABLE inventory_items (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id          UUID REFERENCES organizations(id) ON DELETE CASCADE,
+    org_id          UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     sku             VARCHAR(50) NOT NULL,
     name            VARCHAR(255) NOT NULL,
     costing_method  VARCHAR(10) NOT NULL DEFAULT 'FIFO' -- FIFO, LIFO, WAVG
@@ -95,7 +95,7 @@ CREATE TABLE inventory_items (
 
 CREATE TABLE inventory_transactions (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    item_id         UUID REFERENCES inventory_items(id) ON DELETE CASCADE,
+    item_id         UUID NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
     txn_type        VARCHAR(10) NOT NULL, -- purchase, sale
     txn_date        DATE NOT NULL,
     quantity        NUMERIC(18,4) NOT NULL,
