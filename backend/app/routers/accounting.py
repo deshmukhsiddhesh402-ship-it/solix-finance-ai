@@ -95,7 +95,10 @@ def list_inventory_item_transactions(
                 "txn_type": row.txn_type,
                 "txn_date": row.txn_date.isoformat(),
                 "quantity": float(row.quantity),
+                "quantity_decimal": format(row.quantity, "f"),
                 "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
+                "unit_cost_decimal": format(row.unit_cost, "f") if row.unit_cost is not None else None,
+                "reference_no": row.reference_no,
                 "sequence_no": int(row.sequence_no),
             }
             for row in rows
