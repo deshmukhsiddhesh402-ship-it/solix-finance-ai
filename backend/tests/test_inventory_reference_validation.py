@@ -12,13 +12,13 @@ from app.routers.accounting import InventoryTransactionCreate
 @pytest.mark.parametrize(
     "reference_no",
     [
-        "INV\\n2026-001",
-        "INV\\r2026-001",
-        "INV\\t2026-001",
-        "INV\\x002026-001",
-        "INV\\x7f2026-001",
-        "INV\\u00852026-001",
-        "\\nINV-2026-001",
+        "INV\n2026-001",
+        "INV\r2026-001",
+        "INV\t2026-001",
+        "INV\x002026-001",
+        "INV\x7f2026-001",
+        "INV\u00852026-001",
+        "\nINV-2026-001",
     ],
 )
 def test_inventory_reference_rejects_control_characters(reference_no):
