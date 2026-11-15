@@ -2,6 +2,7 @@
 Module 2: Accounting — API layer over accounting_engine.py
 """
 import math
+import unicodedata
 import uuid
 from datetime import date
 from decimal import Decimal, ROUND_HALF_EVEN, localcontext
@@ -139,6 +140,8 @@ class InventoryTransactionCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_transaction_shape(self):
+        if any(unicodedata.category(char) == "Cc" for char in self.reference_no):
+            raise ValueError("reference_no must not contain control characters.")
         self.reference_no = self.reference_no.strip()
         if not self.reference_no:
             raise ValueError("reference_no must not be blank.")
