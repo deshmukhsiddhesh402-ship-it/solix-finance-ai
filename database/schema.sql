@@ -94,6 +94,9 @@ CREATE TABLE inventory_items (
     CONSTRAINT ck_inventory_item_costing_method CHECK (costing_method IN ('FIFO', 'LIFO', 'WAVG'))
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_items_org_sku
+    ON inventory_items(org_id, sku);
+
 CREATE TABLE inventory_transactions (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     item_id         UUID NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
