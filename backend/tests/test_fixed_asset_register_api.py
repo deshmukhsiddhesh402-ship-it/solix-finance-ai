@@ -155,3 +155,28 @@ def test_fixed_asset_register_can_include_archived_assets_for_review():
         db=db, _user=str(uuid4()),
     )
     assert not any("fixed_assets.is_active" in str(value) for value in db.rows_query.filters)
+
+
+def test_fixed_asset_register_exposes_exact_decimal_values_beyond_float_precision():
+    from app.routers.accounting import list_fixed_assets
+
+    asset = SimpleNamespace(
+        id=uuid4(),
+        asset_name="Precision Asset",
+        purchase_date=date(2026, 4, 1),
+        cost=Decimal("9999999999999999.99"),
+        salvage_value=Decimal("1234567890123456.78"),
+        useful_life_years=10,
+        depreciation_method="straight_line",
+        is_active=True,
+    )
+    result = list_fixed_assets(
+        org_id=str(uuid4()), purchase_date_from=None, purchase_date_to=None,
+        depreciation_method=None, include_inactive=False, limit=50, offset=0,
+        db=FakeDB([asset], total=1), _user=str(uuid4()),
+    )
+
+    row = result["assets"][0]
+    assert row["cost_decimal"] == "9999999999999999.99"
+    assert row["salvage_value_decimal"] == "1234567890123456.78"
+    assert row["cost"] == float(Decimal("9999999999999999.99"))
