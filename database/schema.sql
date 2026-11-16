@@ -91,7 +91,8 @@ CREATE TABLE inventory_items (
     sku             VARCHAR(50) NOT NULL,
     name            VARCHAR(255) NOT NULL,
     costing_method  VARCHAR(10) NOT NULL DEFAULT 'FIFO', -- FIFO, LIFO, WAVG
-    CONSTRAINT ck_inventory_item_costing_method CHECK (costing_method IN ('FIFO', 'LIFO', 'WAVG'))
+    CONSTRAINT ck_inventory_item_costing_method CHECK (costing_method IN ('FIFO', 'LIFO', 'WAVG')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_items_org_sku
