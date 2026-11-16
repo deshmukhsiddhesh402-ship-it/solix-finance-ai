@@ -88,7 +88,8 @@ CREATE TABLE fixed_assets (
     CONSTRAINT ck_fixed_asset_salvage_not_above_cost CHECK (salvage_value <= cost),
     CONSTRAINT ck_fixed_asset_useful_life_positive CHECK (useful_life_years > 0),
     CONSTRAINT ck_fixed_asset_depreciation_method CHECK (depreciation_method IN ('straight_line', 'wdv')),
-    CONSTRAINT ck_fixed_asset_name_nonblank CHECK (length(trim(asset_name)) > 0)
+    CONSTRAINT ck_fixed_asset_name_nonblank CHECK (length(trim(asset_name)) > 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE inventory_items (
