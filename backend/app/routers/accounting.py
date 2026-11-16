@@ -422,6 +422,136 @@ def create_inventory_item(
     }
 
 
+
+
+class InventoryItemUpdate(BaseModel):
+    sku: str | None = Field(default=None, min_length=1, max_length=50)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    costing_method: Literal["FIFO", "LIFO", "WAVG"] | None = None
+
+    @field_validator("sku", "name", mode="before")
+    @classmethod
+    def normalize_inventory_item_text(cls, value):
+        if value is not None:
+            if not isinstance(value, str):
+                raise ValueError("Inventory item text must be a string.")
+            if any(unicodedata.category(char) == "Cc" for char in value):
+                raise ValueError("Inventory item text must not contain control characters.")
+            value = value.strip()
+            if not value:
+                raise ValueError("Inventory item text must not be blank.")
+        return value
+
+    @model_validator(mode="after")
+    def require_nonempty_patch(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one inventory item field must be supplied.")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null.")
+        return self
+
+
+@router.patch("/inventory/items/{item_id}")
+def update_inventory_item(
+    item_id: str,
+    payload: InventoryItemUpdate,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("inventory", "edit")),
+):
+    """Update item metadata without silently changing historical inventory valuation."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        item_uuid = uuid.UUID(str(item_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization, item, or user identifier.") from exc
+
+    from app.models.accounting import InventoryItem, InventoryTransaction
+    from app.models.enterprise import AuditLog
+
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_uuid, InventoryItem.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if not item:
+        db.rollback()
+        raise HTTPException(404, detail="Inventory item not found.")
+
+    requested = payload.model_dump(exclude_unset=True)
+    changes = {
+        field_name: {"old": getattr(item, field_name), "new": value}
+        for field_name, value in requested.items()
+        if getattr(item, field_name) != value
+    }
+    if not changes:
+        raise HTTPException(422, detail="The update does not change any inventory item fields.")
+
+    if "sku" in changes:
+        duplicate = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.org_id == org_uuid,
+                InventoryItem.sku == requested["sku"],
+                InventoryItem.id != item_uuid,
+            )
+            .first()
+        )
+        if duplicate:
+            db.rollback()
+            raise HTTPException(409, detail="An inventory item with this SKU already exists in the organization.")
+
+    if "costing_method" in changes:
+        has_transactions = (
+            db.query(InventoryTransaction)
+            .filter(InventoryTransaction.item_id == item_uuid)
+            .first()
+        )
+        if has_transactions:
+            db.rollback()
+            raise HTTPException(
+                409,
+                detail="Costing method cannot be changed after inventory transactions exist; reconcile and approve a valuation conversion first.",
+            )
+
+    for field_name, value in requested.items():
+        setattr(item, field_name, value)
+
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="edit",
+        entity_type="inventory_item",
+        entity_id=str(item.id),
+        changes={
+            field_name: {
+                "old": str(change["old"]),
+                "new": str(change["new"]),
+            }
+            for field_name, change in changes.items()
+        },
+    ))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="Inventory item update conflicts with an existing SKU or database constraint.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory item could not be updated.") from exc
+
+    return {
+        "item_id": str(item.id),
+        "sku": item.sku,
+        "name": item.name,
+        "costing_method": item.costing_method,
+        "message": "Inventory item updated successfully.",
+    }
+
+
 def _new_account_code(account_name: str) -> str:
     """Generate a compact, collision-resistant code for auto-created ledger accounts.
 
