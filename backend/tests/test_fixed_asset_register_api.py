@@ -129,3 +129,29 @@ def test_fixed_asset_register_rejects_invalid_organization_identifier():
 
     assert exc.value.status_code == 400
     assert not db.queries
+
+
+
+def test_fixed_asset_register_hides_archived_assets_by_default():
+    from app.routers.accounting import list_fixed_assets
+
+    db = FakeDB([], total=0)
+    list_fixed_assets(
+        org_id=str(uuid4()), purchase_date_from=None, purchase_date_to=None,
+        depreciation_method=None, include_inactive=False, limit=50, offset=0,
+        db=db, _user=str(uuid4()),
+    )
+    assert any("fixed_assets.is_active IS true" in str(value) for value in db.rows_query.filters)
+    assert any("fixed_assets.is_active IS true" in str(value) for value in db.count_query.filters)
+
+
+def test_fixed_asset_register_can_include_archived_assets_for_review():
+    from app.routers.accounting import list_fixed_assets
+
+    db = FakeDB([], total=0)
+    list_fixed_assets(
+        org_id=str(uuid4()), purchase_date_from=None, purchase_date_to=None,
+        depreciation_method=None, include_inactive=True, limit=50, offset=0,
+        db=db, _user=str(uuid4()),
+    )
+    assert not any("fixed_assets.is_active" in str(value) for value in db.rows_query.filters)
