@@ -331,6 +331,97 @@ def list_inventory_items(
     }
 
 
+
+
+class InventoryItemCreate(BaseModel):
+    sku: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=255)
+    costing_method: Literal["FIFO", "LIFO", "WAVG"] = "FIFO"
+
+    @field_validator("sku", "name", mode="before")
+    @classmethod
+    def normalize_inventory_item_text(cls, value):
+        if isinstance(value, str):
+            if any(unicodedata.category(char) == "Cc" for char in value):
+                raise ValueError("Inventory item text must not contain control characters.")
+            value = value.strip()
+            if not value:
+                raise ValueError("Inventory item text must not be blank.")
+        return value
+
+
+@router.post("/inventory/items", status_code=201)
+def create_inventory_item(
+    payload: InventoryItemCreate,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("inventory", "create")),
+):
+    """Create a tenant-owned inventory item and audit the change atomically."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+
+    from app.models.accounting import InventoryItem
+    from app.models.enterprise import AuditLog
+
+    existing = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.org_id == org_uuid, InventoryItem.sku == payload.sku)
+        .first()
+    )
+    if existing:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory item with this SKU already exists in the organization.")
+
+    item = InventoryItem(
+        org_id=org_uuid,
+        sku=payload.sku,
+        name=payload.name,
+        costing_method=payload.costing_method,
+    )
+    db.add(item)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory item with this SKU already exists in the organization.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory item could not be prepared.") from exc
+
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="create",
+        entity_type="inventory_item",
+        entity_id=str(item.id),
+        changes={
+            "sku": payload.sku,
+            "name": payload.name,
+            "costing_method": payload.costing_method,
+        },
+    ))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail="An inventory item with this SKU already exists in the organization.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory item could not be created.") from exc
+
+    return {
+        "item_id": str(item.id),
+        "sku": item.sku,
+        "name": item.name,
+        "costing_method": item.costing_method,
+        "message": "Inventory item created successfully.",
+    }
+
+
 def _new_account_code(account_name: str) -> str:
     """Generate a compact, collision-resistant code for auto-created ledger accounts.
 
