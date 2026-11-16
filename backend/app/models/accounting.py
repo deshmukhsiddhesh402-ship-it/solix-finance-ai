@@ -57,6 +57,7 @@ class InventoryItem(Base):
     sku = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     costing_method = Column(String(10), nullable=False, default="FIFO")
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 
 
 class InventoryTransaction(Base):

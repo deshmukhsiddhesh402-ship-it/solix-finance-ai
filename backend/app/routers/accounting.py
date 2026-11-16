@@ -180,6 +180,9 @@ def create_inventory_item_transaction(
     if not item:
         db.rollback()
         raise HTTPException(404, detail="Inventory item not found.")
+    if not getattr(item, "is_active", True):
+        db.rollback()
+        raise HTTPException(409, detail="Archived inventory items cannot accept new transactions.")
 
     duplicate = (
         db.query(InventoryTransaction)
@@ -277,6 +280,7 @@ def list_inventory_items(
     org_id: str = Query(...),
     costing_method: Literal["FIFO", "LIFO", "WAVG"] | None = Query(default=None),
     search: str | None = Query(default=None, min_length=1, max_length=100),
+    include_inactive: bool = False,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1_000_000),
     db=Depends(get_db),
@@ -295,6 +299,9 @@ def list_inventory_items(
 
     item_query = db.query(InventoryItem).filter(InventoryItem.org_id == org_uuid)
     count_query = db.query(func.count(InventoryItem.id)).filter(InventoryItem.org_id == org_uuid)
+    if not include_inactive:
+        item_query = item_query.filter(InventoryItem.is_active.is_(True))
+        count_query = count_query.filter(InventoryItem.is_active.is_(True))
     if costing_method is not None:
         item_query = item_query.filter(InventoryItem.costing_method == costing_method)
         count_query = count_query.filter(InventoryItem.costing_method == costing_method)
@@ -322,6 +329,7 @@ def list_inventory_items(
                 "sku": item.sku,
                 "name": item.name,
                 "costing_method": item.costing_method,
+                "is_active": bool(getattr(item, "is_active", True)),
             }
             for item in rows
         ],
@@ -418,6 +426,7 @@ def create_inventory_item(
         "sku": item.sku,
         "name": item.name,
         "costing_method": item.costing_method,
+        "is_active": bool(getattr(item, "is_active", True)),
         "message": "Inventory item created successfully.",
     }
 
@@ -548,8 +557,61 @@ def update_inventory_item(
         "sku": item.sku,
         "name": item.name,
         "costing_method": item.costing_method,
+        "is_active": bool(getattr(item, "is_active", True)),
         "message": "Inventory item updated successfully.",
     }
+
+
+
+
+@router.post("/inventory/items/{item_id}/archive")
+def archive_inventory_item(
+    item_id: str,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("inventory", "delete")),
+):
+    """Soft-archive an item without deleting its historical transactions."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        item_uuid = uuid.UUID(str(item_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization, item, or user identifier.") from exc
+
+    from app.models.accounting import InventoryItem
+    from app.models.enterprise import AuditLog
+
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_uuid, InventoryItem.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if not item:
+        db.rollback()
+        raise HTTPException(404, detail="Inventory item not found.")
+
+    if not item.is_active:
+        db.rollback()
+        return {"item_id": str(item.id), "is_active": False, "message": "Inventory item is already archived."}
+
+    item.is_active = False
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="archive",
+        entity_type="inventory_item",
+        entity_id=str(item.id),
+        changes={"is_active": {"old": True, "new": False}},
+    ))
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Inventory item could not be archived.") from exc
+
+    return {"item_id": str(item.id), "is_active": False, "message": "Inventory item archived successfully."}
 
 
 def _new_account_code(account_name: str) -> str:
