@@ -230,3 +230,21 @@ def test_unrelated_inventory_integrity_failure_is_not_reported_as_duplicate_refe
     assert "reference already exists" not in exc.value.detail
     assert db.rolled_back is True
     assert db.committed is False
+
+
+
+def test_archived_inventory_item_rejects_new_transaction_posting():
+    from app.routers.accounting import create_inventory_item_transaction
+
+    item_id = uuid4()
+    db = FakeDB(SimpleNamespace(id=item_id, costing_method="FIFO", is_active=False))
+    with pytest.raises(HTTPException) as exc:
+        create_inventory_item_transaction(
+            item_id=str(item_id), payload=_payload(),
+            org_id=str(uuid4()), db=db, _user=str(uuid4()),
+        )
+    assert exc.value.status_code == 409
+    assert "archived" in exc.value.detail.lower()
+    assert db.rolled_back is True
+    assert db.transaction_query_count == 0
+    assert db.committed is False
