@@ -100,3 +100,27 @@ def test_inventory_item_register_rejects_invalid_tenant_before_queries():
 
     assert exc.value.status_code == 400
     assert not db.queries
+
+
+
+def test_inventory_item_register_hides_archived_items_by_default():
+    from app.routers.accounting import list_inventory_items
+
+    db = FakeDB([], 0)
+    list_inventory_items(
+        org_id=str(uuid4()), costing_method=None, search=None,
+        include_inactive=False, limit=50, offset=0, db=db, _user=str(uuid4()),
+    )
+    assert any("inventory_items.is_active IS true" in str(value) for value in db.rows_query.filters)
+    assert any("inventory_items.is_active IS true" in str(value) for value in db.count_query.filters)
+
+
+def test_inventory_item_register_can_include_archived_items_for_review():
+    from app.routers.accounting import list_inventory_items
+
+    db = FakeDB([], 0)
+    list_inventory_items(
+        org_id=str(uuid4()), costing_method=None, search=None,
+        include_inactive=True, limit=50, offset=0, db=db, _user=str(uuid4()),
+    )
+    assert not any("inventory_items.is_active" in str(value) for value in db.rows_query.filters)
