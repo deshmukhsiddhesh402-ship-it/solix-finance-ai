@@ -51,6 +51,7 @@ class FixedAsset(Base):
     salvage_value = Column(Numeric(18, 2), nullable=False, default=0)
     useful_life_years = Column(Integer, nullable=False)
     depreciation_method = Column(String(20), nullable=False, default="straight_line")
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 
 
 class InventoryItem(Base):
