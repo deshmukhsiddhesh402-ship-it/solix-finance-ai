@@ -31,9 +31,20 @@ class Organization(Base):
 
 class FixedAsset(Base):
     __tablename__ = "fixed_assets"
+    __table_args__ = (
+        CheckConstraint("cost >= 0", name="ck_fixed_asset_cost_nonnegative"),
+        CheckConstraint("salvage_value >= 0", name="ck_fixed_asset_salvage_nonnegative"),
+        CheckConstraint("salvage_value <= cost", name="ck_fixed_asset_salvage_not_above_cost"),
+        CheckConstraint("useful_life_years > 0", name="ck_fixed_asset_useful_life_positive"),
+        CheckConstraint(
+            "depreciation_method IN ('straight_line', 'wdv')",
+            name="ck_fixed_asset_depreciation_method",
+        ),
+        CheckConstraint("length(trim(asset_name)) > 0", name="ck_fixed_asset_name_nonblank"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     asset_name = Column(String(255), nullable=False)
     purchase_date = Column(Date, nullable=False)
     cost = Column(Numeric(18, 2), nullable=False)
