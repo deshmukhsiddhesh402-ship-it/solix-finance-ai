@@ -23,3 +23,7 @@ def test_inventory_item_register_requires_inventory_view_permission():
 
 def test_inventory_transaction_ledger_requires_inventory_view_permission():
     assert _permission_for_route("/inventory/items/{item_id}/transactions") == ("inventory", "view")
+
+
+def test_persisted_inventory_valuation_requires_inventory_view_permission():
+    assert _permission_for_route("/inventory/items/{item_id}/valuation") == ("inventory", "view")
