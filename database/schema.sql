@@ -76,13 +76,19 @@ CREATE TABLE journal_lines (
 
 CREATE TABLE fixed_assets (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id              UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    asset_name          VARCHAR(255) NOT NULL,
-    purchase_date       DATE NOT NULL,
-    cost                NUMERIC(18,2) NOT NULL,
-    salvage_value       NUMERIC(18,2) NOT NULL DEFAULT 0,
-    useful_life_years   INT NOT NULL,
-    depreciation_method VARCHAR(20) NOT NULL DEFAULT 'straight_line' -- straight_line, wdv
+    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    asset_name           VARCHAR(255) NOT NULL,
+    purchase_date        DATE NOT NULL,
+    cost                 NUMERIC(18,2) NOT NULL,
+    salvage_value        NUMERIC(18,2) NOT NULL DEFAULT 0,
+    useful_life_years    INT NOT NULL,
+    depreciation_method  VARCHAR(20) NOT NULL DEFAULT 'straight_line',
+    CONSTRAINT ck_fixed_asset_cost_nonnegative CHECK (cost >= 0),
+    CONSTRAINT ck_fixed_asset_salvage_nonnegative CHECK (salvage_value >= 0),
+    CONSTRAINT ck_fixed_asset_salvage_not_above_cost CHECK (salvage_value <= cost),
+    CONSTRAINT ck_fixed_asset_useful_life_positive CHECK (useful_life_years > 0),
+    CONSTRAINT ck_fixed_asset_depreciation_method CHECK (depreciation_method IN ('straight_line', 'wdv')),
+    CONSTRAINT ck_fixed_asset_name_nonblank CHECK (length(trim(asset_name)) > 0)
 );
 
 CREATE TABLE inventory_items (
