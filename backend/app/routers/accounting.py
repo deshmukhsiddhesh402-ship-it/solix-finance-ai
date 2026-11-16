@@ -1092,6 +1092,101 @@ def archive_fixed_asset(
     return {"asset_id": str(asset.id), "is_active": False, "message": "Fixed asset archived successfully."}
 
 
+
+
+class FixedAssetDepreciationPreviewRequest(BaseModel):
+    wdv_rate_pct: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+
+    @field_validator("wdv_rate_pct", mode="before")
+    @classmethod
+    def reject_boolean_wdv_rate(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("wdv_rate_pct must be numeric, not a boolean.")
+        return value
+
+
+@router.post("/fixed-assets/{asset_id}/depreciation-preview")
+def preview_fixed_asset_depreciation(
+    asset_id: str,
+    payload: FixedAssetDepreciationPreviewRequest,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("fixed_assets", "view")),
+):
+    """Return a non-posting Decimal depreciation preview using explicit assumptions."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        asset_uuid = uuid.UUID(str(asset_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or fixed asset identifier.") from exc
+
+    from app.models.accounting import FixedAsset
+
+    asset = (
+        db.query(FixedAsset)
+        .filter(FixedAsset.id == asset_uuid, FixedAsset.org_id == org_uuid)
+        .first()
+    )
+    if not asset:
+        raise HTTPException(404, detail="Fixed asset not found.")
+
+    cost = Decimal(str(asset.cost))
+    salvage = Decimal(str(asset.salvage_value))
+    schedule = []
+    rate = payload.wdv_rate_pct
+
+    with localcontext() as context:
+        context.prec = 50
+        opening = cost
+        if asset.depreciation_method == "straight_line":
+            if rate is not None:
+                raise HTTPException(422, detail="wdv_rate_pct must be omitted for straight-line assets.")
+            depreciable_amount = cost - salvage
+            annual = (depreciable_amount / Decimal(asset.useful_life_years)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_EVEN
+            )
+            remaining = depreciable_amount
+            for period in range(1, asset.useful_life_years + 1):
+                depreciation = remaining if period == asset.useful_life_years else min(annual, remaining)
+                remaining -= depreciation
+                closing = salvage + remaining
+                schedule.append({
+                    "period": period,
+                    "opening_value": format(opening, "f"),
+                    "depreciation": format(depreciation, "f"),
+                    "closing_value": format(closing, "f"),
+                })
+                opening = closing
+        elif asset.depreciation_method == "wdv":
+            if rate is None:
+                raise HTTPException(422, detail="wdv_rate_pct is required for a WDV preview; no statutory rate is assumed.")
+            rate_fraction = rate / Decimal("100")
+            for period in range(1, asset.useful_life_years + 1):
+                available = max(opening - salvage, Decimal("0"))
+                depreciation = min(
+                    (opening * rate_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN),
+                    available,
+                )
+                closing = opening - depreciation
+                schedule.append({
+                    "period": period,
+                    "opening_value": format(opening, "f"),
+                    "depreciation": format(depreciation, "f"),
+                    "closing_value": format(closing, "f"),
+                })
+                opening = closing
+        else:
+            raise HTTPException(422, detail="Unsupported stored depreciation method; review the fixed asset record.")
+
+    return {
+        "asset_id": str(asset.id),
+        "method": asset.depreciation_method,
+        "wdv_rate_pct": format(rate, "f") if rate is not None else None,
+        "schedule": schedule,
+        "disclaimer": "Preview only; no depreciation journal is posted. WDV rate is user-supplied, not a statutory recommendation. Confirm accounting treatment with a qualified professional.",
+    }
+
+
 @router.get("/fixed-assets")
 def list_fixed_assets(
     org_id: str = Query(...),
