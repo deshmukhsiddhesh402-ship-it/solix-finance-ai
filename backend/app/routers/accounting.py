@@ -456,7 +456,7 @@ def persisted_inventory_item_valuation(
     item_id: str,
     org_id: str = Query(...),
     db=Depends(get_db),
-    _user: str = Depends(require_permission("journal_entry", "view")),
+    _user: str = Depends(require_permission("inventory", "view")),
 ):
     """Calculate a persisted inventory item's valuation from its tenant-owned transactions."""
     try:
