@@ -905,6 +905,139 @@ def create_fixed_asset(
     }
 
 
+
+
+class FixedAssetUpdate(BaseModel):
+    asset_name: str | None = Field(default=None, min_length=1, max_length=255)
+    purchase_date: date | None = None
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    salvage_value: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    useful_life_years: int | None = Field(default=None, ge=1, le=32767)
+    depreciation_method: Literal["straight_line", "wdv"] | None = None
+
+    @field_validator("asset_name", mode="before")
+    @classmethod
+    def normalize_asset_name(cls, value):
+        if value is not None:
+            if not isinstance(value, str):
+                raise ValueError("asset_name must be a string.")
+            if any(unicodedata.category(char) == "Cc" for char in value):
+                raise ValueError("asset_name must not contain control characters.")
+            value = value.strip()
+            if not value:
+                raise ValueError("asset_name must not be blank.")
+        return value
+
+    @field_validator("cost", "salvage_value", mode="before")
+    @classmethod
+    def reject_boolean_asset_amounts(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Asset amounts must be numeric values, not booleans.")
+        return value
+
+    @field_validator("useful_life_years", mode="before")
+    @classmethod
+    def reject_boolean_useful_life(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("useful_life_years must be an integer, not a boolean.")
+        return value
+
+    @model_validator(mode="after")
+    def require_nonempty_patch(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one fixed asset field must be supplied.")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null.")
+        return self
+
+
+@router.patch("/fixed-assets/{asset_id}")
+def update_fixed_asset(
+    asset_id: str,
+    payload: FixedAssetUpdate,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("fixed_assets", "edit")),
+):
+    """Update fixed asset master data with tenant locking and an audit trail."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        asset_uuid = uuid.UUID(str(asset_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization, asset, or user identifier.") from exc
+
+    from app.models.accounting import FixedAsset
+    from app.models.enterprise import AuditLog
+
+    asset = (
+        db.query(FixedAsset)
+        .filter(FixedAsset.id == asset_uuid, FixedAsset.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if not asset:
+        db.rollback()
+        raise HTTPException(404, detail="Fixed asset not found.")
+
+    requested = payload.model_dump(exclude_unset=True)
+    changes = {
+        field_name: {"old": getattr(asset, field_name), "new": value}
+        for field_name, value in requested.items()
+        if getattr(asset, field_name) != value
+    }
+    if not changes:
+        db.rollback()
+        raise HTTPException(422, detail="The update does not change any fixed asset fields.")
+
+    final_cost = requested.get("cost", asset.cost)
+    final_salvage = requested.get("salvage_value", asset.salvage_value)
+    if final_salvage > final_cost:
+        db.rollback()
+        raise HTTPException(422, detail="salvage_value cannot exceed cost.")
+
+    for field_name, value in requested.items():
+        setattr(asset, field_name, value)
+
+    def _audit_value(value):
+        return value.isoformat() if isinstance(value, date) else str(value)
+
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="edit",
+        entity_type="fixed_asset",
+        entity_id=str(asset.id),
+        changes={
+            field_name: {
+                "old": _audit_value(change["old"]),
+                "new": _audit_value(change["new"]),
+            }
+            for field_name, change in changes.items()
+        },
+    ))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(422, detail="Fixed asset update violates a database integrity constraint.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Fixed asset could not be updated.") from exc
+
+    return {
+        "asset_id": str(asset.id),
+        "asset_name": asset.asset_name,
+        "purchase_date": asset.purchase_date.isoformat(),
+        "cost": str(asset.cost),
+        "salvage_value": str(asset.salvage_value),
+        "useful_life_years": asset.useful_life_years,
+        "depreciation_method": asset.depreciation_method,
+        "message": "Fixed asset updated successfully.",
+    }
+
+
 @router.get("/fixed-assets")
 def list_fixed_assets(
     org_id: str = Query(...),
