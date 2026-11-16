@@ -1254,6 +1254,71 @@ def list_fixed_assets(
     }
 
 
+
+
+@router.get("/fixed-assets/{asset_id}/audit-history")
+def list_fixed_asset_audit_history(
+    asset_id: str,
+    org_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("audit_log", "view")),
+):
+    """Return a tenant-scoped audit history for one fixed asset."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        asset_uuid = uuid.UUID(str(asset_id))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or fixed asset identifier.") from exc
+
+    from app.models.accounting import FixedAsset
+    from app.models.enterprise import AuditLog
+
+    asset = (
+        db.query(FixedAsset)
+        .filter(FixedAsset.id == asset_uuid, FixedAsset.org_id == org_uuid)
+        .first()
+    )
+    if not asset:
+        raise HTTPException(404, detail="Fixed asset not found.")
+
+    history_query = db.query(AuditLog).filter(
+        AuditLog.org_id == org_uuid,
+        AuditLog.entity_type == "fixed_asset",
+        AuditLog.entity_id == str(asset_uuid),
+    )
+    count_query = db.query(func.count(AuditLog.id)).filter(
+        AuditLog.org_id == org_uuid,
+        AuditLog.entity_type == "fixed_asset",
+        AuditLog.entity_id == str(asset_uuid),
+    )
+    total = count_query.scalar() or 0
+    rows = (
+        history_query
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "asset_id": str(asset_uuid),
+        "events": [
+            {
+                "id": str(event.id),
+                "user_id": str(event.user_id) if event.user_id else None,
+                "action": event.action,
+                "changes": event.changes,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/chart-of-accounts")
 def list_chart_of_accounts(
     org_id: str = Query(...),
