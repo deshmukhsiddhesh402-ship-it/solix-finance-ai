@@ -49,6 +49,7 @@ class InventoryItem(Base):
             "costing_method IN ('FIFO', 'LIFO', 'WAVG')",
             name="ck_inventory_item_costing_method",
         ),
+        Index("uq_inventory_items_org_sku", "org_id", "sku", unique=True),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
