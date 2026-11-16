@@ -790,6 +790,121 @@ def persisted_inventory_item_valuation(
     }
 
 
+
+
+class FixedAssetCreate(BaseModel):
+    asset_name: str = Field(min_length=1, max_length=255)
+    purchase_date: date
+    cost: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+    salvage_value: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=18, decimal_places=2)
+    useful_life_years: int = Field(ge=1, le=32767)
+    depreciation_method: Literal["straight_line", "wdv"] = "straight_line"
+
+    @field_validator("asset_name", mode="before")
+    @classmethod
+    def normalize_asset_name(cls, value):
+        if not isinstance(value, str):
+            raise ValueError("asset_name must be a string.")
+        if any(unicodedata.category(char) == "Cc" for char in value):
+            raise ValueError("asset_name must not contain control characters.")
+        value = value.strip()
+        if not value:
+            raise ValueError("asset_name must not be blank.")
+        return value
+
+    @field_validator("cost", "salvage_value", mode="before")
+    @classmethod
+    def reject_boolean_asset_amounts(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Asset amounts must be numeric values, not booleans.")
+        return value
+
+    @field_validator("useful_life_years", mode="before")
+    @classmethod
+    def reject_boolean_useful_life(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("useful_life_years must be an integer, not a boolean.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_salvage_value(self):
+        if self.salvage_value > self.cost:
+            raise ValueError("salvage_value cannot exceed cost.")
+        return self
+
+
+@router.post("/fixed-assets", status_code=201)
+def create_fixed_asset(
+    payload: FixedAssetCreate,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("fixed_assets", "create")),
+):
+    """Create a tenant-owned fixed asset and its audit record atomically."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+
+    from app.models.accounting import FixedAsset
+    from app.models.enterprise import AuditLog
+
+    asset = FixedAsset(
+        org_id=org_uuid,
+        asset_name=payload.asset_name,
+        purchase_date=payload.purchase_date,
+        cost=payload.cost,
+        salvage_value=payload.salvage_value,
+        useful_life_years=payload.useful_life_years,
+        depreciation_method=payload.depreciation_method,
+    )
+    db.add(asset)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(422, detail="Fixed asset conflicts with a database integrity constraint.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Fixed asset could not be prepared.") from exc
+
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="create",
+        entity_type="fixed_asset",
+        entity_id=str(asset.id),
+        changes={
+            "asset_name": payload.asset_name,
+            "purchase_date": payload.purchase_date.isoformat(),
+            "cost": str(payload.cost),
+            "salvage_value": str(payload.salvage_value),
+            "useful_life_years": payload.useful_life_years,
+            "depreciation_method": payload.depreciation_method,
+        },
+    ))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(422, detail="Fixed asset conflicts with a database integrity constraint.") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Fixed asset could not be created.") from exc
+
+    return {
+        "asset_id": str(asset.id),
+        "asset_name": asset.asset_name,
+        "purchase_date": asset.purchase_date.isoformat(),
+        "cost": str(asset.cost),
+        "salvage_value": str(asset.salvage_value),
+        "useful_life_years": asset.useful_life_years,
+        "depreciation_method": asset.depreciation_method,
+        "message": "Fixed asset created successfully.",
+    }
+
+
 @router.get("/fixed-assets")
 def list_fixed_assets(
     org_id: str = Query(...),
@@ -799,7 +914,7 @@ def list_fixed_assets(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1_000_000),
     db=Depends(get_db),
-    _user: str = Depends(require_permission("journal_entry", "view")),
+    _user: str = Depends(require_permission("fixed_assets", "view")),
 ):
     """Return a tenant-scoped fixed-asset register with bounded pagination."""
     try:
