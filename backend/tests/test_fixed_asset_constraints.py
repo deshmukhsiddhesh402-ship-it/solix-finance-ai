@@ -40,7 +40,7 @@ def test_fixed_asset_migration_fails_closed_and_scopes_constraint_names():
 def test_fixed_asset_register_uses_fixed_asset_read_permission():
     from app.routers.accounting import router
 
-    route = next(route for route in router.routes if getattr(route, "path", None) == "/fixed-assets")
+    route = next(route for route in router.routes if getattr(route, "path", None) == "/fixed-assets" and "GET" in route.methods)
     dependency = next(
         dependency.call for dependency in route.dependant.dependencies
         if getattr(dependency.call, "__name__", "") == "_dependency"
