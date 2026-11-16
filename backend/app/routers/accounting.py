@@ -901,6 +901,7 @@ def create_fixed_asset(
         "salvage_value": str(asset.salvage_value),
         "useful_life_years": asset.useful_life_years,
         "depreciation_method": asset.depreciation_method,
+        "is_active": bool(getattr(asset, "is_active", True)),
         "message": "Fixed asset created successfully.",
     }
 
@@ -1034,8 +1035,61 @@ def update_fixed_asset(
         "salvage_value": str(asset.salvage_value),
         "useful_life_years": asset.useful_life_years,
         "depreciation_method": asset.depreciation_method,
+        "is_active": bool(getattr(asset, "is_active", True)),
         "message": "Fixed asset updated successfully.",
     }
+
+
+
+
+@router.post("/fixed-assets/{asset_id}/archive")
+def archive_fixed_asset(
+    asset_id: str,
+    org_id: str = Query(...),
+    db=Depends(get_db),
+    _user: str = Depends(require_permission("fixed_assets", "delete")),
+):
+    """Soft-archive a fixed asset while preserving its financial history."""
+    try:
+        org_uuid = uuid.UUID(str(org_id))
+        asset_uuid = uuid.UUID(str(asset_id))
+        user_uuid = uuid.UUID(str(_user))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(400, detail="Invalid organization, asset, or user identifier.") from exc
+
+    from app.models.accounting import FixedAsset
+    from app.models.enterprise import AuditLog
+
+    asset = (
+        db.query(FixedAsset)
+        .filter(FixedAsset.id == asset_uuid, FixedAsset.org_id == org_uuid)
+        .with_for_update()
+        .first()
+    )
+    if not asset:
+        db.rollback()
+        raise HTTPException(404, detail="Fixed asset not found.")
+
+    if not asset.is_active:
+        db.rollback()
+        return {"asset_id": str(asset.id), "is_active": False, "message": "Fixed asset is already archived."}
+
+    asset.is_active = False
+    db.add(AuditLog(
+        org_id=org_uuid,
+        user_id=user_uuid,
+        action="archive",
+        entity_type="fixed_asset",
+        entity_id=str(asset.id),
+        changes={"is_active": {"old": True, "new": False}},
+    ))
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, detail="Fixed asset could not be archived.") from exc
+
+    return {"asset_id": str(asset.id), "is_active": False, "message": "Fixed asset archived successfully."}
 
 
 @router.get("/fixed-assets")
@@ -1044,6 +1098,7 @@ def list_fixed_assets(
     purchase_date_from: date | None = Query(default=None),
     purchase_date_to: date | None = Query(default=None),
     depreciation_method: Literal["straight_line", "wdv"] | None = Query(default=None),
+    include_inactive: bool = False,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1_000_000),
     db=Depends(get_db),
@@ -1061,6 +1116,9 @@ def list_fixed_assets(
 
     asset_query = db.query(FixedAsset).filter(FixedAsset.org_id == org_uuid)
     count_query = db.query(func.count(FixedAsset.id)).filter(FixedAsset.org_id == org_uuid)
+    if not include_inactive:
+        asset_query = asset_query.filter(FixedAsset.is_active.is_(True))
+        count_query = count_query.filter(FixedAsset.is_active.is_(True))
     if purchase_date_from is not None:
         asset_query = asset_query.filter(FixedAsset.purchase_date >= purchase_date_from)
         count_query = count_query.filter(FixedAsset.purchase_date >= purchase_date_from)
@@ -1089,6 +1147,7 @@ def list_fixed_assets(
                 "salvage_value": float(asset.salvage_value),
                 "useful_life_years": asset.useful_life_years,
                 "depreciation_method": asset.depreciation_method,
+                "is_active": bool(getattr(asset, "is_active", True)),
             }
             for asset in rows
         ],
