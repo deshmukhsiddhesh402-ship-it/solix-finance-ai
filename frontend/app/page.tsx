@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Wand2, Calculator, Receipt, LayoutDashboard, Landmark, TrendingUp, MessageSquare, Sparkles, GraduationCap, ScanLine, Bot, ShieldCheck, CreditCard } from "lucide-react";
+import { Wand2, Calculator, Receipt, LayoutDashboard, Landmark, TrendingUp, MessageSquare, Sparkles, GraduationCap, ScanLine, Bot, ShieldCheck, CreditCard, Boxes } from "lucide-react";
 
 const MODULES = [
   { href: "/excel-assistant", title: "AI Excel Assistant", desc: "Explain, generate, fix formulas. VBA, Office Scripts, Pivot plans.", icon: Wand2, color: "from-violet-600/20 to-indigo-600/20 border-violet-400/30" },
   { href: "/accounting", title: "Accounting Core", desc: "Journal entries → Trial Balance, P&L, Balance Sheet.", icon: Calculator, color: "from-emerald-600/20 to-violet-600/20 border-emerald-400/30" },
+  { href: "/fixed-assets", title: "Fixed Asset Register", desc: "Track asset values, non-posting depreciation previews, and audit history.", icon: Boxes, color: "from-teal-600/20 to-indigo-600/20 border-teal-400/30" },
   { href: "/tax", title: "Indian Tax Module", desc: "GST, TDS, and Income Tax calculators.", icon: Receipt, color: "from-amber-600/20 to-violet-600/20 border-amber-400/30" },
   { href: "/dashboard", title: "Dashboard", desc: "Live KPIs from your posted books, with Excel/PDF export.", icon: LayoutDashboard, color: "from-indigo-600/20 to-emerald-600/20 border-indigo-400/30" },
   { href: "/banking", title: "Banking & Reconciliation", desc: "Match bank statement lines against your books automatically.", icon: Landmark, color: "from-sky-600/20 to-violet-600/20 border-sky-400/30" },
