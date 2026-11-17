@@ -1,6 +1,8 @@
 """
 Module 3: Indian Tax — API layer over tax_engine.py
 """
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -57,8 +59,17 @@ def tds_calculate(req: TdsRequest):
 class IncomeTaxRequest(BaseModel):
     gross_salary: float
     other_income: float = 0.0
+    # Backward-compatible default; unsupported years are rejected by the API schema.
+    financial_year: Literal["2025-26"] = "2025-26"
 
 
 @router.post("/income-tax/new-regime")
 def income_tax_new_regime(req: IncomeTaxRequest):
-    return calculate_income_tax_new_regime(req.gross_salary, req.other_income)
+    result = calculate_income_tax_new_regime(
+        req.gross_salary, req.other_income, financial_year=req.financial_year
+    )
+    return {
+        **result,
+        "calculation_status": "reference_only",
+        "filing_ready": False,
+    }
