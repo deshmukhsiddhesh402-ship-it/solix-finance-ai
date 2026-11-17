@@ -87,6 +87,7 @@ export default function TaxPage() {
       const r = await callTaxApi("incomeTaxNewRegime", {
         gross_salary: parseFloat(salary) || 0,
         other_income: parseFloat(otherIncome) || 0,
+        financial_year: "2025-26",
       });
       setTaxResult(r);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
@@ -105,7 +106,7 @@ export default function TaxPage() {
             Indian Tax Module
           </h1>
           <p className="text-slate-400 mt-1 text-sm">
-            GST, TDS, and Income Tax calculators. Rates reflect FY 2025-26 — always confirm against the latest CBDT/CBIC notifications before filing.
+            GST, TDS, and Income Tax reference tools. The income-tax calculator supports FY 2025-26 only; verify current statutory rules before filing.
           </p>
         </header>
 
@@ -199,7 +200,7 @@ export default function TaxPage() {
                   <input className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 p-3 text-sm" value={otherIncome} onChange={(e) => setOtherIncome(e.target.value)} />
                 </div>
               </div>
-              <p className="text-xs text-slate-500">New Tax Regime, FY 2025-26 — includes ₹75,000 standard deduction and Section 87A rebate (nil tax up to ₹12L taxable income).</p>
+              <p className="text-xs text-slate-500">New Tax Regime, FY 2025-26 only — reference estimate. FY 2026-27 is unsupported, and marginal relief is not modelled; do not use this result as a filing calculation.</p>
               <button onClick={runIncomeTax} disabled={loading} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-violet-600 hover:from-amber-500 hover:to-violet-500 disabled:opacity-50 font-medium text-sm transition">
                 {loading ? <Loader2 className="animate-spin" size={16} /> : <Wallet size={16} />} Calculate Tax
               </button>
@@ -211,6 +212,7 @@ export default function TaxPage() {
                   <div className="flex justify-between"><dt className="text-slate-400">Effective Rate</dt><dd>{taxResult.effective_tax_rate_pct}%</dd></div>
                   <div className="flex justify-between col-span-2 border-t border-white/10 pt-2 font-medium"><dt>Total Tax Payable</dt><dd className="text-amber-300">{INR(taxResult.total_tax_payable)}</dd></div>
                 </dl>
+                <p className="text-xs text-amber-200/90">Reference-only result for FY 2025-26. Not filing-ready; confirm the applicable year, rebate and marginal-relief rules with a qualified tax professional.</p>
               )}
             </>
           )}
