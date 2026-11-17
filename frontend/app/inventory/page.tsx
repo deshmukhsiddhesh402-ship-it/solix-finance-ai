@@ -58,7 +58,7 @@ async function requestJson(path: string, init?: RequestInit) {
   return data;
 }
 
-function formatINR(raw: string | number | null | undefined) {
+function formatINR(raw: string | number | null | undefined, minimumFractionDigits = 2) {
   const value = String(raw ?? "0");
   const parts = value.split(".");
   const wholeRaw = parts[0] || "0";
@@ -66,7 +66,9 @@ function formatINR(raw: string | number | null | undefined) {
   const whole = (negative ? wholeRaw.slice(1) : wholeRaw).replace(/\D/g, "") || "0";
   const lastThree = whole.slice(-3);
   const prefix = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",");
-  const fraction = (parts[1] || "").replace(/\D/g, "").padEnd(2, "0").slice(0, 2);
+  const sourceFraction = (parts[1] || "").replace(/\D/g, "");
+  const fractionDigits = Math.max(minimumFractionDigits, Math.min(sourceFraction.length, 4));
+  const fraction = sourceFraction.padEnd(fractionDigits, "0").slice(0, fractionDigits);
   return (negative ? "-" : "") + "₹" + (prefix ? prefix + "," : "") + lastThree + "." + fraction;
 }
 
@@ -449,7 +451,7 @@ export default function InventoryPage() {
                         <td className="py-2">{row.txn_date}</td>
                         <td className="py-2 capitalize">{row.txn_type}</td>
                         <td className="py-2 text-right">{formatQuantity(row.quantity_decimal ?? row.quantity)}</td>
-                        <td className="py-2 text-right">{row.unit_cost_decimal !== null && row.unit_cost_decimal !== undefined ? formatINR(row.unit_cost_decimal) : "Costed on sale"}</td>
+                        <td className="py-2 text-right">{row.unit_cost_decimal !== null && row.unit_cost_decimal !== undefined ? formatINR(row.unit_cost_decimal, 4) : "Costed on sale"}</td>
                         <td className="py-2">{row.reference_no || "—"}</td>
                         <td className="py-2 text-right">{row.sequence_no}</td>
                       </tr>
