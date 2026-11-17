@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFixedAssetRequest } from "@/lib/fixed-assets-proxy";
 
-type RouteContext = { params: { segments: string[] } };
+type RouteContext = { params: Promise<{ segments: string[] }> };
 
 function notFound() {
   return NextResponse.json({ error: "Fixed asset action not found." }, { status: 404 });
@@ -16,7 +16,8 @@ async function readJson(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const segments = context.params.segments || [];
+  const { segments: routeSegments } = await context.params;
+  const segments = routeSegments || [];
   if (segments.length !== 1) return notFound();
 
   const body = await readJson(request);
