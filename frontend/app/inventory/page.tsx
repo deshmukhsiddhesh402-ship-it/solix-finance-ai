@@ -414,7 +414,7 @@ export default function InventoryPage() {
                   <input required type="number" min="0" step="0.0001" value={movementForm.unit_cost} onChange={(e) => setMovementForm({ ...movementForm, unit_cost: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100" />
                 </label>
               ) : (
-                <div className="rounded-lg border border-sky-400/20 bg-sky-500/5 p-3 text-xs text-sky-100">Unit cost is calculated by the backend from the item's FIFO/LIFO/weighted-average layers.</div>
+                <div className="rounded-lg border border-sky-400/20 bg-sky-500/5 p-3 text-xs text-sky-100">Unit cost is calculated by the backend from the item&apos;s FIFO/LIFO/weighted-average layers.</div>
               )}
               <label className="text-xs text-slate-400">Reference number
                 <input required maxLength={100} value={movementForm.reference_no} onChange={(e) => setMovementForm({ ...movementForm, reference_no: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100" />
