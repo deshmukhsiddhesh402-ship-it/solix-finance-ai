@@ -50,6 +50,11 @@ class LedgerLineIn(BaseModel):
 
 
 
+# Access policy for this router:
+# - /journal-entries persists organization-owned ledger data and must remain tenant-scoped.
+# - The other routes are stateless calculators over caller-supplied data and must not read or write tenant records.
+# Any future persisted accounting endpoint must be classified and protected before it is added.
+
 @router.post("/journal-entries")
 def create_journal_entry(
     entry_date: str = Query(...), narration: str = Query(..., min_length=1, max_length=2000),
