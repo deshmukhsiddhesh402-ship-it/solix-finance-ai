@@ -62,7 +62,7 @@ def test_straight_line_preview_uses_decimal_and_final_period_reconciliation():
     assert "no depreciation journal is posted" in result["disclaimer"]
 
 
-def test_wdv_preview_requires_explicit_user_supplied_rate_and_respects_salvage_floor():
+def test_wdv_preview_applies_explicit_rate_without_crossing_salvage_floor():
     from app.routers.accounting import preview_fixed_asset_depreciation
 
     asset = _asset(method="wdv")
@@ -76,8 +76,9 @@ def test_wdv_preview_requires_explicit_user_supplied_rate_and_respects_salvage_f
         asset_id=str(asset.id), payload=_payload(wdv_rate_pct=Decimal("50.00")),
         org_id=str(asset.org_id), db=FakeDB(asset), _user=str(uuid4()),
     )
-    assert [row["depreciation"] for row in result["schedule"]] == ["500.00", "250.00", "150.00"]
-    assert result["schedule"][-1]["closing_value"] == "100.00"
+    assert [row["depreciation"] for row in result["schedule"]] == ["500.00", "250.00", "125.00"]
+    assert result["schedule"][-1]["closing_value"] == "125.00"
+    assert all(Decimal(row["closing_value"]) >= asset.salvage_value for row in result["schedule"])
     assert result["wdv_rate_pct"] == "50.00"
 
 
@@ -127,3 +128,15 @@ def test_fixed_asset_depreciation_preview_requires_fixed_asset_view_permission()
         (cell.cell_contents for cell in dependency.__closure__ or ()),
     ))
     assert (closure["resource"], closure["action"]) == ("fixed_assets", "view")
+
+
+def test_wdv_preview_caps_depreciation_at_salvage_value():
+    from app.routers.accounting import preview_fixed_asset_depreciation
+
+    asset = _asset(method="wdv")
+    result = preview_fixed_asset_depreciation(
+        asset_id=str(asset.id), payload=_payload(wdv_rate_pct=Decimal("100.00")),
+        org_id=str(asset.org_id), db=FakeDB(asset), _user=str(uuid4()),
+    )
+    assert [row["depreciation"] for row in result["schedule"]] == ["900.00", "0.00", "0.00"]
+    assert all(Decimal(row["closing_value"]) >= asset.salvage_value for row in result["schedule"])
