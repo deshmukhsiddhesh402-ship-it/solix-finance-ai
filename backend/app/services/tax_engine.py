@@ -110,12 +110,23 @@ NEW_REGIME_SLABS_FY2025_26 = [
 
 STANDARD_DEDUCTION_NEW_REGIME = 75_000
 CESS_PCT = 4.0
+SUPPORTED_NEW_REGIME_FINANCIAL_YEAR = "2025-26"
 
 
-def calculate_income_tax_new_regime(gross_salary: float, other_income: float = 0.0) -> dict:
-    """Slab-wise income tax under the new regime, with standard deduction,
-    Section 87A rebate (nil tax up to ₹12L taxable income), and 4% cess.
+def calculate_income_tax_new_regime(
+    gross_salary: float,
+    other_income: float = 0.0,
+    financial_year: str = SUPPORTED_NEW_REGIME_FINANCIAL_YEAR,
+) -> dict:
+    """Calculate the reference new-regime estimate for the supported FY only.
+
+    Other financial years are rejected rather than silently reusing old slabs.
     """
+    if not isinstance(financial_year, str) or financial_year != SUPPORTED_NEW_REGIME_FINANCIAL_YEAR:
+        raise ValueError(
+            f"Income-tax calculation is supported only for FY {SUPPORTED_NEW_REGIME_FINANCIAL_YEAR}; "
+            "the requested financial year is unsupported."
+        )
     _require_finite_non_negative(gross_salary, "gross_salary")
     _require_finite_non_negative(other_income, "other_income")
 
