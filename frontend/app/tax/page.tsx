@@ -205,14 +205,16 @@ export default function TaxPage() {
                 {loading ? <Loader2 className="animate-spin" size={16} /> : <Wallet size={16} />} Calculate Tax
               </button>
               {taxResult && (
-                <dl className="grid grid-cols-2 gap-3 text-sm pt-2">
-                  <div className="flex justify-between"><dt className="text-slate-400">Taxable Income</dt><dd>{INR(taxResult.taxable_income)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-400">Sec 87A Rebate</dt><dd>{taxResult.rebate_87a_applied ? "Applied ✓" : "Not applicable"}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-400">Health &amp; Edu Cess (4%)</dt><dd>{INR(taxResult.health_education_cess)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-400">Effective Rate</dt><dd>{taxResult.effective_tax_rate_pct}%</dd></div>
-                  <div className="flex justify-between col-span-2 border-t border-white/10 pt-2 font-medium"><dt>Total Tax Payable</dt><dd className="text-amber-300">{INR(taxResult.total_tax_payable)}</dd></div>
-                </dl>
-                <p className="text-xs text-amber-200/90">Reference-only result for FY 2025-26. Not filing-ready; confirm the applicable year, rebate and marginal-relief rules with a qualified tax professional.</p>
+                <>
+                  <dl className="grid grid-cols-2 gap-3 text-sm pt-2">
+                    <div className="flex justify-between"><dt className="text-slate-400">Taxable Income</dt><dd>{INR(taxResult.taxable_income)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-slate-400">Sec 87A Rebate</dt><dd>{taxResult.rebate_87a_applied ? "Applied ✓" : "Not applicable"}</dd></div>
+                    <div className="flex justify-between"><dt className="text-slate-400">Health &amp; Edu Cess (4%)</dt><dd>{INR(taxResult.health_education_cess)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-slate-400">Effective Rate</dt><dd>{taxResult.effective_tax_rate_pct}%</dd></div>
+                    <div className="flex justify-between col-span-2 border-t border-white/10 pt-2 font-medium"><dt>Total Tax Payable</dt><dd className="text-amber-300">{INR(taxResult.total_tax_payable)}</dd></div>
+                  </dl>
+                  <p className="text-xs text-amber-200/90">Reference-only result for FY 2025-26. Not filing-ready; confirm the applicable year, rebate and marginal-relief rules with a qualified tax professional.</p>
+                </>
               )}
             </>
           )}
