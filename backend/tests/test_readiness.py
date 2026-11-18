@@ -46,3 +46,30 @@ def test_security_headers_are_present():
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+
+
+
+def test_sensitive_api_responses_are_not_cacheable():
+    import asyncio
+    from fastapi import Response
+    from app.main import security_headers
+
+    async def call_next(_request):
+        return Response(content="sensitive")
+
+    request = type("Request", (), {"url": type("URL", (), {"path": "/api/auth/me"})()})()
+    response = asyncio.run(security_headers(request, call_next))
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_non_sensitive_api_responses_keep_default_cache_behavior():
+    import asyncio
+    from fastapi import Response
+    from app.main import security_headers
+
+    async def call_next(_request):
+        return Response(content="public")
+
+    request = type("Request", (), {"url": type("URL", (), {"path": "/api/health"})()})()
+    response = asyncio.run(security_headers(request, call_next))
+    assert "Cache-Control" not in response.headers
