@@ -26,8 +26,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-@app.middleware("http")
-async def _is_sensitive_api_path(path: str) -> bool:
+def _is_sensitive_api_path(path: str) -> bool:
     return path.startswith(("/api/auth/", "/api/billing/", "/api/ocr/"))
 
 
