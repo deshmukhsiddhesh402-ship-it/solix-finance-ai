@@ -26,6 +26,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+def _is_sensitive_api_path(path: str) -> bool:
+    return path.startswith(("/api/auth/", "/api/billing/", "/api/ocr/"))
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
@@ -33,6 +37,9 @@ async def security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if _is_sensitive_api_path(request.url.path):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
     if settings.ENV.strip().lower() in {"prod", "production"}:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
