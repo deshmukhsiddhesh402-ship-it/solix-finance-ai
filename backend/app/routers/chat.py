@@ -11,6 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
+from app.services.billing_engine import consume_usage
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -76,6 +77,13 @@ async def upload_document(
         raise HTTPException(422, detail="No extractable text found in this file.")
 
     chunks = chunk_text(text)
+    from app.models.billing import Subscription
+    subscription = db.query(Subscription).filter(Subscription.org_id == org_uuid).with_for_update().first()
+    if subscription is None:
+        subscription = Subscription(org_id=org_uuid, plan="trial", status="active")
+        db.add(subscription)
+        db.flush()
+    usage_key = "ai_chat_uploads_this_month"
     if embeddings_available():
         from app.models.document import Document, DocumentChunk
         vectors = get_embeddings(chunks, input_type="document")
@@ -87,6 +95,11 @@ async def upload_document(
         db.flush()
         for chunk_text_, vector in zip(chunks, vectors):
             db.add(DocumentChunk(document_id=doc_row.id, chunk_text=chunk_text_, embedding=vector))
+        try:
+            consume_usage(subscription, usage_key)
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(429, detail=str(exc)) from exc
         db.commit()
         session_id = str(doc_row.id)
         _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
@@ -94,6 +107,12 @@ async def upload_document(
         })
         return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
 
+    try:
+        consume_usage(subscription, usage_key)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(429, detail=str(exc)) from exc
+    db.commit()
     session_id = str(uuid.uuid4())
     _store_chat_session(_TFIDF_SESSIONS, session_id, {
         "filename": file.filename, "index": build_index(chunks), "org_id": str(org_uuid),
