@@ -1,7 +1,7 @@
 """Module 7: AI Chat — tenant-scoped document upload + RAG."""
 import uuid
 import time
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query, Header
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
+from app.services.upload_limits import reject_oversized_content_length
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -58,7 +59,9 @@ async def upload_document(
     org_id: str = Query(...),
     db: Session = Depends(get_db),
     user_id: str = Depends(require_permission("chat", "create")),
+    content_length: str | None = Header(default=None),
 ):
+    reject_oversized_content_length(content_length, max_bytes=MAX_UPLOAD_BYTES)
     try:
         org_uuid = uuid.UUID(org_id)
         user_uuid = uuid.UUID(user_id)
