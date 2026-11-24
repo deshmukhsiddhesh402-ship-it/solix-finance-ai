@@ -24,8 +24,8 @@ class BookLineIn(BaseModel):
     txn_type: Literal["credit", "debit"]
 
 class ReconcileRequest(BaseModel):
-    bank_lines: list[BankLineIn]
-    book_lines: list[BookLineIn]
+    bank_lines: list[BankLineIn] = Field(max_length=1000)
+    book_lines: list[BookLineIn] = Field(max_length=1000)
     date_window_days: int = 5
     balance_as_per_bank: float = 0.0
 
