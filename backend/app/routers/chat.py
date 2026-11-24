@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.services.document_engine import extract_text, chunk_text
+from app.services.upload_engine import read_upload_limited, UploadTooLargeError
 from app.services.rag_engine import build_index, retrieve, semantic_retrieve
 from app.services.embedding_service import embeddings_available, get_embeddings, get_query_embedding
 from app.services.claude_service import ask_claude, rag_chat_prompt
@@ -65,9 +66,10 @@ async def upload_document(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.")
+    try:
+        file_bytes = await read_upload_limited(file, MAX_UPLOAD_BYTES)
+    except UploadTooLargeError as exc:
+        raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.") from exc
     try:
         text = extract_text(file.filename, file_bytes)
     except ValueError as e:
