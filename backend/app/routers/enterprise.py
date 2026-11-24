@@ -119,6 +119,7 @@ def add_membership(
 @router.get("/audit-log")
 def view_audit_log(
     org_id: str = Query(...), limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
     db: Session = Depends(get_db),
     _user: str = Depends(require_permission("audit_log", "view")),
 ):
@@ -132,17 +133,24 @@ def view_audit_log(
     rows = (
         db.query(AuditLog)
         .filter(AuditLog.org_id == org_uuid)
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit + 1)
         .all()
     )
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
     return {
         "entries": [
             {"id": str(r.id), "user_id": str(r.user_id) if r.user_id else None, "action": r.action,
              "entity_type": r.entity_type, "entity_id": r.entity_id, "changes": r.changes,
              "created_at": r.created_at.isoformat() if r.created_at else None}
-            for r in rows
-        ]
+            for r in page_rows
+        ],
+        "limit": limit,
+        "offset": offset,
+        "has_more": has_more,
+        "next_offset": offset + limit if has_more else None,
     }
 
 
