@@ -2,32 +2,32 @@
 from datetime import date
 from typing import Literal
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
 
 class BankLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=500)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     txn_type: Literal["credit", "debit"]
     mode: str = ""
 
 class BookLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=500)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     txn_type: Literal["credit", "debit"]
 
 class ReconcileRequest(BaseModel):
     bank_lines: list[BankLineIn]
     book_lines: list[BookLineIn]
-    date_window_days: int = 5
-    balance_as_per_bank: float = 0.0
+    date_window_days: int = Field(default=5, ge=0, le=366)
+    balance_as_per_bank: float = Field(default=0.0, allow_inf_nan=False)
 
 @router.post("/reconcile")
 def reconcile_endpoint(
