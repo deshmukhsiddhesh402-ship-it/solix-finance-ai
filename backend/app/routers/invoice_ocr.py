@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
+from app.services.upload_engine import read_upload_limited, UploadTooLargeError
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -69,10 +70,11 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
     lower = (file.filename or "").lower()
-    if len(file_bytes) > MAX_INVOICE_BYTES:
-        raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
+    try:
+        file_bytes = await read_upload_limited(file, MAX_INVOICE_BYTES)
+    except UploadTooLargeError as exc:
+        raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.") from exc
     extension = lower.rsplit(".", 1)[-1] if "." in lower else ""
     if extension not in {"jpg", "jpeg", "png", "webp", "pdf"}:
         raise HTTPException(400, detail="Only .jpg, .png, .webp, and .pdf invoice files are supported.")
