@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
+from app.services.upload_names import safe_upload_filename
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -26,7 +27,6 @@ def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     }
     checker = signatures.get(extension)
     return bool(checker and checker(file_bytes))
-
 
 def _purge_expired_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
@@ -69,8 +69,9 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
+    filename = safe_upload_filename(file.filename)
     file_bytes = await file.read()
-    lower = (file.filename or "").lower()
+    lower = filename.lower()
     if len(file_bytes) > MAX_INVOICE_BYTES:
         raise HTTPException(413, detail="Invoice file exceeds the 10 MB limit.")
     extension = lower.rsplit(".", 1)[-1] if "." in lower else ""
