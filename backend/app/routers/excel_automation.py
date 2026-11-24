@@ -35,7 +35,7 @@ def _purge_expired_cleaned_sessions(now: float | None = None) -> None:
     current = time.time() if now is None else now
     expired = [
         sid for sid, session in _CLEANED_FILES.items()
-        if current - session.get("created_at", current) >= CLEANED_SESSION_TTL_SECONDS
+        if current - session.get("created_at", 0) >= CLEANED_SESSION_TTL_SECONDS
     ]
     for sid in expired:
         _CLEANED_FILES.pop(sid, None)
