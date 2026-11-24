@@ -11,6 +11,7 @@ surfaced as either:
   - "Bank-only items" (bank charges, interest credited, etc. not yet in books)
 """
 from dataclasses import dataclass, field
+import math
 from datetime import date, timedelta
 from typing import Literal
 
@@ -40,6 +41,15 @@ def reconcile(
     date_window_days: int = 5,
 ) -> dict:
     """Match bank and book lines; return matched pairs + unmatched on both sides."""
+    if isinstance(date_window_days, bool) or not isinstance(date_window_days, int) or not 0 <= date_window_days <= 366:
+        raise ValueError("date_window_days must be an integer between 0 and 366.")
+    for label, lines in (("bank", bank_lines), ("book", book_lines)):
+        identifiers = [line.id for line in lines]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError(f"{label} transaction identifiers must be unique.")
+        for line in lines:
+            if not math.isfinite(line.amount) or line.amount <= 0:
+                raise ValueError(f"{label} transaction amounts must be finite and greater than zero.")
     unmatched_bank = list(bank_lines)
     unmatched_book = list(book_lines)
     matched = []
