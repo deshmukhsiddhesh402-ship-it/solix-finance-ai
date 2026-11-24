@@ -1,5 +1,6 @@
 """Module: Subscription Billing (Razorpay) — tenant-authorized API."""
 from datetime import datetime, timedelta, timezone
+import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
@@ -161,8 +162,8 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(400, detail="Webhook signature verification failed.")
 
     try:
-        payload = await request.json()
-    except ValueError as exc:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
         raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
     if not isinstance(payload, dict):
         raise HTTPException(400, detail="Webhook payload must be a JSON object.")
