@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Literal
 
+MAX_RECONCILIATION_LINES = 1000
+
 
 @dataclass
 class BankLine:
