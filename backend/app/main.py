@@ -1,4 +1,4 @@
-"""
+""" 
 Solix Finance AI — FastAPI backend entrypoint.
 Run: uvicorn app.main:app --reload --port 8000
 """
@@ -33,6 +33,9 @@ async def security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # Financial/accounting API responses must not be stored by browsers or shared caches.
+    # This is intentionally applied to the API entrypoint, not the frontend static assets.
+    response.headers["Cache-Control"] = "no-store"
     if settings.ENV.strip().lower() in {"prod", "production"}:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -54,7 +57,6 @@ app.include_router(billing.router, prefix="/api/billing", tags=["Subscription Bi
 
 
 @app.get("/api/health", tags=["System"])
-
 def health_check():
     """Simple liveness check used by Docker/Railway health probes."""
     return {"status": "ok", "service": "solix-finance-ai-backend"}
