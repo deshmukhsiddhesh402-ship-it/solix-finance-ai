@@ -24,7 +24,10 @@ def money(value: Decimal | int | float | str, label: str = "amount") -> Decimal:
         raise ValueError(f"{label} must be finite.")
     if amount < 0:
         raise ValueError(f"{label} cannot be negative.")
-    quantized = amount.quantize(CENT)
+    try:
+        quantized = amount.quantize(CENT)
+    except InvalidOperation:
+        raise ValueError(f"{label} exceeds the supported decimal precision.") from None
     if amount != quantized:
         raise ValueError(f"{label} cannot have fractions smaller than one paisa.")
     return quantized
