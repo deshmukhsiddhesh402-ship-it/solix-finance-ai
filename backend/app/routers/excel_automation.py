@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.routers.enterprise import require_permission
+from app.services.upload_engine import read_upload_limited, UploadTooLargeError
 from app.services.excel_automation_engine import (
     clean_dataframe, remove_duplicates, detect_errors, auto_categorize_expenses,
 )
@@ -115,9 +116,10 @@ async def auto_clean(
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.")
+    try:
+        file_bytes = await read_upload_limited(file, MAX_UPLOAD_BYTES)
+    except UploadTooLargeError as exc:
+        raise HTTPException(413, detail="Uploaded spreadsheet exceeds the 10 MB limit.") from exc
     df = _read_upload_to_df(file.filename or "", file_bytes)
 
     cleaned, clean_report = clean_dataframe(df)
