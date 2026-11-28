@@ -10,12 +10,22 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 
 
+def _safe_excel_text(value):
+    if isinstance(value, str) and value.lstrip()[:1] in {"=", "+", "-", "@"}:
+        return "'" + value
+    return value
+
+
+def _safe_excel_frame(frame):
+    return frame.apply(lambda column: column.map(_safe_excel_text))
+
+
 def dashboard_to_excel(kpis: dict, monthly: list[dict], expense_breakdown_rows: list[dict]) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        pd.DataFrame([kpis]).T.rename(columns={0: "Value"}).to_excel(writer, sheet_name="KPI Summary")
-        pd.DataFrame(monthly).to_excel(writer, index=False, sheet_name="Monthly Trend")
-        pd.DataFrame(expense_breakdown_rows).to_excel(writer, index=False, sheet_name="Expense Breakdown")
+        _safe_excel_frame(pd.DataFrame([kpis]).T.rename(columns={0: "Value"})).to_excel(writer, sheet_name="KPI Summary")
+        _safe_excel_frame(pd.DataFrame(monthly)).to_excel(writer, index=False, sheet_name="Monthly Trend")
+        _safe_excel_frame(pd.DataFrame(expense_breakdown_rows)).to_excel(writer, index=False, sheet_name="Expense Breakdown")
     buffer.seek(0)
     return buffer.read()
 
