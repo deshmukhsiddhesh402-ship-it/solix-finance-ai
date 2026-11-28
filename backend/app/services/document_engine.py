@@ -6,6 +6,7 @@ it into overlapping chunks suitable for retrieval. Kept dependency-light:
 pypdf for PDFs, openpyxl for Excel (both already in requirements.txt).
 """
 import io
+import zipfile
 from openpyxl import load_workbook
 
 
@@ -15,6 +16,8 @@ MAX_DOCUMENT_COLUMNS_PER_SHEET = 200
 MAX_DOCUMENT_TABLES = 100
 MAX_DOCUMENT_EXTRACTED_CHARS = 5_000_000
 MAX_DOCUMENT_CHUNKS = 10_000
+MAX_DOCUMENT_XLSX_ZIP_ENTRIES = 200
+MAX_DOCUMENT_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -34,8 +37,22 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     return "\n".join(pages)
 
 
+def _validate_xlsx_archive(file_bytes: bytes) -> None:
+    """Reject malformed or excessively expanding XLSX ZIP containers."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_DOCUMENT_XLSX_ZIP_ENTRIES:
+                raise ValueError("Workbook exceeds the supported archive-entry limit.")
+            if sum(max(0, info.file_size) for info in infos) > MAX_DOCUMENT_XLSX_UNCOMPRESSED_BYTES:
+                raise ValueError("Workbook expands beyond the supported extraction limit.")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Invalid XLSX/XLSM archive.") from exc
+
+
 def extract_text_from_xlsx(file_bytes: bytes) -> str:
     """Flatten workbook cells into readable text with parser resource bounds."""
+    _validate_xlsx_archive(file_bytes)
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     try:
         if len(wb.worksheets) > MAX_DOCUMENT_SHEETS:
