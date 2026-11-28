@@ -1,33 +1,83 @@
 """Module 4: Banking — tenant-authorized reconciliation API."""
+import math
 from datetime import date
 from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 from app.services.banking_engine import BankLine, BookLine, reconcile, reconciled_balance
 from app.routers.enterprise import require_permission
 
 router = APIRouter()
+MAX_RECONCILIATION_CANDIDATE_PAIRS = 100_000
+
 
 class BankLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=2000)
+    amount: float = Field(gt=0)
     txn_type: Literal["credit", "debit"]
-    mode: str = ""
+    mode: str = Field(default="", max_length=64)
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_finite(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("Transaction amount must be finite.")
+        return value
+
 
 class BookLineIn(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     txn_date: date
-    description: str
-    amount: float
+    description: str = Field(max_length=2000)
+    amount: float = Field(gt=0)
     txn_type: Literal["credit", "debit"]
 
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_finite(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("Transaction amount must be finite.")
+        return value
+
+
 class ReconcileRequest(BaseModel):
-    bank_lines: list[BankLineIn]
-    book_lines: list[BookLineIn]
-    date_window_days: int = 5
+    bank_lines: list[BankLineIn] = Field(max_length=10000)
+    book_lines: list[BookLineIn] = Field(max_length=10000)
+    date_window_days: int = Field(default=5, ge=0, le=31)
     balance_as_per_bank: float = 0.0
+
+    @field_validator("balance_as_per_bank")
+    @classmethod
+    def bank_balance_must_be_finite(cls, value: float) -> float:
+        # Negative balances are valid for overdrafts; NaN/Infinity are not.
+        if not math.isfinite(value):
+            raise ValueError("Bank balance must be finite.")
+        return value
+
+    @model_validator(mode="after")
+    def transaction_ids_must_be_unique_per_source(self):
+        for source_name, lines in (
+            ("bank_lines", self.bank_lines),
+            ("book_lines", self.book_lines),
+        ):
+            ids = [line.id for line in lines]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"Transaction IDs in {source_name} must be unique.")
+        # Bound pairwise comparisons as well as each list length. The matching
+        # engine recomputes candidates while resolving ambiguities, so a large
+        # cross-product could monopolize API workers.
+        candidate_pairs = len(self.bank_lines) * len(self.book_lines)
+        if candidate_pairs > MAX_RECONCILIATION_CANDIDATE_PAIRS:
+            raise ValueError(
+                "Bank/book transaction combination exceeds the reconciliation limit; "
+                "process this statement in smaller batches."
+            )
+        return self
+
 
 @router.post("/reconcile")
 def reconcile_endpoint(
@@ -35,13 +85,22 @@ def reconcile_endpoint(
     org_id: str = Query(...),
     _user: str = Depends(require_permission("reports", "create")),
 ):
-    bank_lines = [BankLine(**l.dict()) for l in req.bank_lines]
-    book_lines = [BookLine(**l.dict()) for l in req.book_lines]
+    bank_lines = [BankLine(**l.model_dump()) for l in req.bank_lines]
+    book_lines = [BookLine(**l.model_dump()) for l in req.book_lines]
     result = reconcile(bank_lines, book_lines, req.date_window_days)
+    requires_manual_review = bool(result["ambiguous_matches"])
     result["reconciliation_statement"] = {
         "balance_as_per_bank": req.balance_as_per_bank,
         "add_deposits_not_credited": result["totals"]["deposits_not_credited"],
         "less_outstanding_cheques": result["totals"]["outstanding_cheques"],
-        "balance_as_per_books": reconciled_balance(req.balance_as_per_bank, result["totals"]["outstanding_cheques"], result["totals"]["deposits_not_credited"]),
+        # An unresolved candidate can change statement totals. Do not present
+        # a provisional number as a reconciled book balance.
+        "balance_as_per_books": None if requires_manual_review else reconciled_balance(
+            req.balance_as_per_bank,
+            result["totals"]["outstanding_cheques"],
+            result["totals"]["deposits_not_credited"],
+        ),
+        "manual_review_required": requires_manual_review,
+        "ambiguous_transaction_count": len(result["ambiguous_matches"]),
     }
     return result
