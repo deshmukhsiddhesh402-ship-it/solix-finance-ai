@@ -3,6 +3,7 @@ Module: Live Financial Dashboard — report export (Excel + PDF).
 """
 import io
 import pandas as pd
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
@@ -33,8 +34,8 @@ def dashboard_to_pdf(org_name: str, period_label: str, kpis: dict, monthly: list
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(f"{org_name} — Financial Summary", styles["Title"]))
-    story.append(Paragraph(period_label, styles["Normal"]))
+    story.append(Paragraph(f"{escape(str(org_name))} — Financial Summary", styles["Title"]))
+    story.append(Paragraph(escape(str(period_label)), styles["Normal"]))
     story.append(Spacer(1, 16))
 
     kpi_rows = [
@@ -67,7 +68,7 @@ def dashboard_to_pdf(org_name: str, period_label: str, kpis: dict, monthly: list
     if monthly:
         story.append(Paragraph("Monthly Revenue vs Expenses", styles["Heading2"]))
         trend_rows = [["Month", "Revenue", "Expenses", "Net"]] + [
-            [m["month"], _inr(m["revenue"]), _inr(m["expenses"]), _inr(m["revenue"] - m["expenses"])]
+            [escape(str(m["month"])), _inr(m["revenue"]), _inr(m["expenses"]), _inr(m["revenue"] - m["expenses"])]
             for m in monthly
         ]
         trend_table = Table(trend_rows, colWidths=[4 * cm, 4 * cm, 4 * cm, 4 * cm])
