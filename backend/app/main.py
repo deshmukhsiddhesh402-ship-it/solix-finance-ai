@@ -35,6 +35,8 @@ async def security_headers(request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if settings.ENV.strip().lower() in {"prod", "production"}:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if request.url.path.startswith(("/api/auth", "/api/billing")):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 app.include_router(excel_ai.router, prefix="/api/excel-ai", tags=["AI Excel Assistant"])
