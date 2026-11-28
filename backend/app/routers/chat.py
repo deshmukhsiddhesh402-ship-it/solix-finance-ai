@@ -11,6 +11,7 @@ from app.services.embedding_service import embeddings_available, get_embeddings,
 from app.services.claude_service import ask_claude, rag_chat_prompt
 from app.core.db import get_db
 from app.routers.enterprise import require_permission
+from app.services.upload_names import safe_upload_filename
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -65,11 +66,12 @@ async def upload_document(
     except (ValueError, AttributeError, TypeError) as exc:
         raise HTTPException(400, detail="Invalid organization or user identifier.") from exc
 
+    filename = safe_upload_filename(file.filename)
     file_bytes = await file.read()
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, detail="Uploaded document exceeds the 10 MB limit.")
     try:
-        text = extract_text(file.filename, file_bytes)
+        text = extract_text(filename, file_bytes)
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
     if not text.strip():
@@ -81,7 +83,7 @@ async def upload_document(
         vectors = get_embeddings(chunks, input_type="document")
         doc_row = Document(
             org_id=org_uuid, uploaded_by=user_uuid,
-            file_name=file.filename, file_type=file.filename.split(".")[-1],
+            file_name=filename, file_type=filename.split(".")[-1],
         )
         db.add(doc_row)
         db.flush()
@@ -90,16 +92,16 @@ async def upload_document(
         db.commit()
         session_id = str(doc_row.id)
         _store_chat_session(_SEMANTIC_SESSIONS, session_id, {
-            "filename": file.filename, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time(),
+            "filename": filename, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time(),
         })
-        return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "semantic"}
+        return {"session_id": session_id, "filename": filename, "chunk_count": len(chunks), "mode": "semantic"}
 
     session_id = str(uuid.uuid4())
     _store_chat_session(_TFIDF_SESSIONS, session_id, {
-        "filename": file.filename, "index": build_index(chunks), "org_id": str(org_uuid),
+        "filename": filename, "index": build_index(chunks), "org_id": str(org_uuid),
         "user_id": str(user_uuid), "created_at": time.time(),
     })
-    return {"session_id": session_id, "filename": file.filename, "chunk_count": len(chunks), "mode": "keyword"}
+    return {"session_id": session_id, "filename": filename, "chunk_count": len(chunks), "mode": "keyword"}
 
 
 class AskRequest(BaseModel):
