@@ -36,6 +36,20 @@ def get_plan_limits(plan: str) -> dict:
     return PLANS.get(plan, PLANS["trial"])["limits"]
 
 
+def consume_usage(subscription, usage_key: str) -> None:
+    """Consume one metered operation on a locked subscription row.
+
+    Callers must hold the row lock (for example with SELECT ... FOR UPDATE)
+    and commit only after the underlying operation succeeds. The helper keeps
+    limit enforcement in one place and fails closed at the plan limit.
+    """
+    plan = getattr(subscription, "plan", "trial") or "trial"
+    current_usage = int(getattr(subscription, usage_key, 0) or 0)
+    if not is_within_limit(plan, usage_key.replace("_this_month", "_per_month"), current_usage):
+        raise ValueError(f"Monthly limit reached for {usage_key}.")
+    setattr(subscription, usage_key, current_usage + 1)
+
+
 def is_within_limit(plan: str, usage_key: str, current_usage: int) -> bool:
     """Check whether the org is still within its plan's usage limit for a
     given metered feature. A limit of None means unlimited."""

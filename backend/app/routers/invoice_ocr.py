@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 from app.services.claude_service import ask_claude_with_image, INVOICE_EXTRACTION_SYSTEM_PROMPT
 from app.services.invoice_ocr_engine import pdf_pages_to_images, encode_image_base64, is_valid_gstin_format, invoices_to_excel, invoice_to_journal_lines
 from app.routers.enterprise import require_permission
+from app.core.db import get_db
+from sqlalchemy.orm import Session
+from app.services.billing_engine import consume_usage
 
 router = APIRouter()
 _EXTRACTED_INVOICES: dict[str, dict] = {}
@@ -64,7 +67,7 @@ def _extract_single_image(image_bytes: bytes, media_type: str) -> dict:
     return data
 
 @router.post("/extract-invoice")
-async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
+async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...), db: Session = Depends(get_db), user_id: str = Depends(require_permission("invoice_ocr", "create"))):
     try:
         org_uuid, user_uuid = uuid.UUID(org_id), uuid.UUID(user_id)
     except (ValueError, AttributeError, TypeError) as exc:
@@ -87,6 +90,18 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         extracted = _extract_single_image(images[0], "image/png")
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
+    from app.models.billing import Subscription
+    subscription = db.query(Subscription).filter(Subscription.org_id == org_uuid).with_for_update().first()
+    if subscription is None:
+        subscription = Subscription(org_id=org_uuid, plan="trial", status="active")
+        db.add(subscription)
+        db.flush()
+    try:
+        consume_usage(subscription, "invoice_ocr_this_month")
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(429, detail=str(exc)) from exc
+    db.commit()
     session_id = str(uuid.uuid4())
     _store_session(session_id, {"invoice": extracted, "org_id": str(org_uuid), "user_id": str(user_uuid), "created_at": time.time()})
     return {"session_id": session_id, "invoice": extracted}
