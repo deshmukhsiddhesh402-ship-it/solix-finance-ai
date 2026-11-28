@@ -1,5 +1,6 @@
 """Module: Subscription Billing (Razorpay) — tenant-authorized API."""
 from datetime import datetime, timedelta, timezone
+import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
@@ -12,6 +13,7 @@ from app.services.billing_engine import (
     validate_gateway_payment, is_within_limit,
 )
 from app.routers.enterprise import require_permission
+from app.services.request_body_engine import read_stream_limited, RequestBodyTooLargeError
 
 router = APIRouter()
 
@@ -147,9 +149,10 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     MAX_WEBHOOK_BODY_BYTES = 1_000_000
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(503, detail="Razorpay webhook secret is not configured.")
-    raw_body = await request.body()
-    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
-        raise HTTPException(413, detail="Webhook payload is too large.")
+    try:
+        raw_body = await read_stream_limited(request.stream(), MAX_WEBHOOK_BODY_BYTES)
+    except RequestBodyTooLargeError as exc:
+        raise HTTPException(413, detail="Webhook payload is too large.") from exc
     signature = request.headers.get("X-Razorpay-Signature", "")
     try:
         payload_text = raw_body.decode("utf-8")
@@ -159,8 +162,8 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(400, detail="Webhook signature verification failed.")
 
     try:
-        payload = await request.json()
-    except ValueError as exc:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
         raise HTTPException(400, detail="Webhook payload is not valid JSON.") from exc
     if not isinstance(payload, dict):
         raise HTTPException(400, detail="Webhook payload must be a JSON object.")
