@@ -13,7 +13,7 @@ MAX_OCR_SESSIONS = 1000
 OCR_SESSION_TTL_SECONDS = 30 * 60
 IMAGE_MEDIA_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
-MAX_PDF_PAGES = 20
+MAX_PDF_PAGES = 2  # render at most two pages to detect unsupported multi-page invoices
 
 def _has_expected_file_signature(file_bytes: bytes, extension: str) -> bool:
     """Reject extension/content mismatches before invoking PDF/image processing."""
@@ -84,6 +84,8 @@ async def extract_invoice(file: UploadFile = File(...), org_id: str = Query(...)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail="Could not process the uploaded PDF.") from exc
         if not images: raise HTTPException(422, detail="Could not render any pages from this PDF.")
+        if len(images) > 1:
+            raise HTTPException(422, detail="Multi-page PDF invoices are not supported yet. Upload a single-page PDF or process each page separately.")
         extracted = _extract_single_image(images[0], "image/png")
     else:
         extracted = _extract_single_image(file_bytes, IMAGE_MEDIA_TYPES[extension])
