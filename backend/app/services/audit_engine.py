@@ -38,7 +38,7 @@ def diff_fields(before: dict | None, after: dict | None) -> dict:
         return {k: {"before": v, "after": None} for k, v in (before or {}).items()}
 
     changed = {}
-    all_keys = set(before) | set(after)
+    all_keys = sorted(set(before) | set(after), key=lambda item: str(item))
     for key in all_keys:
         old_val = before.get(key)
         new_val = after.get(key)
