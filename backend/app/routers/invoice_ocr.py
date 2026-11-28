@@ -33,7 +33,7 @@ def _purge_expired_sessions(now: float | None = None) -> None:
     expired = [
         session_id
         for session_id, session in _EXTRACTED_INVOICES.items()
-        if current - session.get("created_at", current) > OCR_SESSION_TTL_SECONDS
+        if current - session.get("created_at", 0) >= OCR_SESSION_TTL_SECONDS
     ]
     for session_id in expired:
         _EXTRACTED_INVOICES.pop(session_id, None)
